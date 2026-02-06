@@ -1,0 +1,283 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ユーザー・認証・組織管理
+// ============================================
+
+enum UserRole {
+  UniversityAdmin  // 大学管理者
+  FacultyAuditor   // 顧問（監査者）
+  ClubStudent      // クラブ学生
+}
+
+enum OrganizationType {
+  UNIVERSITY       // 大学（for School版）
+  CLUB            // クラブ（単体版）
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  name          String
+  role          UserRole
+  organizationId String?
+  organization  Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // リレーション
+  transactions  Transaction[]
+  approvals     Approval[]
+  createdFiscalYears FiscalYear[] @relation("FiscalYearCreator")
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model Organization {
+  id                  String          @id @default(cuid())
+  name                String
+  type                OrganizationType @default(CLUB)
+  allowCustomCategory Boolean         @default(true)  // クラブ固有の勘定科目を許可するか
+  parentId            String?         // 大学版の場合、親組織（大学）のID
+  parent              Organization?    @relation("OrganizationHierarchy", fields: [parentId], references: [id])
+  children            Organization[]   @relation("OrganizationHierarchy")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  // リレーション
+  users               User[]
+  fiscalYears         FiscalYear[]
+  accountTitles       AccountTitle[]
+  transactions        Transaction[]
+  members             Member[]
+  collectionItems     CollectionItem[]
+
+  @@index([parentId])
+}
+
+// ============================================
+// 会計年度管理
+// ============================================
+
+enum FiscalYearStatus {
+  OPEN      // 開期中
+  PENDING   // 決算待ち
+  CLOSED    // 決算済み
+}
+
+model FiscalYear {
+  id            String            @id @default(cuid())
+  organizationId String
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  year          Int               // 年度（例: 2024）
+  startDate     DateTime
+  endDate       DateTime
+  status        FiscalYearStatus  @default(OPEN)
+  createdById   String?
+  createdBy     User?             @relation("FiscalYearCreator", fields: [createdById], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // リレーション
+  transactions  Transaction[]
+
+  @@unique([organizationId, year])
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ============================================
+// 勘定科目マスター
+// ============================================
+
+enum AccountType {
+  ASSET       // 資産
+  LIABILITY   // 負債
+  EQUITY      // 資本
+  REVENUE     // 収益
+  EXPENSE     // 費用
+}
+
+model AccountTitle {
+  id              String          @id @default(cuid())
+  organizationId  String?
+  organization    Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code            String          // 科目コード
+  name            String
+  type            AccountType
+  isMaster        Boolean         @default(false)  // 大学側のマスター科目か
+  parentId        String?         // 親科目（階層構造用）
+  parent          AccountTitle?   @relation("AccountTitleHierarchy", fields: [parentId], references: [id])
+  children        AccountTitle[]  @relation("AccountTitleHierarchy")
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // リレーション
+  transactions    Transaction[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([isMaster])
+}
+
+// ============================================
+// 取引（仕訳）
+// ============================================
+
+enum TransactionStatus {
+  NORMAL      // 通常
+  DEFERRED    // 繰延（次年度へ繰り越し）
+  SETTLED     // 精算済み（繰延の消し込み完了）
+}
+
+enum TransactionType {
+  INCOME      // 収入
+  EXPENSE     // 支出
+}
+
+enum ApprovalStatus {
+  DRAFT           // 下書き
+  CLUB_PENDING    // クラブ申請中
+  FACULTY_PENDING // 顧問承認待ち
+  UNIVERSITY_PENDING // 大学承認待ち
+  APPROVED        // 承認済み
+  REJECTED        // 却下
+}
+
+model Transaction {
+  id              String            @id @default(cuid())
+  organizationId  String
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fiscalYearId    String
+  fiscalYear      FiscalYear        @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  accountTitleId  String
+  accountTitle    AccountTitle      @relation(fields: [accountTitleId], references: [id])
+  userId          String?
+  user            User?             @relation(fields: [userId], references: [id])
+  
+  // 取引情報
+  type            TransactionType
+  amount          Decimal           @db.Decimal(12, 2)
+  date            DateTime
+  description     String?
+  receiptUrl      String?           // 証憑画像URL
+  isAlert         Boolean           @default(false)  // 異常検知フラグ
+  alertReason     String?           // アラート理由（二重登録、高額支出、残高不整合等）
+  status          TransactionStatus @default(NORMAL)
+  
+  // 承認フロー（for School版）
+  approvalStatus  ApprovalStatus    @default(DRAFT)
+  
+  // 繰延・精算関連
+  deferredFromId  String?           // 繰延元の取引ID
+  deferredFrom    Transaction?      @relation("TransactionDeferred", fields: [deferredFromId], references: [id])
+  deferredTo      Transaction[]     @relation("TransactionDeferred")
+  settledAt       DateTime?         // 精算日時
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // リレーション
+  approvals       Approval[]
+
+  @@index([organizationId])
+  @@index([fiscalYearId])
+  @@index([accountTitleId])
+  @@index([userId])
+  @@index([date])
+  @@index([status])
+  @@index([approvalStatus])
+  @@index([isAlert])
+}
+
+// ============================================
+// 承認フロー
+// ============================================
+
+enum ApprovalLevel {
+  CLUB       // クラブ申請
+  FACULTY    // 顧問承認
+  UNIVERSITY // 大学承認
+}
+
+model Approval {
+  id            String          @id @default(cuid())
+  transactionId String
+  transaction   Transaction     @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  level         ApprovalLevel
+  status        ApprovalStatus
+  comment       String?
+  approvedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([transactionId])
+  @@index([userId])
+}
+
+// ============================================
+// 部員・保護者管理
+// ============================================
+
+model Member {
+  id            String          @id @default(cuid())
+  organizationId String
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name          String
+  studentId     String?         // 学籍番号
+  email         String?
+  phone         String?
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // リレーション
+  collectionItems CollectionItem[]
+
+  @@index([organizationId])
+  @@index([studentId])
+}
+
+// ============================================
+// 集金管理
+// ============================================
+
+enum CollectionStatus {
+  PENDING     // 未収
+  COLLECTED   // 収納済み
+  OVERDUE     // 滞納
+}
+
+model CollectionItem {
+  id            String            @id @default(cuid())
+  organizationId String
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberId      String
+  member        Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amount        Decimal           @db.Decimal(12, 2)
+  dueDate       DateTime          // 納付期限
+  status        CollectionStatus  @default(PENDING)
+  collectedAt   DateTime?         // 収納日時
+  description   String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([memberId])
+  @@index([status])
+  @@index([dueDate])
+}
