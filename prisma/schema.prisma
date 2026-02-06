@@ -15,14 +15,15 @@ datasource db {
 // ============================================
 
 enum UserRole {
-  UniversityAdmin  // 大学管理者
+  UniversityAdmin  // 大学管理者（for School版）
   FacultyAuditor   // 顧問（監査者）
   ClubStudent      // クラブ学生
+  ClubAdmin        // クラブ管理者（単体版）
 }
 
 enum OrganizationType {
   UNIVERSITY       // 大学（for School版）
-  CLUB            // クラブ（単体版）
+  CLUB             // クラブ（単体版）
 }
 
 model User {
@@ -36,34 +37,39 @@ model User {
   updatedAt     DateTime        @updatedAt
 
   // リレーション
-  transactions  Transaction[]
-  approvals     Approval[]
-  createdFiscalYears FiscalYear[] @relation("FiscalYearCreator")
+  transactions       Transaction[]
+  approvals          Approval[]
+  createdFiscalYears FiscalYear[]  @relation("FiscalYearCreator")
+  alerts             Alert[]       @relation("AlertResolvedBy")
 
   @@index([organizationId])
   @@index([email])
 }
 
 model Organization {
-  id                  String          @id @default(cuid())
+  id                  String           @id @default(cuid())
   name                String
   type                OrganizationType @default(CLUB)
-  allowCustomCategory Boolean         @default(true)  // クラブ固有の勘定科目を許可するか
-  parentId            String?         // 大学版の場合、親組織（大学）のID
+  allowCustomCategory Boolean          @default(true)  // クラブ固有のカテゴリー/科目を許可するか
+  isForSchool         Boolean          @default(false) // for School版かどうか
+  parentId            String?          // for School版の場合、親組織（大学）のID
   parent              Organization?    @relation("OrganizationHierarchy", fields: [parentId], references: [id])
   children            Organization[]   @relation("OrganizationHierarchy")
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   // リレーション
-  users               User[]
-  fiscalYears         FiscalYear[]
-  accountTitles       AccountTitle[]
-  transactions        Transaction[]
-  members             Member[]
-  collectionItems     CollectionItem[]
+  users           User[]
+  fiscalYears     FiscalYear[]
+  categories      Category[]
+  accountTitles   AccountTitle[]
+  transactions    Transaction[]
+  members         Member[]
+  collectionItems CollectionItem[]
+  alerts          Alert[]
 
   @@index([parentId])
+  @@index([type])
 }
 
 // ============================================
@@ -71,26 +77,33 @@ model Organization {
 // ============================================
 
 enum FiscalYearStatus {
-  OPEN      // 開期中
-  PENDING   // 決算待ち
-  CLOSED    // 決算済み
+  OPEN           // 開期中（編集可能）
+  PENDING        // 決算処理中（アラート解消・証憑確認中）
+  PENDING_CLOSE  // 締め処理待ち（繰延処理完了、最終確認待ち）
+  CLOSED         // 決算確定済み
 }
 
 model FiscalYear {
-  id            String            @id @default(cuid())
-  organizationId String
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  year          Int               // 年度（例: 2024）
-  startDate     DateTime
-  endDate       DateTime
-  status        FiscalYearStatus  @default(OPEN)
-  createdById   String?
-  createdBy     User?             @relation("FiscalYearCreator", fields: [createdById], references: [id])
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id              String            @id @default(cuid())
+  organizationId  String
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  year            Int               // 年度（例: 2025 = 2025年4月〜2026年3月）
+  startDate       DateTime          // 期首日（例: 2025-04-01）
+  endDate         DateTime          // 期末日（例: 2026-03-31）
+  status          FiscalYearStatus  @default(OPEN)
+  
+  // 決算処理関連
+  closedAt        DateTime?         // 決算確定日時
+  carryOverAmount Decimal?          @db.Decimal(12, 2) // 次期繰越金
+  
+  createdById     String?
+  createdBy       User?             @relation("FiscalYearCreator", fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   // リレーション
-  transactions  Transaction[]
+  transactions    Transaction[]
+  balanceRecords  BalanceRecord[]   // 残高確認記録
 
   @@unique([organizationId, year])
   @@index([organizationId])
@@ -98,38 +111,100 @@ model FiscalYear {
 }
 
 // ============================================
-// 勘定科目マスター
+// カテゴリー（部門）管理
+// 仕様書 3.1: 部門（カテゴリー）管理
 // ============================================
 
-enum AccountType {
-  ASSET       // 資産
-  LIABILITY   // 負債
-  EQUITY      // 資本
-  REVENUE     // 収益
-  EXPENSE     // 費用
+model Category {
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String        // カテゴリー名（例: 部会計、合宿会計、遠征費）
+  order           Int           @default(0) // 表示順序（ドラッグ&ドロップ用）
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // リレーション
+  accountTitles   AccountTitleCategory[]
+  transactions    Transaction[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([order])
+}
+
+// ============================================
+// 勘定科目マスター
+// 仕様書 3.2: 勘定科目体系
+// ============================================
+
+enum AccountGroup {
+  CASH_DEPOSIT    // 現金・預金（現金、普通預金等）
+  ASSET           // 資産（未収入金、仮払金）
+  LIABILITY       // 負債（仮受金、未払金）
+  INCOME          // 収入（部費、寄付金、助成金等）
+  EXPENSE         // 支出（消耗品費、大会参加費等）
+}
+
+// 繰延処理用の固定科目識別子
+enum DeferredAccountType {
+  ACCOUNTS_RECEIVABLE   // 未収入金（資産）
+  ADVANCE_PAYMENT       // 仮払金（資産）
+  ACCOUNTS_PAYABLE      // 未払金（負債）
+  ADVANCE_RECEIPT       // 仮受金（負債）
 }
 
 model AccountTitle {
-  id              String          @id @default(cuid())
-  organizationId  String?
-  organization    Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  code            String          // 科目コード
-  name            String
-  type            AccountType
-  isMaster        Boolean         @default(false)  // 大学側のマスター科目か
-  parentId        String?         // 親科目（階層構造用）
-  parent          AccountTitle?   @relation("AccountTitleHierarchy", fields: [parentId], references: [id])
-  children        AccountTitle[]  @relation("AccountTitleHierarchy")
-  isActive        Boolean         @default(true)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                  String              @id @default(cuid())
+  organizationId      String?
+  organization        Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code                String?             // 科目コード（任意）
+  name                String
+  group               AccountGroup
+  deferredType        DeferredAccountType? // 繰延処理用科目の場合のみ設定
+  
+  // 期首残高（初年度設定用）
+  openingBalance      Decimal?            @db.Decimal(12, 2)
+  
+  // マスター管理
+  isMaster            Boolean             @default(false)  // 大学側のマスター科目か
+  isSystemRequired    Boolean             @default(false)  // システム必須科目か（削除不可）
+  
+  // 階層構造（オプション）
+  parentId            String?
+  parent              AccountTitle?       @relation("AccountTitleHierarchy", fields: [parentId], references: [id])
+  children            AccountTitle[]      @relation("AccountTitleHierarchy")
+  
+  order               Int                 @default(0) // 表示順序
+  isActive            Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   // リレーション
-  transactions    Transaction[]
+  categories          AccountTitleCategory[]
+  transactions        Transaction[]
+  balanceRecords      BalanceRecord[]
 
-  @@unique([organizationId, code])
+  @@unique([organizationId, name])
   @@index([organizationId])
+  @@index([group])
   @@index([isMaster])
+  @@index([deferredType])
+}
+
+// 科目とカテゴリーの中間テーブル（多対多）
+model AccountTitleCategory {
+  id              String        @id @default(cuid())
+  accountTitleId  String
+  accountTitle    AccountTitle  @relation(fields: [accountTitleId], references: [id], onDelete: Cascade)
+  categoryId      String
+  category        Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@unique([accountTitleId, categoryId])
+  @@index([accountTitleId])
+  @@index([categoryId])
 }
 
 // ============================================
@@ -145,15 +220,19 @@ enum TransactionStatus {
 enum TransactionType {
   INCOME      // 収入
   EXPENSE     // 支出
+  TRANSFER    // 振替（現金・預金間の移動）
+  COLLECTION  // 集金
+  DEFERRED    // 繰延（計上・消込）
 }
 
 enum ApprovalStatus {
-  DRAFT           // 下書き
-  CLUB_PENDING    // クラブ申請中
-  FACULTY_PENDING // 顧問承認待ち
-  UNIVERSITY_PENDING // 大学承認待ち
-  APPROVED        // 承認済み
-  REJECTED        // 却下
+  DRAFT              // 下書き
+  PENDING            // 承認待ち（クラブ申請中）
+  FACULTY_PENDING    // 顧問承認待ち
+  UNIVERSITY_PENDING // 大学承認待ち（for School版）
+  APPROVED           // 承認済み
+  REJECTED           // 却下
+  BLOCKED            // ブロック（アラート未解消のため承認不可）
 }
 
 model Transaction {
@@ -162,6 +241,8 @@ model Transaction {
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   fiscalYearId    String
   fiscalYear      FiscalYear        @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  categoryId      String?
+  category        Category?         @relation(fields: [categoryId], references: [id])
   accountTitleId  String
   accountTitle    AccountTitle      @relation(fields: [accountTitleId], references: [id])
   userId          String?
@@ -170,20 +251,35 @@ model Transaction {
   // 取引情報
   type            TransactionType
   amount          Decimal           @db.Decimal(12, 2)
-  date            DateTime
-  description     String?
+  date            DateTime          @db.Date
+  counterparty    String?           // 入金先/出金元の科目名（振替用）
+  description     String?           // メモ
+  
+  // 証憑（エビデンス）管理
   receiptUrl      String?           // 証憑画像URL
+  receiptUploadedAt DateTime?       // 証憑アップロード日時
+  
+  // ============================================
+  // 異常検知・アラート連携（仕様書セクション4）
+  // ============================================
   isAlert         Boolean           @default(false)  // 異常検知フラグ
-  alertReason     String?           // アラート理由（二重登録、高額支出、残高不整合等）
+  alertType       AlertType?        // アラート種別
+  alertResolvedAt DateTime?         // アラート解消日時
+  
+  // 取引ステータス
   status          TransactionStatus @default(NORMAL)
   
-  // 承認フロー（for School版）
+  // ============================================
+  // 承認フロー連携（for School版）
+  // isAlert=true の場合、approvalStatus は BLOCKED になる
+  // ============================================
   approvalStatus  ApprovalStatus    @default(DRAFT)
   
   // 繰延・精算関連
-  deferredFromId  String?           // 繰延元の取引ID
+  deferredFromId  String?           // 繰延元の取引ID（消込時に参照）
   deferredFrom    Transaction?      @relation("TransactionDeferred", fields: [deferredFromId], references: [id])
   deferredTo      Transaction[]     @relation("TransactionDeferred")
+  deferredType    DeferredProcessType? // 繰延処理の種別（計上/消込）
   settledAt       DateTime?         // 精算日時
   
   createdAt       DateTime          @default(now())
@@ -191,19 +287,75 @@ model Transaction {
 
   // リレーション
   approvals       Approval[]
+  alerts          Alert[]           // 関連するアラート履歴
 
   @@index([organizationId])
   @@index([fiscalYearId])
+  @@index([categoryId])
   @@index([accountTitleId])
   @@index([userId])
   @@index([date])
+  @@index([type])
   @@index([status])
   @@index([approvalStatus])
   @@index([isAlert])
+  @@index([alertType])
+}
+
+// 繰延処理の種別
+enum DeferredProcessType {
+  RECORD      // 計上（来年度のお金として予約）
+  SETTLEMENT  // 消込（前年度の予約を精算）
 }
 
 // ============================================
-// 承認フロー
+// 異常検知・アラート管理（仕様書セクション4）
+// ============================================
+
+enum AlertType {
+  MISSING_RECEIPT       // 証憑（エビデンス）不足
+  DUPLICATE_ENTRY       // 二重登録
+  BALANCE_MISMATCH      // 残高不整合
+  HIGH_AMOUNT           // 高額取引（閾値超過）
+  INVALID_DATE          // 不正な日付（会計年度外）
+  APPROVAL_TIMEOUT      // 承認タイムアウト
+}
+
+enum AlertStatus {
+  OPEN        // 未解消
+  RESOLVED    // 解消済み
+  IGNORED     // 無視（正当な理由あり）
+}
+
+model Alert {
+  id              String          @id @default(cuid())
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactionId   String?
+  transaction     Transaction?    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  
+  type            AlertType
+  status          AlertStatus     @default(OPEN)
+  message         String          // アラートメッセージ
+  details         Json?           // 詳細情報（重複取引IDなど）
+  
+  // 解消情報
+  resolvedById    String?
+  resolvedBy      User?           @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
+  resolvedAt      DateTime?
+  resolvedComment String?         // 解消時のコメント
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([transactionId])
+  @@index([type])
+  @@index([status])
+}
+
+// ============================================
+// 承認フロー（for School版）
 // ============================================
 
 enum ApprovalLevel {
@@ -221,12 +373,52 @@ model Approval {
   level         ApprovalLevel
   status        ApprovalStatus
   comment       String?
+  
+  // アラート確認（承認者がアラートを確認したか）
+  alertChecked  Boolean         @default(false)
+  
   approvedAt    DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   @@index([transactionId])
   @@index([userId])
+  @@index([level])
+  @@index([status])
+}
+
+// ============================================
+// 残高確認記録（決算処理用）
+// 仕様書セクション5: 決算処理ワークフロー
+// ============================================
+
+model BalanceRecord {
+  id              String        @id @default(cuid())
+  fiscalYearId    String
+  fiscalYear      FiscalYear    @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  accountTitleId  String
+  accountTitle    AccountTitle  @relation(fields: [accountTitleId], references: [id])
+  
+  // 残高情報
+  systemBalance   Decimal       @db.Decimal(12, 2)  // システム計算残高
+  actualBalance   Decimal?      @db.Decimal(12, 2)  // ユーザー入力の実残高
+  isMatched       Boolean       @default(false)     // 残高一致確認済み
+  
+  // エビデンス
+  evidenceUrl     String?       // 通帳残高画像/現金残高画像URL
+  evidenceUploadedAt DateTime?
+  
+  // 確認情報
+  confirmedAt     DateTime?
+  confirmedById   String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([fiscalYearId, accountTitleId])
+  @@index([fiscalYearId])
+  @@index([accountTitleId])
+  @@index([isMatched])
 }
 
 // ============================================
@@ -234,22 +426,31 @@ model Approval {
 // ============================================
 
 model Member {
-  id            String          @id @default(cuid())
-  organizationId String
-  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name          String
-  studentId     String?         // 学籍番号
-  email         String?
-  phone         String?
-  isActive      Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  studentId       String?         // 学籍番号
+  email           String?
+  phone           String?
+  grade           Int?            // 学年（1〜4）
+  isActive        Boolean         @default(true)
+  
+  // 保護者閲覧用トークン（仕様書6.3）
+  parentViewToken String?         @unique // 一意のトークン（URL用）
+  parentEmail     String?         // 保護者メールアドレス
+  parentPhone     String?         // 保護者電話番号
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   // リレーション
   collectionItems CollectionItem[]
 
   @@index([organizationId])
   @@index([studentId])
+  @@index([grade])
+  @@index([parentViewToken])
 }
 
 // ============================================
@@ -257,27 +458,70 @@ model Member {
 // ============================================
 
 enum CollectionStatus {
-  PENDING     // 未収
+  SCHEDULED   // 予約済み（未請求）
+  PENDING     // 請求中（未収）
   COLLECTED   // 収納済み
   OVERDUE     // 滞納
+  CANCELLED   // キャンセル
 }
 
 model CollectionItem {
-  id            String            @id @default(cuid())
-  organizationId String
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  memberId      String
-  member        Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  amount        Decimal           @db.Decimal(12, 2)
-  dueDate       DateTime          // 納付期限
-  status        CollectionStatus  @default(PENDING)
-  collectedAt   DateTime?         // 収納日時
-  description   String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id              String            @id @default(cuid())
+  organizationId  String
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberId        String
+  member          Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  // 集金情報
+  name            String            // 集金名（例: 4月部費）
+  amount          Decimal           @db.Decimal(12, 2)
+  dueDate         DateTime          @db.Date // 納付期限
+  targetMonth     DateTime?         @db.Date // 対象月（月次集金用）
+  
+  status          CollectionStatus  @default(SCHEDULED)
+  collectedAt     DateTime?         // 収納日時
+  collectedAmount Decimal?          @db.Decimal(12, 2) // 実際の収納額
+  description     String?
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([organizationId])
   @@index([memberId])
   @@index([status])
   @@index([dueDate])
+  @@index([targetMonth])
+}
+
+// ============================================
+// システム通知・お知らせ
+// ============================================
+
+enum NotificationType {
+  SYSTEM          // システム通知
+  ALERT           // アラート通知
+  APPROVAL        // 承認関連
+  COLLECTION      // 集金関連
+  FISCAL_YEAR     // 年度関連
+}
+
+model Notification {
+  id              String            @id @default(cuid())
+  organizationId  String
+  type            NotificationType
+  title           String
+  message         String
+  isRead          Boolean           @default(false)
+  readAt          DateTime?
+  
+  // 関連エンティティ（オプション）
+  relatedType     String?           // 関連エンティティの種別
+  relatedId       String?           // 関連エンティティのID
+  
+  createdAt       DateTime          @default(now())
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
 }

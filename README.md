@@ -2,127 +2,173 @@
 
 大学スポーツ・部活動向け会計DXソリューション
 
+> **「できるクラブは会計もスマートに。」**
+
+---
+
+## クイックスタート
+
+```bash
+# 1. 依存関係のインストール
+npm install
+
+# 2. 環境変数の設定
+cp .env.example .env
+# .env を編集して DATABASE_URL と GEMINI_API_KEY を設定
+
+# 3. データベースのセットアップ
+npm run db:generate
+npm run db:push
+
+# 4. 開発サーバーの起動
+npm run dev
+```
+
+デフォルトでは http://localhost:3000 で起動します。
+
+---
+
 ## 技術スタック
 
-- **Framework:** Next.js 14 (App Router), TypeScript
-- **Database/ORM:** PostgreSQL, Prisma
-- **UI/Styling:** Tailwind CSS, shadcn/ui
-- **AI:** Google Gemini 1.5 Flash API (OCR解析、監査照合、異常検知)
+| カテゴリ | 技術 |
+|----------|------|
+| Framework | Next.js 14 (App Router), TypeScript |
+| Styling | Tailwind CSS, shadcn/ui |
+| Database | PostgreSQL, Prisma |
+| AI | Google Gemini 1.5 Flash API |
+
+---
 
 ## プロジェクト構造
 
 ```
 kurasaokaikei/
+├── docs/
+│   ├── spec.md              # 開発マスターガイド（詳細仕様）
+│   └── kansa.md             # 監査レポート
 ├── prisma/
-│   └── schema.prisma          # Prismaスキーマ定義
+│   └── schema.prisma        # データベーススキーマ
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/       # クラブ向けダッシュボード（単体版）
-│   │   │   ├── dashboard/     # マイページ/全体俯瞰（Pink #E66A84）
-│   │   │   ├── accounting/    # 入出金・帳簿管理（Green #A3BC68）
-│   │   │   │   └── new/       # 新規取引入力（AI OCR）
-│   │   │   ├── collection/    # 集金管理（Orange #D99529）
-│   │   │   ├── members/       # 部員・保護者管理（Purple #9D8CC3）
-│   │   │   └── settings/      # 設定・マスター（Blue #77B8DA）
-│   │   │       ├── account-titles/  # 勘定科目マスター
-│   │   │       └── fiscal-years/    # 会計年度管理
-│   │   ├── (university)/      # 大学向け統合ダッシュボード（for School版）
+│   │   ├── (dashboard)/     # クラブ向け画面（単体版）
+│   │   │   ├── dashboard/   # マイページ
+│   │   │   ├── accounting/  # 入出金・帳簿
+│   │   │   │   ├── register/    # 新規登録・履歴
+│   │   │   │   ├── ledger/      # 出納帳・科目別台帳
+│   │   │   │   ├── summary/     # 収支集計表
+│   │   │   │   └── report/      # 収支報告書
+│   │   │   ├── collection/  # 集金管理
+│   │   │   ├── members/     # 部員管理
+│   │   │   ├── settings/    # 設定
+│   │   │   │   ├── club/            # クラブ設定
+│   │   │   │   ├── category/        # カテゴリー設定
+│   │   │   │   ├── account-titles/  # 科目設定
+│   │   │   │   └── fiscal-years/    # 会計年度設定
+│   │   │   └── guide/       # 操作ガイド
+│   │   ├── (university)/    # 大学向け画面（for School版）
 │   │   │   └── university/
-│   │   │       ├── dashboard/ # 統合ダッシュボード
-│   │   │       └── approvals/ # 承認待ち一覧（多段階承認フロー）
-│   │   ├── layout.tsx         # ルートレイアウト
-│   │   ├── page.tsx           # ホームページ
-│   │   └── globals.css        # グローバルスタイル
-│   └── lib/
-│       ├── prisma.ts          # Prismaクライアント
-│       └── gemini.ts          # Gemini API統合
+│   │   │       ├── dashboard/   # 統合ダッシュボード
+│   │   │       └── approvals/   # 承認待ち一覧
+│   │   └── api/
+│   │       └── ocr/         # OCR API
+│   ├── components/
+│   │   ├── layout/          # Header, Sidebar
+│   │   ├── ui/              # shadcn/ui コンポーネント
+│   │   └── accounting/      # 会計関連コンポーネント
+│   ├── contexts/            # React Context
+│   ├── utils/               # ユーティリティ関数
+│   └── lib/                 # Prisma, Gemini クライアント
 ├── package.json
-├── tsconfig.json
 ├── tailwind.config.ts
 └── next.config.js
 ```
 
-## カラーシステム
+---
 
-機能セクションごとに以下のテーマカラーを適用：
+## アクセス可能なURL
 
-- **Dashboard (マイページ/全体俯瞰):** #E66A84 (Pink)
-- **Accounting (入出金・帳簿):** #A3BC68 (Green)
-- **Collection (集金管理):** #D99529 (Orange)
-- **Members (部員・保護者):** #9D8CC3 (Purple)
-- **Settings (設定・マスター):** #77B8DA (Blue)
-- **Alert (監査警告):** #EF4444 (Red - 証憑不足や異常値用)
-
-## セットアップ
-
-1. 依存関係のインストール:
-```bash
-npm install
-```
-
-2. 環境変数の設定:
-`.env` ファイルを作成し、`.env.example` を参考に設定してください。
-
-3. データベースのセットアップ:
-```bash
-npm run db:generate
-npm run db:push
-# または
-npm run db:migrate
-```
-
-4. 開発サーバーの起動:
-```bash
-npm run dev
-```
-
-デフォルトでは `http://localhost:3000` で起動します。ポートが異なる場合は、ターミナルに表示されるURLを確認してください。
-
-## アクセス可能なURL一覧
-
-開発サーバー起動後、以下のURLにアクセスできます：
-
-- **ホーム**: http://localhost:3000/ （ダッシュボードへリダイレクト）
-- **マイページ**: http://localhost:3000/dashboard
-- **入出金登録**: http://localhost:3000/accounting/register
-- **集金・帳簿**: http://localhost:3000/accounting/ledger
-- **集金管理**: http://localhost:3000/collection
-- **部員管理**: http://localhost:3000/members
-- **設定**: http://localhost:3000/settings
-- **操作ガイド**: http://localhost:3000/guide
-
-詳細は `ROUTES.md` を参照してください。
+| 画面 | URL |
+|------|-----|
+| ホーム | http://localhost:3000/ |
+| マイページ | http://localhost:3000/dashboard |
+| 入出金登録 | http://localhost:3000/accounting/register/new |
+| 登録履歴 | http://localhost:3000/accounting/register/history |
+| 現金預金出納帳 | http://localhost:3000/accounting/ledger/cash-bank |
+| 科目別台帳 | http://localhost:3000/accounting/ledger/subject |
+| 年間収支集計表 | http://localhost:3000/accounting/summary/annual |
+| 月次収支集計表 | http://localhost:3000/accounting/summary/monthly |
+| 集金管理 | http://localhost:3000/collection |
+| 部員管理 | http://localhost:3000/members |
+| 設定 | http://localhost:3000/settings |
+| 操作ガイド | http://localhost:3000/guide |
 
 ルート一覧を確認するには：
 ```bash
 npm run routes
 ```
 
-## 主要機能
+---
 
-### 1. AI OCR入力
-レシート画像をGemini 1.5 Flashで解析し、日付・金額・科目を自動入力
+## NPM スクリプト
 
-### 2. リスクベース監査アラート
-- 証憑（画像）がない支出取引は、帳簿上で行全体を赤く(#EF4444)表示
-- 二重登録、高額支出(5万円超)、残高不整合を自動検知
+| コマンド | 説明 |
+|----------|------|
+| `npm run dev` | 開発サーバー起動 |
+| `npm run build` | プロダクションビルド |
+| `npm run start` | プロダクションサーバー起動 |
+| `npm run lint` | ESLint 実行 |
+| `npm run db:generate` | Prisma クライアント生成 |
+| `npm run db:push` | スキーマをDBに反映 |
+| `npm run db:migrate` | マイグレーション実行 |
+| `npm run routes` | ルート一覧表示 |
 
-### 3. 繰延・精算システム
-年度末に「繰延(DEFERRED)」とした未払・未収金を、次年度に「プラスの値」を入力するだけで消し込む逆仕訳ロジック
+---
 
-### 4. 多段階承認フロー (for School)
-クラブ申請 -> 顧問(一次承認) -> 大学(最終決裁) のステータス遷移
+## ドキュメント
 
-## データベース設計
+| ドキュメント | 内容 |
+|-------------|------|
+| **[docs/spec.md](./docs/spec.md)** | 開発マスターガイド（詳細仕様書） |
+| **[docs/kansa.md](./docs/kansa.md)** | 監査レポート |
+| **[prisma/schema.prisma](./prisma/schema.prisma)** | データベース設計 |
 
-詳細は `prisma/schema.prisma` を参照してください。
+> **開発時は必ず [docs/spec.md](./docs/spec.md) を参照してください。**  
+> カラーシステム、UI配置ルール、禁止事項などの詳細が記載されています。
 
-主要なモデル:
-- **Organization:** クラブ/大学組織
-- **User:** ユーザー（ロール管理）
-- **FiscalYear:** 会計年度
-- **Transaction:** 取引（仕訳）
-- **AccountTitle:** 勘定科目
-- **Member:** 部員
-- **CollectionItem:** 集金項目
-- **Approval:** 承認フロー
+---
+
+## 主要機能（概要）
+
+| 機能 | 説明 |
+|------|------|
+| **AI OCR入力** | レシート画像をGemini 1.5 Flashで解析し自動入力 |
+| **リスクベース監査アラート** | 証憑不足・二重登録・残高不整合を自動検知 |
+| **繰延・精算システム** | 「プラス入力」で完結する次年度繰越処理 |
+| **多段階承認フロー** | クラブ→顧問→大学の承認ステータス遷移（for School版） |
+
+> 詳細は [docs/spec.md](./docs/spec.md) を参照
+
+---
+
+## データベース設計（概要）
+
+| モデル | 説明 |
+|--------|------|
+| Organization | クラブ/大学組織 |
+| User | ユーザー（ロール管理） |
+| FiscalYear | 会計年度 |
+| Category | カテゴリー（部門） |
+| AccountTitle | 勘定科目 |
+| Transaction | 取引（仕訳） |
+| Member | 部員 |
+| CollectionItem | 集金項目 |
+| Approval | 承認フロー |
+| Alert | 異常検知アラート |
+
+> 詳細は [prisma/schema.prisma](./prisma/schema.prisma) を参照
+
+---
+
+## ライセンス
+
+Private - All rights reserved

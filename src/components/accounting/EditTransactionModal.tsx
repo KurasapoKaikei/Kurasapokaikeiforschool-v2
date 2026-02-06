@@ -257,14 +257,13 @@ export function EditTransactionModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#374151] mb-1.5">金額</label>
+              <label className="block text-sm font-medium text-[#374151] mb-1.5">金額（円）</label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2">¥</span>
                 <input
                   type="number"
                   value={formData.amount}
                   onChange={(e) => setFormData((prev) => ({ ...prev, amount: e.target.value }))}
-                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#68A384]"
+                  className="w-full pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#68A384] text-right"
                   min="1"
                   step="1"
                   required

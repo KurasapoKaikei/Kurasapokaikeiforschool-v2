@@ -364,16 +364,15 @@ export default function AccountTitlesPage() {
             {/* 4. 期首残高 */}
             <div>
               <label htmlFor="balance" className="block text-sm font-medium text-[#374151] mb-1.5">
-                期首残高
+                期首残高（円）
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#374151]">¥</span>
                 <input
                   type="number"
                   id="balance"
                   value={newAccountTitle.balance}
                   onChange={(e) => setNewAccountTitle({ ...newAccountTitle, balance: e.target.value })}
-                  className="w-full pl-8 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent tabular-nums"
+                  className="w-full pl-3 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent tabular-nums text-right"
                   placeholder="0"
                   step="1"
                 />
