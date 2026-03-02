@@ -58,7 +58,12 @@ kurasaokaikei/
 │   │   │   │   ├── summary/     # 収支集計表
 │   │   │   │   └── report/      # 収支報告書
 │   │   │   ├── collection/  # 集金管理
+│   │   │   │   ├── history/         # 集金実績
+│   │   │   │   ├── schedule/        # 集金予定一覧
+│   │   │   │   └── settings/        # 集金設定
 │   │   │   ├── members/     # 部員管理
+│   │   │   │   ├── list/            # 部員一覧
+│   │   │   │   └── register/        # 部員登録
 │   │   │   ├── settings/    # 設定
 │   │   │   │   ├── club/            # クラブ設定
 │   │   │   │   ├── category/        # カテゴリー設定
@@ -97,8 +102,13 @@ kurasaokaikei/
 | 科目別台帳 | http://localhost:3000/accounting/ledger/subject |
 | 年間収支集計表 | http://localhost:3000/accounting/summary/annual |
 | 月次収支集計表 | http://localhost:3000/accounting/summary/monthly |
-| 集金管理 | http://localhost:3000/collection |
-| 部員管理 | http://localhost:3000/members |
+| 集金管理（トップ） | http://localhost:3000/collection |
+| 集金実績 | http://localhost:3000/collection/history |
+| 集金予定一覧 | http://localhost:3000/collection/schedule |
+| 集金設定 | http://localhost:3000/collection/settings |
+| 部員管理（トップ） | http://localhost:3000/members |
+| 部員一覧 | http://localhost:3000/members/list |
+| 部員登録 | http://localhost:3000/members/register |
 | 設定 | http://localhost:3000/settings |
 | 操作ガイド | http://localhost:3000/guide |
 
@@ -128,12 +138,13 @@ npm run routes
 
 | ドキュメント | 内容 |
 |-------------|------|
-| **[docs/spec.md](./docs/spec.md)** | 開発マスターガイド（詳細仕様書） |
+| **[docs/spec.md](./docs/spec.md)** | 開発マスターガイド（詳細仕様書 / v2.8・最終更新: 2026.2.6） |
 | **[docs/kansa.md](./docs/kansa.md)** | 監査レポート |
 | **[prisma/schema.prisma](./prisma/schema.prisma)** | データベース設計 |
 
 > **開発時は必ず [docs/spec.md](./docs/spec.md) を参照してください。**  
-> カラーシステム、UI配置ルール、禁止事項などの詳細が記載されています。
+> 特に最新のセクション `10`（localStorage連動）、`16`（Dashboard 3カラム）、
+> `17`（入出金登録の動的UI）、`18`（金額表示と画面間連携）を実装基準としてください。
 
 ---
 

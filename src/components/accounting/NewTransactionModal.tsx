@@ -242,22 +242,19 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
             {/* 金額 */}
             <div>
               <label htmlFor="modal-amount" className="block text-sm font-medium text-[#374151] mb-2">
-                金額 <span className="text-[#EF4444]">*</span>
+                金額（円） <span className="text-[#EF4444]">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#374151]">¥</span>
-                <input
-                  type="number"
-                  id="modal-amount"
-                  value={formData.amount}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, amount: e.target.value }))}
-                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#A3BC68] focus:border-transparent"
-                  placeholder="0"
-                  min="1"
-                  step="1"
-                  required
-                />
-              </div>
+              <input
+                type="number"
+                id="modal-amount"
+                value={formData.amount}
+                onChange={(e) => setFormData((prev) => ({ ...prev, amount: e.target.value }))}
+                className="w-full px-3 py-2 text-right tabular-nums border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#A3BC68] focus:border-transparent"
+                placeholder="0"
+                min="1"
+                step="1"
+                required
+              />
             </div>
 
             {/* 入金先 / 出金元（どこに/どこから） */}

@@ -52,10 +52,10 @@ export default function LedgerPage() {
                 <td className="px-4 py-3 text-sm">{transaction.description}</td>
                 <td className="px-4 py-3 text-sm">{transaction.accountTitle}</td>
                 <td className="px-4 py-3 text-sm text-right">
-                  {transaction.type === "INCOME" ? `¥${transaction.amount.toLocaleString()}` : "-"}
+                  {transaction.type === "INCOME" ? transaction.amount.toLocaleString() : "-"}
                 </td>
                 <td className="px-4 py-3 text-sm text-right">
-                  {transaction.type === "EXPENSE" ? `¥${transaction.amount.toLocaleString()}` : "-"}
+                  {transaction.type === "EXPENSE" ? transaction.amount.toLocaleString() : "-"}
                 </td>
                 <td className="px-4 py-3 text-sm text-center">
                   {transaction.receiptUrl ? (

@@ -57,7 +57,7 @@ export default function CollectionPage() {
               <tr key={item.id} className="border-t border-gray-200">
                 <td className="px-4 py-3 text-sm text-[#374151]">{item.memberName}</td>
                 <td className="px-4 py-3 text-sm text-right text-[#374151]">
-                  ¥{item.amount.toLocaleString()}
+                  {item.amount.toLocaleString()}
                 </td>
                 <td className="px-4 py-3 text-sm text-[#374151]">{formatDate(item.dueDate)}</td>
                 <td className={`px-4 py-3 text-sm text-center ${getStatusColor(item.status)}`}>

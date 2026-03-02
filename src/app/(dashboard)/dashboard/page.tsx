@@ -3,30 +3,29 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle } from "lucide-react"
-import { mockMemberCounts, mockMemberLastUpdated, mockMessages } from "@/constants/mockData"
-import { getTransactions, getAccountTitles, type Transaction, type AccountTitle } from "@/utils/localStorage"
+import { mockMessages } from "@/constants/mockData"
+import { getTransactions, getAccountTitles, getMembers, type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
 
 export default function DashboardPage() {
   const router = useRouter()
   const [selectedYear, setSelectedYear] = useState("2025年度")
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
+  const [members, setMembers] = useState<Member[]>([])
 
-  // LocalStorageから取引データと科目データを読み込み
+  // LocalStorageから取引・科目・部員データを読み込み
   useEffect(() => {
-    const loadedTransactions = getTransactions()
-    const loadedAccountTitles = getAccountTitles()
-    setTransactions(loadedTransactions)
-    setAccountTitles(loadedAccountTitles)
+    setTransactions(getTransactions())
+    setAccountTitles(getAccountTitles())
+    setMembers(getMembers())
   }, [])
 
-  // 取引データの変更を監視（リアルタイム更新）
+  // データの変更を監視（リアルタイム更新）
   useEffect(() => {
     const interval = setInterval(() => {
-      const loadedTransactions = getTransactions()
-      const loadedAccountTitles = getAccountTitles()
-      setTransactions(loadedTransactions)
-      setAccountTitles(loadedAccountTitles)
+      setTransactions(getTransactions())
+      setAccountTitles(getAccountTitles())
+      setMembers(getMembers())
     }, 500)
 
     return () => clearInterval(interval)
@@ -127,8 +126,31 @@ export default function DashboardPage() {
     (t) => t.type === "expense" && !t.receiptUrl
   ).length
 
-  // 部員数の合計
-  const totalMembers = mockMemberCounts.reduce((sum, item) => sum + item.count, 0)
+  // 部員統計（在籍中のみ）
+  const activeMembers = useMemo(() => members.filter((m) => m.status === "active"), [members])
+  const memberCountsByGrade = useMemo(() => {
+    const counts: { grade: number; count: number }[] = [
+      { grade: 4, count: 0 },
+      { grade: 3, count: 0 },
+      { grade: 2, count: 0 },
+      { grade: 1, count: 0 },
+    ]
+    activeMembers.forEach((m) => {
+      const entry = counts.find((c) => c.grade === m.grade)
+      if (entry) entry.count++
+    })
+    return counts
+  }, [activeMembers])
+  const totalMembers = activeMembers.length
+
+  // 部員の最終更新日
+  const memberLastUpdated = useMemo(() => {
+    if (members.length === 0) return null
+    return members.reduce((latest, m) => {
+      const d = new Date(m.createdAt).getTime()
+      return d > latest ? d : latest
+    }, 0)
+  }, [members])
 
   // 日付フォーマット
   const formatDate = (dateString: string) => {
@@ -343,25 +365,27 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 2025年度の部員数（下段、50%） */}
+            {/* 部員数（下段、50%） */}
             <div className="rounded-lg border-l-[5px] border-l-[#9D8CC3] border border-gray-200 bg-white p-4 shadow-sm flex flex-col flex-1 min-h-0">
               <div className="mb-2 flex-shrink-0">
                 <div className="flex items-center justify-between mb-1">
                   <h2 className="text-lg font-semibold text-[#9D8CC3] border-b-2 border-[#9D8CC3] pb-1">
-                    2025年度の部員数
+                    現在の部員数
                   </h2>
-                  <span className="text-xs text-[#6B7280]">
-                    最終更新: {formatDate(mockMemberLastUpdated)}
-                  </span>
+                  {memberLastUpdated && (
+                    <span className="text-xs text-[#6B7280]">
+                      最終更新: {formatDate(new Date(memberLastUpdated).toISOString())}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="space-y-1 flex-1 flex flex-col justify-between">
                 <div>
-                  {mockMemberCounts.map((member) => (
-                    <div key={member.grade} className="flex items-center justify-between px-2">
-                      <span className="text-sm text-[#374151]">{member.grade}年生</span>
-                      <span className="text-sm font-semibold text-[#374151] text-right min-w-[60px]">
-                        {member.count}名
+                  {memberCountsByGrade.map((item) => (
+                    <div key={item.grade} className="flex items-center justify-between px-2">
+                      <span className="text-sm text-[#374151]">{item.grade}年生</span>
+                      <span className="text-sm font-semibold text-[#374151] text-right min-w-[60px] tabular-nums">
+                        {item.count}名
                       </span>
                     </div>
                   ))}
@@ -369,11 +393,16 @@ export default function DashboardPage() {
                 <div className="border-t border-gray-200 pt-1 mt-1 px-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-[#374151]">合計</span>
-                    <span className="text-base font-bold text-[#374151] text-right min-w-[60px]">
+                    <span className="text-base font-bold text-[#374151] text-right min-w-[60px] tabular-nums">
                       {totalMembers}名
                     </span>
                   </div>
                 </div>
+                {totalMembers === 0 && (
+                  <p className="text-xs text-[#9CA3AF] px-2 mt-1">
+                    部員管理 → 部員登録から登録してください
+                  </p>
+                )}
               </div>
             </div>
           </div>

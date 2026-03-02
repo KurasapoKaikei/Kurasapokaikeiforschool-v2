@@ -20,7 +20,12 @@ const pageTitleMap: Record<string, string> = {
   "/accounting/ledger/subject": "集計・帳簿",
   "/accounting/report": "集計・帳簿",
   "/collection": "集金管理",
-  "/members": "部員・保護者管理",
+  "/collection/history": "集金管理",
+  "/collection/schedule": "集金管理",
+  "/collection/settings": "集金管理",
+  "/members": "部員管理",
+  "/members/list": "部員管理",
+  "/members/register": "部員管理",
   "/settings": "設定・マスター管理",
   "/settings/club": "設定・マスター管理",
   "/settings/category": "設定・マスター管理",
@@ -42,7 +47,12 @@ const pageColorMap: Record<string, string> = {
   "/accounting/ledger/subject": "#68A384", // 集計・帳簿（青緑）
   "/accounting/report": "#68A384", // 集計・帳簿（青緑）
   "/collection": "#D99529", // 集金管理（オレンジ）
+  "/collection/history": "#D99529", // 集金管理（オレンジ）
+  "/collection/schedule": "#D99529", // 集金管理（オレンジ）
+  "/collection/settings": "#D99529", // 集金管理（オレンジ）
   "/members": "#9D8CC3", // 部員管理（パープル）
+  "/members/list": "#9D8CC3", // 部員管理（パープル）
+  "/members/register": "#9D8CC3", // 部員管理（パープル）
   "/settings": "#77B8DA", // 設定（ブルー）
   "/settings/club": "#77B8DA", // 設定（ブルー）
   "/settings/category": "#77B8DA", // 設定（ブルー）

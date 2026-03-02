@@ -69,6 +69,11 @@ const menuItems: MenuItem[] = [
     icon: Wallet,
     color: "collection",
     colorHex: "#D99529", // オレンジ
+    subItems: [
+      { title: "集金実績", href: "/collection/history" },
+      { title: "集金予定一覧", href: "/collection/schedule" },
+      { title: "集金設定", href: "/collection/settings" },
+    ],
   },
   {
     title: "部員管理",
@@ -76,6 +81,10 @@ const menuItems: MenuItem[] = [
     icon: Users,
     color: "members",
     colorHex: "#9D8CC3", // パープル
+    subItems: [
+      { title: "部員一覧", href: "/members/list" },
+      { title: "部員登録", href: "/members/register" },
+    ],
   },
   {
     title: "設定",

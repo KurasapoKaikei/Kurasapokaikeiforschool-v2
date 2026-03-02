@@ -1,21 +1,49 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { DatePickerField } from "@/components/ui/date-picker-field"
-import { Loader2, Camera } from "lucide-react"
+import { Loader2, Camera, CheckCircle2, Search } from "lucide-react"
 import {
   getCategories,
   getAccountTitles,
   getTransactions,
   addTransaction,
+  getMembers,
+  getCollectionSchedules,
+  getCollectionRecords,
+  syncAllCollectionRecords,
+  updateCollectionRecord,
   type Category,
   type AccountTitle,
   type Transaction,
+  type Member,
+  type CollectionSchedule,
+  type CollectionRecord,
+  type CollectionPaymentStatus,
 } from "@/utils/localStorage"
-import { mockMembers } from "@/constants/mockData"
+import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 
 const THEME_COLOR = "#A3BC68"
+const FISCAL_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
+const GRADE_LABELS: Record<number, string> = { 1: "1年生", 2: "2年生", 3: "3年生", 4: "4年生" }
+
+function getCurrentFiscalMonth(): number {
+  return new Date().getMonth() + 1
+}
+
+function getFiscalStartYear(): number {
+  const now = new Date()
+  return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1
+}
+
+function monthToYYYYMM(fiscalStartYear: number, month: number): string {
+  const y = month >= 4 ? fiscalStartYear : fiscalStartYear + 1
+  return `${y}-${String(month).padStart(2, "0")}`
+}
+
+const fmtNum = (n: number): string => n.toLocaleString()
 
 type TabType = "income" | "expense" | "transfer" | "collection" | "deferred"
 
@@ -39,6 +67,7 @@ function getTodayString(): string {
 }
 
 export default function NewRegisterPage() {
+  const searchParams = useSearchParams()
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -109,7 +138,385 @@ export default function NewRegisterPage() {
     return []
   }, [accountTitles, activeTab, formData.category, categories])
 
-  const activeMembers = useMemo(() => mockMembers.filter((m) => m.isActive), [])
+  // ===== 集金タブ用 state =====
+  const [colMembers, setColMembers] = useState<Member[]>([])
+  const [colSchedules, setColSchedules] = useState<CollectionSchedule[]>([])
+  const [colRecords, setColRecords] = useState<CollectionRecord[]>([])
+  const [colMonth, setColMonth] = useState<number>(getCurrentFiscalMonth())
+  const [colGrade, setColGrade] = useState<number | "all">("all")
+  const [colSearch, setColSearch] = useState("")
+  const [colBulkDate, setColBulkDate] = useState(getTodayString())
+  const [colPayments, setColPayments] = useState<Record<string, { amount: string; date: string; memo: string }>>({})
+  const [colHistoryEditing, setColHistoryEditing] = useState<Record<string, { amount: string; date: string; memo: string }>>({})
+  const [colSuccess, setColSuccess] = useState<string | null>(null)
+  const [colHistoryMap, setColHistoryMap] = useState<Record<string, { id: string; amount: number; date: string; memo: string }[]>>({})
+  const [colFocusedMemberId, setColFocusedMemberId] = useState<string | null>(null)
+  const memberRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
+  const deepLinkInitDoneRef = useRef(false)
+  const deepLinkScrollDoneRef = useRef(false)
+
+  const reloadCollectionData = useCallback(() => {
+    syncAllCollectionRecords()
+    setColMembers(getMembers())
+    setColSchedules(getCollectionSchedules())
+    setColRecords(getCollectionRecords())
+  }, [])
+
+  const setMemberRowRef = useCallback(
+    (memberId: string) => (el: HTMLTableRowElement | null) => {
+      memberRowRefs.current[memberId] = el
+    },
+    []
+  )
+
+  const deepLinkParams = useMemo(() => {
+    const tab = searchParams.get("tab")
+    const memberId = searchParams.get("memberId")
+    const monthRaw = searchParams.get("month")
+    const month = monthRaw ? Number(monthRaw) : NaN
+    const validMonth = Number.isFinite(month) && FISCAL_MONTHS.includes(month as (typeof FISCAL_MONTHS)[number])
+    return {
+      tab,
+      memberId: memberId ?? "",
+      month: validMonth ? month : null,
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (activeTab === "collection") reloadCollectionData()
+  }, [activeTab, reloadCollectionData])
+
+  useEffect(() => {
+    if (deepLinkInitDoneRef.current) return
+    if (deepLinkParams.tab !== "collection") return
+    setActiveTab("collection")
+    if (deepLinkParams.month !== null) setColMonth(deepLinkParams.month)
+    deepLinkInitDoneRef.current = true
+  }, [deepLinkParams])
+
+  useEffect(() => {
+    if (activeTab !== "collection") return
+    const interval = setInterval(reloadCollectionData, 500)
+    return () => clearInterval(interval)
+  }, [activeTab, reloadCollectionData])
+
+  useEffect(() => {
+    if (activeTab !== "collection") return
+    if (deepLinkScrollDoneRef.current) return
+    if (!deepLinkParams.memberId) return
+    const target = memberRowRefs.current[deepLinkParams.memberId]
+    if (!target) return
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" })
+    setColFocusedMemberId(deepLinkParams.memberId)
+    window.setTimeout(() => {
+      setColFocusedMemberId((prev) => (prev === deepLinkParams.memberId ? null : prev))
+    }, 2400)
+    deepLinkScrollDoneRef.current = true
+  }, [activeTab, deepLinkParams.memberId, colMonth, colMembers, colSchedules, colRecords, colHistoryMap, colGrade, colSearch])
+
+  useEffect(() => {
+    setColPayments({})
+    setColHistoryEditing({})
+  }, [colMonth])
+
+  const fiscalStartYear = getFiscalStartYear()
+
+  const colTargetYYYYMM = useMemo(() => monthToYYYYMM(fiscalStartYear, colMonth), [fiscalStartYear, colMonth])
+
+  const colMonthSchedules = useMemo(() => {
+    return colSchedules.filter((s) => s.targetMonth === colTargetYYYYMM)
+  }, [colSchedules, colTargetYYYYMM])
+
+  const colActiveMembers = useMemo(() => {
+    return colMembers.filter((m) => m.status === "active")
+  }, [colMembers])
+
+  const colFilteredMembers = useMemo(() => {
+    let list = colActiveMembers
+    if (colGrade !== "all") list = list.filter((m) => m.grade === colGrade)
+    if (colSearch.trim()) {
+      const q = colSearch.trim().toLowerCase()
+      list = list.filter((m) => m.name.toLowerCase().includes(q))
+    }
+    return list.sort((a, b) => {
+      if (a.grade !== b.grade) return b.grade - a.grade
+      return a.name.localeCompare(b.name, "ja")
+    })
+  }, [colActiveMembers, colGrade, colSearch])
+
+  const getPaymentRow = (memberId: string) => {
+    return colPayments[memberId] ?? { amount: "", date: colBulkDate, memo: "" }
+  }
+
+  const setPaymentRow = (memberId: string, updates: Partial<{ amount: string; date: string; memo: string }>) => {
+    setColPayments((prev) => ({
+      ...prev,
+      [memberId]: { ...getPaymentRow(memberId), ...updates },
+    }))
+  }
+
+  const getExpectedAmount = useCallback((memberId: string) => {
+    return colMonthSchedules
+      .filter((s) => (s.memberIds && s.memberIds.length > 0 ? s.memberIds.includes(memberId) : true))
+      .reduce((sum, s) => sum + s.amount, 0)
+  }, [colMonthSchedules])
+
+  const getHistoryKey = useCallback((memberId: string) => `${colTargetYYYYMM}_${memberId}`, [colTargetYYYYMM])
+
+  const getMemberHistory = useCallback((memberId: string) => {
+    return colHistoryMap[getHistoryKey(memberId)] ?? []
+  }, [colHistoryMap, getHistoryKey])
+
+  const getTotalPaid = useCallback((memberId: string) => {
+    return getMemberHistory(memberId).reduce((sum, h) => sum + h.amount, 0)
+  }, [getMemberHistory])
+
+  const getStatus = useCallback((memberId: string) => {
+    const expected = getExpectedAmount(memberId)
+    const paid = getTotalPaid(memberId)
+    return getCollectionPaymentStatus(paid, expected)
+  }, [getExpectedAmount, getTotalPaid])
+
+  const toCollectionStatus = useCallback(
+    (paid: number, expected: number): CollectionPaymentStatus => {
+      if (expected <= 0) return paid > 0 ? "OVERPAID" : "UNPAID"
+      if (paid <= 0) return "UNPAID"
+      if (paid < expected) return "PARTIALLY_PAID"
+      if (paid > expected) return "OVERPAID"
+      return "COMPLETED"
+    },
+    []
+  )
+
+  const persistMemberCollectionState = useCallback(
+    (memberId: string, history: { id: string; amount: number; date: string; memo: string }[]) => {
+      const schedules = colMonthSchedules
+        .filter((s) => (s.memberIds && s.memberIds.length > 0 ? s.memberIds.includes(memberId) : true))
+        .sort((a, b) => a.id.localeCompare(b.id))
+      if (schedules.length === 0) return
+
+      const records = getCollectionRecords()
+      const recordBySchedule = new Map<string, CollectionRecord>()
+      records.forEach((r) => {
+        if (r.memberId === memberId) recordBySchedule.set(r.scheduleId, r)
+      })
+
+      const paidByIndex = schedules.map(() => 0)
+      const historyByIndex: Array<{ amount: number; date: string; memo: string; transactionId: string }[]> = schedules.map(() => [])
+
+      for (const entry of history) {
+        if (entry.amount >= 0) {
+          let remain = entry.amount
+          for (let i = 0; i < schedules.length; i++) {
+            if (remain <= 0) break
+            const cap = i === schedules.length - 1 ? Number.POSITIVE_INFINITY : Math.max(0, schedules[i].amount - paidByIndex[i])
+            const alloc = Math.min(remain, cap)
+            if (alloc <= 0) continue
+            paidByIndex[i] += alloc
+            historyByIndex[i].push({
+              amount: alloc,
+              date: entry.date,
+              memo: entry.memo,
+              transactionId: entry.id,
+            })
+            remain -= alloc
+          }
+        } else {
+          let refund = Math.abs(entry.amount)
+          for (let i = schedules.length - 1; i >= 0; i--) {
+            if (refund <= 0) break
+            const cap = i === schedules.length - 1 ? Number.POSITIVE_INFINITY : Math.max(0, paidByIndex[i])
+            const deduct = Math.min(refund, cap)
+            if (deduct <= 0) continue
+            paidByIndex[i] -= deduct
+            historyByIndex[i].push({
+              amount: -deduct,
+              date: entry.date,
+              memo: entry.memo,
+              transactionId: entry.id,
+            })
+            refund -= deduct
+          }
+          if (refund > 0 && schedules.length > 0) {
+            const last = schedules.length - 1
+            paidByIndex[last] -= refund
+            historyByIndex[last].push({
+              amount: -refund,
+              date: entry.date,
+              memo: entry.memo,
+              transactionId: entry.id,
+            })
+          }
+        }
+      }
+
+      schedules.forEach((s, i) => {
+        const rec = recordBySchedule.get(s.id)
+        if (!rec) return
+        const paid = paidByIndex[i]
+        updateCollectionRecord(rec.id, {
+          paidAmount: paid,
+          paidAt: historyByIndex[i].length > 0 ? historyByIndex[i][historyByIndex[i].length - 1].date : null,
+          linkedTransactionId: historyByIndex[i].length > 0 ? historyByIndex[i][historyByIndex[i].length - 1].transactionId : null,
+          paymentHistory: historyByIndex[i],
+          status: toCollectionStatus(paid, s.amount),
+        })
+      })
+    },
+    [colMonthSchedules, toCollectionStatus]
+  )
+
+  useEffect(() => {
+    const next: Record<string, { id: string; amount: number; date: string; memo: string }[]> = {}
+    const schedulesByMember = new Map<string, CollectionSchedule[]>()
+    for (const schedule of colMonthSchedules) {
+      if (schedule.memberIds && schedule.memberIds.length > 0) {
+        schedule.memberIds.forEach((memberId) => {
+          const list = schedulesByMember.get(memberId) ?? []
+          list.push(schedule)
+          schedulesByMember.set(memberId, list)
+        })
+      } else {
+        colActiveMembers.forEach((member) => {
+          const list = schedulesByMember.get(member.id) ?? []
+          list.push(schedule)
+          schedulesByMember.set(member.id, list)
+        })
+      }
+    }
+
+    for (const member of colActiveMembers) {
+      const targetSchedules = schedulesByMember.get(member.id) ?? []
+      const allEntries = targetSchedules.flatMap((s) => {
+        const rec = colRecords.find((r) => r.scheduleId === s.id && r.memberId === member.id)
+        if (!rec) return []
+        const history = rec.paymentHistory ?? []
+        if (history.length > 0) return history
+        const fallback = rec.paidAmount ?? 0
+        if (fallback === 0) return []
+        return [
+          {
+            amount: fallback,
+            date: rec.paidAt ?? getTodayString(),
+            memo: "",
+            transactionId: rec.linkedTransactionId ?? rec.id,
+          },
+        ]
+      })
+
+      const mergedByTx = new Map<string, { id: string; amount: number; date: string; memo: string }>()
+      for (const h of allEntries) {
+        const key = h.transactionId || `${h.date}_${h.amount}`
+        const prev = mergedByTx.get(key)
+        if (prev) {
+          mergedByTx.set(key, {
+            ...prev,
+            amount: prev.amount + h.amount,
+          })
+        } else {
+          mergedByTx.set(key, {
+            id: key,
+            amount: h.amount,
+            date: h.date,
+            memo: h.memo,
+          })
+        }
+      }
+      next[getHistoryKey(member.id)] = [...mergedByTx.values()].sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date)
+        return a.id.localeCompare(b.id)
+      })
+    }
+    setColHistoryMap(next)
+  }, [colActiveMembers, colMonthSchedules, colRecords, getHistoryKey])
+
+  const handleColRegister = (member: Member) => {
+    const row = getPaymentRow(member.id)
+    const amount = Number((row.amount || "").replace(/,/g, ""))
+    if (Number.isNaN(amount)) {
+      alert("金額を入力してください")
+      return
+    }
+    const date = row.date || colBulkDate || getTodayString()
+    const expected = getExpectedAmount(member.id)
+    const currentPaid = getTotalPaid(member.id)
+    const nextPaid = currentPaid + amount
+    const diff = expected - nextPaid
+    const suffix =
+      expected > 0 && diff > 0
+        ? `（${fmtNum(diff)}円未入金）`
+        : expected > 0 && diff < 0
+        ? `（${fmtNum(Math.abs(diff))}円過入金）`
+        : ""
+    const memoBase = row.memo?.trim() ?? ""
+    const memo = suffix ? (memoBase ? `${memoBase} ${suffix}` : suffix) : memoBase
+
+    const tx = addTransaction({
+      date,
+      type: "collection",
+      amount,
+      counterparty: "現金",
+      category: "集金",
+      accountTitle: "会費収入",
+      memo: memo ? `${member.name} / ${memo}` : `${member.name} の集金`,
+      receiptUrl: null,
+    })
+
+    const key = getHistoryKey(member.id)
+    const entry = { id: tx.id, amount, date, memo }
+    const nextHistory = [...(colHistoryMap[key] ?? []), entry]
+    setColHistoryMap((prev) => ({ ...prev, [key]: nextHistory }))
+    persistMemberCollectionState(member.id, nextHistory)
+    reloadCollectionData()
+    setColPayments((prev) => {
+      const next = { ...prev }
+      delete next[member.id]
+      return next
+    })
+    setColSuccess(`${member.name} の入力を保存しました`)
+    setTimeout(() => setColSuccess(null), 3000)
+  }
+
+  const getHistoryEditKey = (memberId: string, entryId: string) => `${memberId}_${entryId}`
+
+  const handleStartHistoryEdit = (memberId: string, entry: { id: string; amount: number; date: string; memo: string }) => {
+    const key = getHistoryEditKey(memberId, entry.id)
+    setColHistoryEditing((prev) => ({
+      ...prev,
+      [key]: { amount: String(entry.amount), date: entry.date || colBulkDate, memo: entry.memo || "" },
+    }))
+  }
+
+  const handleCancelHistoryEdit = (memberId: string, entryId: string) => {
+    const key = getHistoryEditKey(memberId, entryId)
+    setColHistoryEditing((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const handleSaveHistoryEdit = (memberId: string, entryId: string) => {
+    const editKey = getHistoryEditKey(memberId, entryId)
+    const edit = colHistoryEditing[editKey]
+    if (!edit) return
+    const amount = Number(edit.amount.replace(/,/g, ""))
+    if (Number.isNaN(amount)) {
+      alert("金額を入力してください")
+      return
+    }
+    const date = edit.date || colBulkDate || getTodayString()
+    const key = getHistoryKey(memberId)
+    const list = colHistoryMap[key] ?? []
+    const updated = list.map((h) => (h.id === entryId ? { ...h, amount, date, memo: edit.memo } : h))
+    setColHistoryMap((prev) => ({ ...prev, [key]: updated }))
+    persistMemberCollectionState(memberId, updated)
+    reloadCollectionData()
+    handleCancelHistoryEdit(memberId, entryId)
+    setColSuccess("履歴を更新しました")
+    setTimeout(() => setColSuccess(null), 2000)
+  }
 
   const deferredSettlementList = useMemo(
     () =>
@@ -228,30 +635,6 @@ export default function NewRegisterPage() {
     }
 
     if (activeTab === "collection") {
-      if (!formData.date || !formData.memberId || !formData.counterpartyAccountTitle) {
-        alert("日付・誰から・入金先を入力してください")
-        return
-      }
-      const amount = parseFloat(formData.amount)
-      if (Number.isNaN(amount) || amount <= 0) {
-        alert("金額を0より大きい数値で入力してください")
-        return
-      }
-      const member = activeMembers.find((m) => m.id === formData.memberId)
-      const accountTitle =
-        accountTitles.find((t) => t.group === "income")?.name ?? "集金収入"
-      addTransaction({
-        date: formData.date,
-        type: "collection",
-        amount,
-        counterparty: formData.counterpartyAccountTitle,
-        category: "共通",
-        accountTitle,
-        memo: member ? `集金: ${member.name}` : formData.memo,
-        receiptUrl: receiptPreview,
-      })
-      alert("集金を登録しました")
-      resetForm()
       return
     }
 
@@ -408,13 +791,426 @@ export default function NewRegisterPage() {
         </div>
       </div>
 
-      {/* タブに応じたレイアウト: 収入/支出=2カラム、それ以外=1カラム（レシートなし） */}
+      {/* ===== 集金タブ: 実績入力一覧 ===== */}
+      {showCollectionFields ? (
+        <div className="flex-1 bg-white overflow-y-auto">
+          <div className="px-6 py-5">
+            {/* 成功メッセージ */}
+            {colSuccess && (
+              <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                <p className="text-sm text-green-800">{colSuccess}</p>
+              </div>
+            )}
+
+            {/* 集金月ボタン */}
+            <div className="mb-5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-[#374151] whitespace-nowrap">集金月選択:</span>
+                <div className="flex gap-1 flex-wrap">
+                  {FISCAL_MONTHS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setColMonth(m)}
+                      className={`min-w-[36px] px-2.5 py-2 rounded-md text-sm font-semibold transition-all ${
+                        colMonth === m
+                          ? "text-white shadow-sm"
+                          : "bg-white text-[#374151] border border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+                      }`}
+                      style={colMonth === m ? { backgroundColor: "#67a384" } : {}}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-[#9CA3AF] ml-1">月</span>
+              </div>
+            </div>
+
+            {/* フィルタ行 */}
+            <div className="flex flex-wrap items-end gap-4 mb-5 pb-4 border-b border-gray-100">
+              <div>
+                <label className={labelClass}>入金日（一括）</label>
+                <div className="w-44">
+                  <DatePickerField
+                    value={colBulkDate}
+                    onChange={(v) => setColBulkDate(v)}
+                    themeColor={THEME_COLOR}
+                    className={inputClass}
+                    aria-label="入金日"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>学年</label>
+                <div className="flex gap-1">
+                  {(["all", 4, 3, 2, 1] as const).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setColGrade(g)}
+                      className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                        colGrade === g ? "text-white" : "bg-gray-100 text-[#374151] hover:bg-gray-200"
+                      }`}
+                      style={colGrade === g ? { backgroundColor: THEME_COLOR } : {}}
+                    >
+                      {g === "all" ? "全員" : GRADE_LABELS[g]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>名前検索</label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={colSearch}
+                    onChange={(e) => setColSearch(e.target.value)}
+                    className={`${inputClass} pl-8 w-44`}
+                    placeholder="氏名で検索"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* テーブル */}
+            <div className="border border-gray-300 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse table-fixed text-sm">
+                  <colgroup>
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "5%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col />
+                    <col style={{ width: "7.5%" }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="bg-[#67a384]/10">
+                      <th className="px-3 py-3 text-left font-semibold text-[#374151] border-b border-r border-gray-300">氏名</th>
+                      <th className="px-2 py-3 text-left font-semibold text-[#374151] border-b border-r border-gray-300">学年</th>
+                      <th className="px-2 py-3 text-left font-semibold text-[#374151] border-b border-r border-gray-300">カテゴリー</th>
+                      <th className="px-2 py-3 text-left font-semibold text-[#374151] border-b border-r border-gray-300">科目</th>
+                      <th className="px-2 py-3 text-right font-semibold text-[#374151] border-b border-r border-gray-300 whitespace-nowrap">集金予定額</th>
+                      <th className="px-2 py-3 text-right font-semibold text-[#374151] border-b border-r border-gray-300 whitespace-nowrap">当月集金予定総額</th>
+                      <th className="px-2 py-3 text-right font-semibold text-[#374151] border-b border-r border-gray-300">入金実績</th>
+                      <th className="px-2 py-3 text-left font-semibold text-[#374151] border-b border-r border-gray-300">入金日</th>
+                      <th className="px-2 py-3 text-left font-semibold text-[#374151] border-b border-r border-gray-300">メモ</th>
+                      <th className="px-2 py-3 text-left font-semibold text-[#374151] border-b border-gray-300">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {colFilteredMembers.length === 0 ? (
+                      <tr className="border-b border-gray-300">
+                        <td colSpan={10} className="px-4 py-12 text-center text-[#9CA3AF]">
+                          {colActiveMembers.length === 0
+                            ? "部員を登録してください"
+                            : "該当する部員がいません"}
+                        </td>
+                      </tr>
+                    ) : (
+                      colFilteredMembers.flatMap((member, idx) => {
+                        const row = getPaymentRow(member.id)
+                        const memberSchedules = colMonthSchedules
+                          .filter((s) => (s.memberIds && s.memberIds.length > 0 ? s.memberIds.includes(member.id) : true))
+                          .sort((a, b) => {
+                            const ca = a.categoryName ?? ""
+                            const cb = b.categoryName ?? ""
+                            if (ca !== cb) return ca.localeCompare(cb, "ja")
+                            const sa = a.accountTitleName ?? a.name
+                            const sb = b.accountTitleName ?? b.name
+                            return sa.localeCompare(sb, "ja")
+                          })
+                        const history = getMemberHistory(member.id)
+                        const expected = getExpectedAmount(member.id)
+                        const paid = getTotalPaid(member.id)
+                        const status = getStatus(member.id)
+                        const guideDiff = expected - paid
+                        const amountPlaceholder = expected > 0 ? fmtNum(guideDiff) : "0"
+                        const memoGuide =
+                          status === "PARTIALLY_PAID" && guideDiff > 0
+                            ? `（${fmtNum(guideDiff)}円未入金）`
+                            : status === "OVERPAID" && guideDiff < 0
+                            ? `（${fmtNum(Math.abs(guideDiff))}円過入金）`
+                            : ""
+                        const isCompleted = status === "COMPLETED"
+                        const showInputRow = expected > 0 && status !== "COMPLETED"
+                        const detailCount = Math.max(1, memberSchedules.length)
+                        const bg = isCompleted ? "bg-gray-200" : idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
+                        const text = "text-[#374151]"
+                        const badge = expected > 0 ? COLLECTION_STATUS_BADGE[status] : null
+                        const isFocused = colFocusedMemberId === member.id
+
+                        type ActionRowType =
+                          | { kind: "history"; entry: { id: string; amount: number; date: string; memo: string } }
+                          | { kind: "input" }
+                          | { kind: "none" }
+                        const actionRows: ActionRowType[] =
+                          expected <= 0
+                            ? [{ kind: "none" }]
+                            : [...history.map((h) => ({ kind: "history" as const, entry: h })), ...(showInputRow ? [{ kind: "input" as const }] : [])]
+                        const actionCount = Math.max(1, actionRows.length)
+                        const totalRows = Math.max(detailCount, actionCount)
+                        const mergeCompletedSingleAction =
+                          isCompleted &&
+                          history.length === 1 &&
+                          actionRows.length === 1 &&
+                          actionRows[0].kind === "history"
+
+                        const rows: React.ReactNode[] = []
+
+                        for (let i = 0; i < totalRows; i++) {
+                          const action = actionRows[i] ?? null
+                          const schedule = memberSchedules[i] ?? null
+                          const groupEntry = action && action.kind === "history" ? action.entry : null
+                          const editKey = groupEntry ? getHistoryEditKey(member.id, groupEntry.id) : null
+                          const editing = !!(editKey && colHistoryEditing[editKey])
+                          const editRow = groupEntry
+                            ? colHistoryEditing[editKey!] ?? { amount: String(groupEntry.amount), date: groupEntry.date, memo: groupEntry.memo }
+                            : null
+                          const firstGlobal = i === 0
+                          const lastGlobal = i === totalRows - 1
+                          const rowBgClass = editing ? "bg-blue-50" : bg
+
+                          rows.push(
+                            <tr
+                              key={`${member.id}_${i}`}
+                              ref={firstGlobal ? setMemberRowRef(member.id) : undefined}
+                              className={`${lastGlobal ? "border-b-2 border-gray-400" : "border-b border-gray-300"} ${rowBgClass} ${firstGlobal && isFocused ? "bg-[#ECF8F2]" : ""}`}
+                            >
+                              {firstGlobal && (
+                                <>
+                                  <td rowSpan={totalRows} className={`px-3 py-3 text-left font-medium border-r border-gray-300 align-middle ${bg} ${text}`}>
+                                    {member.name}
+                                  </td>
+                                  <td rowSpan={totalRows} className={`px-2 py-3 text-left border-r border-gray-300 whitespace-nowrap align-middle ${bg} ${text}`}>
+                                    {GRADE_LABELS[member.grade] ?? `${member.grade}年`}
+                                  </td>
+                                </>
+                              )}
+
+                              <td className="px-2 py-2 border-r border-gray-300 text-left text-[#374151]">
+                                {schedule?.categoryName ?? ""}
+                              </td>
+                              <td className="px-2 py-2 border-r border-gray-300 text-left text-[#374151]">
+                                {schedule?.accountTitleName ?? schedule?.name ?? ""}
+                              </td>
+                              <td className="px-2 py-2 border-r border-gray-300 text-right tabular-nums text-[#374151]">
+                                {schedule ? fmtNum(schedule.amount) : ""}
+                              </td>
+
+                              {firstGlobal && (
+                                <td rowSpan={totalRows} className={`px-2 py-3 text-right border-r border-gray-300 align-middle ${bg}`}>
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <span className={`tabular-nums font-semibold text-right ${text}`}>
+                                      {expected > 0 ? fmtNum(expected) : "0"}
+                                    </span>
+                                    {(status === "PARTIALLY_PAID" || status === "OVERPAID") && (
+                                      <span className="text-[10px] tabular-nums text-right text-[#6B7280]">
+                                        入金済 {fmtNum(paid)} / {fmtNum(expected)}
+                                      </span>
+                                    )}
+                                    {badge && (
+                                      <span className={`inline-block mt-0.5 px-1.5 py-0 rounded text-[9px] font-bold leading-relaxed text-left ${badge.className}`}>
+                                        {badge.label}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                              )}
+
+                              {((mergeCompletedSingleAction && i === 0 && actionRows[0].kind === "history")
+                                || (!mergeCompletedSingleAction && action?.kind === "history" && groupEntry)) ? (
+                                <>
+                                  {(() => {
+                                    const targetEntry = mergeCompletedSingleAction && actionRows[0].kind === "history" ? actionRows[0].entry : groupEntry!
+                                    const targetEditKey = getHistoryEditKey(member.id, targetEntry.id)
+                                    const targetEditing = !!colHistoryEditing[targetEditKey]
+                                    const targetEditRow =
+                                      colHistoryEditing[targetEditKey] ?? {
+                                        amount: String(targetEntry.amount),
+                                        date: targetEntry.date,
+                                        memo: targetEntry.memo,
+                                      }
+                                    const actionRowSpan = mergeCompletedSingleAction ? totalRows : undefined
+                                    return (
+                                      <>
+                                  <td rowSpan={actionRowSpan} className="px-2 py-2 border-r border-gray-300 align-middle">
+                                    {targetEditing ? (
+                                      <input
+                                        type="number"
+                                        value={targetEditRow.amount}
+                                        onChange={(e) =>
+                                          setColHistoryEditing((prev) => ({
+                                            ...prev,
+                                            [targetEditKey]: { ...targetEditRow, amount: e.target.value },
+                                          }))
+                                        }
+                                        className="w-full px-2 py-1.5 text-right tabular-nums text-sm border border-gray-300 rounded bg-white text-[#374151]"
+                                      />
+                                    ) : (
+                                      <div className={`w-full px-2 py-1.5 text-right tabular-nums text-sm border border-gray-300 rounded ${isCompleted ? "bg-white/70 text-[#374151]" : "bg-white text-[#374151]"}`}>
+                                        {fmtNum(targetEntry.amount)}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td rowSpan={actionRowSpan} className="px-2 py-2 border-r border-gray-300 align-middle">
+                                    <DatePickerField
+                                      value={targetEditing ? targetEditRow.date : targetEntry.date}
+                                      onChange={(v) =>
+                                        setColHistoryEditing((prev) => ({
+                                          ...prev,
+                                          [targetEditKey]: { ...targetEditRow, date: v },
+                                        }))
+                                      }
+                                      themeColor="#67a384"
+                                      className={`w-full px-2 py-1.5 text-left text-sm border border-gray-300 rounded ${targetEditing ? "bg-white text-[#374151]" : isCompleted ? "bg-white/70 text-[#374151] pointer-events-none" : "bg-white text-[#374151] pointer-events-none"}`}
+                                      aria-label={`${member.name}の入金日（履歴）`}
+                                    />
+                                  </td>
+                                  <td rowSpan={actionRowSpan} className="px-2 py-2 border-r border-gray-300 align-middle">
+                                    <input
+                                      type="text"
+                                      value={targetEditing ? targetEditRow.memo : targetEntry.memo}
+                                      onChange={(e) =>
+                                        setColHistoryEditing((prev) => ({
+                                          ...prev,
+                                          [targetEditKey]: { ...targetEditRow, memo: e.target.value },
+                                        }))
+                                      }
+                                      readOnly={!targetEditing}
+                                      className={`w-full px-2 py-1.5 text-left text-sm border border-gray-300 rounded ${targetEditing ? "bg-white text-[#374151]" : isCompleted ? "bg-white/70 text-[#374151]" : "bg-white text-[#374151]"}`}
+                                    />
+                                  </td>
+                                  <td rowSpan={actionRowSpan} className="px-2 py-2 text-left align-middle">
+                                    {targetEditing ? (
+                                      <div className="flex items-center justify-center gap-1">
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          className="text-white text-xs px-2"
+                                          style={{ backgroundColor: "#67a384" }}
+                                          onClick={() => handleSaveHistoryEdit(member.id, targetEntry.id)}
+                                        >
+                                          保存
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="text-xs px-2"
+                                          onClick={() => handleCancelHistoryEdit(member.id, targetEntry.id)}
+                                        >
+                                          取消
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs px-3 border-[#67a384] text-[#67a384] hover:bg-[#67a384]/10"
+                                        onClick={() => handleStartHistoryEdit(member.id, targetEntry)}
+                                      >
+                                        編集する
+                                      </Button>
+                                    )}
+                                  </td>
+                                      </>
+                                    )
+                                  })()}
+                                </>
+                              ) : (!mergeCompletedSingleAction && action?.kind === "input") ? (
+                                <>
+                                  <td className="px-2 py-2 border-r border-gray-300 align-middle">
+                                    <input
+                                      type="number"
+                                      value={row.amount}
+                                      onChange={(e) => setPaymentRow(member.id, { amount: e.target.value })}
+                                      className="w-full px-2 py-1.5 text-right tabular-nums text-sm border border-gray-300 rounded placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#67a384]"
+                                      placeholder={amountPlaceholder}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2 border-r border-gray-300 align-middle">
+                                    <DatePickerField
+                                      value={row.date || colBulkDate}
+                                      onChange={(v) => setPaymentRow(member.id, { date: v })}
+                                      themeColor="#67a384"
+                                      className="w-full px-2 py-1.5 text-left text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#67a384]"
+                                      aria-label={`${member.name}の入金日`}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2 border-r border-gray-300 align-middle">
+                                    <input
+                                      type="text"
+                                      value={row.memo}
+                                      onChange={(e) => setPaymentRow(member.id, { memo: e.target.value })}
+                                      className="w-full px-2 py-1.5 text-left text-sm border border-gray-300 rounded placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#67a384]"
+                                      placeholder={memoGuide || "任意"}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2 text-left align-middle">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      className="text-white text-xs px-3"
+                                      style={{ backgroundColor: "#67a384" }}
+                                      onClick={() => handleColRegister(member)}
+                                    >
+                                      登録する
+                                    </Button>
+                                  </td>
+                                </>
+                              ) : (!mergeCompletedSingleAction && action?.kind === "none") ? (
+                                <>
+                                  <td className="px-2 py-3 border-r border-gray-300 align-middle text-right text-[#9CA3AF]">-</td>
+                                  <td className="px-2 py-3 border-r border-gray-300 align-middle text-left text-[#9CA3AF]">-</td>
+                                  <td className="px-2 py-3 border-r border-gray-300 align-middle text-left text-[#9CA3AF]">-</td>
+                                  <td className="px-2 py-3 text-left align-middle">
+                                    <span className="text-xs text-[#9CA3AF]">予定なし</span>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className="px-2 py-3 border-r border-gray-300 align-middle"></td>
+                                  <td className="px-2 py-3 border-r border-gray-300 align-middle"></td>
+                                  <td className="px-2 py-3 border-r border-gray-300 align-middle"></td>
+                                  <td className="px-2 py-3 text-left align-middle"></td>
+                                </>
+                              )}
+                            </tr>
+                          )
+                        }
+
+                        return rows
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {colFilteredMembers.length > 0 && (
+              <p className="text-xs text-[#9CA3AF] mt-3">
+                {colMonth}月の集金予定がある部員 {colFilteredMembers.filter((m) => getExpectedAmount(m.id) > 0).length}名
+                　/　表示 {colFilteredMembers.length}名
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+      /* ===== 他のタブ: 既存フォーム ===== */
       <div
         className={`flex-1 grid gap-0 min-h-0 transition-[grid-template-columns] duration-300 ${
           showReceiptArea ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
         }`}
       >
-        {/* 入力フォーム（1カラム時は中央配置） */}
         <div
           className={`overflow-y-auto bg-white ${
             showReceiptArea ? "border-r border-gray-200" : "flex justify-center"
@@ -422,7 +1218,6 @@ export default function NewRegisterPage() {
         >
           <div className={`p-6 ${showReceiptArea ? "max-w-lg" : "w-full max-w-lg"}`}>
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* 1. 日付（繰延・消込時は「入出金日付」） */}
               <div>
                 <label htmlFor="date" className={labelClass}>
                   {activeTab === "deferred" && formData.deferredType === "settlement"
@@ -439,7 +1234,6 @@ export default function NewRegisterPage() {
                 />
               </div>
 
-              {/* 2. 決済手段（日付の直後）：収入=入金先 / 支出=出金元 / 振替=出金元→入金先 */}
               {(activeTab === "income" || activeTab === "expense") && (
                 <div>
                   <label htmlFor="counterparty" className={labelClass}>
@@ -520,56 +1314,6 @@ export default function NewRegisterPage() {
                     </div>
                   </div>
                 </div>
-              )}
-
-              {showCollectionFields && (
-                <>
-                  <div>
-                    <label htmlFor="memberId" className={labelClass}>
-                      誰から
-                    </label>
-                    <select
-                      id="memberId"
-                      value={formData.memberId}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, memberId: e.target.value }))
-                      }
-                      className={inputClass}
-                      required
-                    >
-                      <option value="">選択してください</option>
-                      {activeMembers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="counterparty-collection" className={labelClass}>
-                      入金先（現金・預金科目）
-                    </label>
-                    <select
-                      id="counterparty-collection"
-                      value={formData.counterpartyAccountTitle}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          counterpartyAccountTitle: e.target.value,
-                        }))
-                      }
-                      className={inputClass}
-                      required
-                    >
-                      <option value="">選択してください</option>
-                      {cashAccountTitles.map((title) => (
-                        <option key={title.id} value={title.name}>
-                          {title.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
               )}
 
               {showCategory && (
@@ -865,6 +1609,7 @@ export default function NewRegisterPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
