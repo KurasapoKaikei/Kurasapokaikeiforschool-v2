@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { cn } from "@/lib/utils"
+import { clubPath, clubRelativePath, isClubPath } from "@/lib/routes"
 
 interface HeaderProps {
   title?: string
@@ -42,6 +43,7 @@ const pageTitleMap: Record<string, string> = {
   "/school": "学校管理",
   "/school/clubs": "学校管理",
   "/parent": "保護者マイページ",
+  "/member": "部員・保護者マイページ",
 }
 
 // パスとテーマカラーのマッピング（仕様書準拠）
@@ -78,34 +80,43 @@ const pageColorMap: Record<string, string> = {
   "/school": "#1A237E", // 学校管理（for school ・インディゴ）
   "/school/clubs": "#1A237E",
   "/parent": "#7C6BA8", // 保護者（落ち着いたパープル系）
+  "/member": "#9D8CC3",
 }
 
 export function Header({ title }: HeaderProps) {
   const pathname = usePathname()
+  const rel = clubRelativePath(pathname)
   const { userInfo } = useUserInfo()
-  
-  // タイトルが明示的に渡されていない場合は、パスから自動判定
+
   const displayTitle =
     title ||
-    (pathname.startsWith("/budget")
+    (pathname.startsWith(clubPath("/budget"))
       ? "予実管理"
-      : pathname.startsWith("/accounting/register/csv") ||
-          pathname.startsWith("/accounting/register/edit")
+      : pathname.startsWith(clubPath("/accounting/register/csv")) ||
+          pathname.startsWith(clubPath("/accounting/register/edit"))
         ? "入出金登録"
         : pathname.startsWith("/school")
-        ? "学校管理"
-        : pathname.startsWith("/parent")
-          ? "保護者マイページ"
-          : pageTitleMap[pathname] || "マイページ")
+          ? "学校管理"
+          : pathname.startsWith("/parent")
+            ? "保護者マイページ"
+            : pathname.startsWith("/member")
+              ? "部員・保護者マイページ"
+              : isClubPath(pathname)
+                ? pageTitleMap[rel] || "マイページ"
+                : pageTitleMap[pathname] || "マイページ")
 
-  const themeColor = pathname.startsWith("/budget")
+  const themeColor = pathname.startsWith(clubPath("/budget"))
     ? "#1A237E"
-    : pathname.startsWith("/accounting/register/csv") ||
-        pathname.startsWith("/accounting/register/edit")
+    : pathname.startsWith(clubPath("/accounting/register/csv")) ||
+        pathname.startsWith(clubPath("/accounting/register/edit"))
       ? "#A3BC68"
       : pathname.startsWith("/school")
-      ? "#1A237E"
-      : pageColorMap[pathname] || "#E66A84"
+        ? "#1A237E"
+        : pathname.startsWith("/member")
+          ? "#9D8CC3"
+          : isClubPath(pathname)
+            ? pageColorMap[rel] || "#E66A84"
+            : pageColorMap[pathname] || "#E66A84"
   
   // クラブ名と会計期間（動的に変更可能）
   const organizationName = userInfo.organizationName
@@ -125,10 +136,12 @@ export function Header({ title }: HeaderProps) {
       <div
         className={cn(
           "text-white",
-          pathname.startsWith("/budget") || pathname.startsWith("/school") ? "bg-budget" : undefined
+          pathname.startsWith(clubPath("/budget")) || pathname.startsWith("/school")
+            ? "bg-budget"
+            : undefined
         )}
         style={
-          pathname.startsWith("/budget") || pathname.startsWith("/school")
+          pathname.startsWith(clubPath("/budget")) || pathname.startsWith("/school")
             ? undefined
             : { backgroundColor: themeColor }
         }

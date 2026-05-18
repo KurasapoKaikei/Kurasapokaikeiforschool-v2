@@ -1,9 +1,10 @@
+import { clubPath } from "@/lib/routes"
 import { getCsvImportBatches, type Transaction } from "@/utils/localStorage"
 
 /** 編集画面から「キャンセル／保存後」に戻る先を渡すクエリ名 */
 export const REGISTER_EDIT_RETURN_QUERY = "returnTo"
 
-const DEFAULT_REGISTER_BACK = "/accounting/register/history"
+const DEFAULT_REGISTER_BACK = clubPath("/accounting/register/history")
 
 /**
  * オープンリダイレクト防止のため、同一アプリ内の相対パスのみ許可する。
@@ -64,7 +65,7 @@ export function getEditUrl(
   const batchId = resolveCsvImportBatchId(t)
   const base =
     batchId != null
-      ? `/accounting/register/csv/${batchId}`
-      : `/accounting/register/edit/${t.id}`
+      ? clubPath(`/accounting/register/csv/${batchId}`)
+      : clubPath(`/accounting/register/edit/${t.id}`)
   return withReturnTo(base, returnTo)
 }

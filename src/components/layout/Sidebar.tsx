@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { clubPath } from "@/lib/routes"
 import {
   LayoutDashboard,
   Receipt,
@@ -35,85 +36,85 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   {
     title: "マイページ",
-    href: "/dashboard",
+    href: clubPath("/dashboard"),
     icon: LayoutDashboard,
     color: "dashboard",
     colorHex: "#E66A84", // ピンク
   },
   {
     title: "入出金登録",
-    href: "/accounting/input",
+    href: clubPath("/accounting/input"),
     icon: Receipt,
     color: "accounting",
     colorHex: "#A3BC68", // 黄緑
     subItems: [
-      { title: "新規登録", href: "/accounting/register/new" },
-      { title: "登録履歴", href: "/accounting/register/history" },
+      { title: "新規登録", href: clubPath("/accounting/register/new") },
+      { title: "登録履歴", href: clubPath("/accounting/register/history") },
     ],
   },
   {
     title: "集計・帳簿",
-    href: "/accounting/ledger",
+    href: clubPath("/accounting/ledger"),
     icon: BookOpen,
     color: "ledger",
     colorHex: "#68A384", // 集計・帳簿（青緑）
     subItems: [
-      { title: "収支集計表", href: "/accounting/summary" },
-      { title: "現金・預金出納帳", href: "/accounting/ledger/cash-bank" },
-      { title: "科目別台帳", href: "/accounting/ledger/subject" },
-      { title: "収支報告書", href: "/accounting/report" },
+      { title: "収支集計表", href: clubPath("/accounting/summary") },
+      { title: "現金・預金出納帳", href: clubPath("/accounting/ledger/cash-bank") },
+      { title: "科目別台帳", href: clubPath("/accounting/ledger/subject") },
+      { title: "収支報告書", href: clubPath("/accounting/report") },
     ],
   },
   {
     title: "集金管理",
-    href: "/collection",
+    href: clubPath("/collection"),
     icon: Wallet,
     color: "collection",
     colorHex: "#D99529", // オレンジ
     subItems: [
-      { title: "集金実績", href: "/collection/history" },
-      { title: "集金予定一覧", href: "/collection/schedule" },
-      { title: "集金設定", href: "/collection/settings" },
+      { title: "集金実績", href: clubPath("/collection/history") },
+      { title: "集金予定一覧", href: clubPath("/collection/schedule") },
+      { title: "集金設定", href: clubPath("/collection/settings") },
     ],
   },
   {
     title: "予実管理",
-    href: "/budget",
+    href: clubPath("/budget"),
     icon: BarChart3,
     color: "budget",
     colorHex: "#1A237E", // ディープインディゴ
     subItems: [
-      { title: "予算書", href: "/budget/book" },
-      { title: "前年度比", href: "/budget/comparison" },
+      { title: "予算書", href: clubPath("/budget/book") },
+      { title: "前年度比", href: clubPath("/budget/comparison") },
     ],
   },
   {
     title: "部員管理",
-    href: "/members",
+    href: clubPath("/members"),
     icon: Users,
     color: "members",
     colorHex: "#9D8CC3", // パープル
     subItems: [
-      { title: "部員一覧", href: "/members/list" },
-      { title: "部員登録", href: "/members/register" },
+      { title: "部員一覧", href: clubPath("/members/list") },
+      { title: "部員登録", href: clubPath("/members/register") },
     ],
   },
   {
     title: "設定",
-    href: "/settings",
+    href: clubPath("/settings"),
     icon: Settings,
     color: "settings",
     colorHex: "#77B8DA", // ブルー
     subItems: [
-      { title: "クラブ設定", href: "/settings/club" },
-      { title: "担当者設定", href: "/settings/staff" },
-      { title: "カテゴリー設定", href: "/settings/category" },
-      { title: "科目設定", href: "/settings/account-titles" },
+      { title: "クラブ設定", href: clubPath("/settings/club") },
+      { title: "担当者設定", href: clubPath("/settings/staff") },
+      { title: "カテゴリー設定", href: clubPath("/settings/category") },
+      { title: "科目設定", href: clubPath("/settings/account-titles") },
     ],
   },
   {
     title: "操作ガイド",
-    href: "/guide",
+    href: clubPath("/guide"),
     icon: HelpCircle,
     color: "settings",
     colorHex: "#4A90E2", // 少し濃いブルー
@@ -123,7 +124,12 @@ const menuItems: MenuItem[] = [
 /** サブメニュー href と現在パスの一致（`/budget/comparison` → `year-over-year` へのリダイレクトも同一扱い） */
 function subItemPathMatches(pathname: string, subHref: string): boolean {
   if (pathname === subHref || pathname.startsWith(`${subHref}/`)) return true
-  if (subHref === "/budget/comparison" && pathname.startsWith("/budget/year-over-year")) return true
+  if (
+    subHref === clubPath("/budget/comparison") &&
+    pathname.startsWith(clubPath("/budget/year-over-year"))
+  ) {
+    return true
+  }
   return false
 }
 
