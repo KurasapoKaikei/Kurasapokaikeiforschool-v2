@@ -11,7 +11,7 @@ export default function GuidePage() {
           <h3 className="text-lg font-semibold mb-3 text-[#374151]">基本的な使い方</h3>
           <ul className="space-y-2 text-sm text-[#374151]">
             <li>• 入出金登録では、レシート画像をアップロードして取引を登録できます</li>
-            <li>• 集金・帳簿では、すべての取引を確認できます</li>
+            <li>• 集計・帳簿では、すべての取引を確認できます</li>
             <li>• 証憑がない支出取引は赤字で表示されます</li>
           </ul>
         </div>
@@ -28,7 +28,7 @@ export default function GuidePage() {
               <p className="text-[#6B7280]">レシート画像をアップロードして取引を登録します</p>
             </div>
             <div>
-              <h4 className="font-semibold mb-1">集金・帳簿</h4>
+              <h4 className="font-semibold mb-1">集計・帳簿</h4>
               <p className="text-[#6B7280]">すべての取引を一覧で確認できます</p>
             </div>
             <div>

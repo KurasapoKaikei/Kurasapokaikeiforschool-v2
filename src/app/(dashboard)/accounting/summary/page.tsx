@@ -7,11 +7,17 @@ import {
   getCategories,
   getAccountTitles,
   getTransactions,
+  getSystemSettings,
+  getCollectionSchedules,
+  getCollectionRecords,
   getMonthlyNote,
   saveMonthlyNote,
+  isTransferLeg,
   type Category,
   type AccountTitle,
   type Transaction,
+  type CollectionSchedule,
+  type CollectionRecord,
 } from "@/utils/localStorage"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
@@ -54,7 +60,7 @@ function getCurrentMonth(): number {
 }
 
 interface SummaryRow {
-  subjectId: string
+  subjectId?: string
   subjectName: string
   amount: number
   type: "income" | "expense"
@@ -66,7 +72,7 @@ function MemoCell({
   year,
   month,
 }: {
-  subjectId: string
+  subjectId?: string
   year: number
   month: number
 }) {
@@ -74,12 +80,17 @@ function MemoCell({
   const [isFocused, setIsFocused] = useState(false)
 
   useEffect(() => {
+    if (!subjectId) {
+      setMemo("")
+      return
+    }
     const saved = getMonthlyNote(subjectId, year, month)
     setMemo(saved)
   }, [subjectId, year, month])
 
   const handleBlur = useCallback(() => {
     setIsFocused(false)
+    if (!subjectId) return
     saveMonthlyNote(subjectId, year, month, memo)
   }, [subjectId, year, month, memo])
 
@@ -90,10 +101,11 @@ function MemoCell({
       onChange={(e) => setMemo(e.target.value)}
       onFocus={() => setIsFocused(true)}
       onBlur={handleBlur}
+      disabled={!subjectId}
       lang="ja"
       autoComplete="off"
       className={`w-full px-2 py-1.5 text-sm text-center text-[#374151] bg-transparent border rounded focus:outline-none focus:ring-1 focus:ring-[#68A384] ${
-        isFocused ? "border-[#68A384]" : "border-transparent hover:border-gray-300"
+        !subjectId ? "border-transparent text-[#9CA3AF] cursor-not-allowed" : isFocused ? "border-[#68A384]" : "border-transparent hover:border-gray-300"
       }`}
     />
   )
@@ -107,24 +119,46 @@ export default function SummaryPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [collectionSchedules, setCollectionSchedules] = useState<CollectionSchedule[]>([])
+  const [collectionRecords, setCollectionRecords] = useState<CollectionRecord[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all")
+  const [openingCarryover, setOpeningCarryover] = useState(0)
   const fiscalYear = getCurrentFiscalYear()
   const [selectedMonth, setSelectedMonth] = useState<number>(getCurrentMonth())
+  const categoryOrderMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.order])),
+    [categories]
+  )
+  const getMinCategoryOrder = useCallback(
+    (categoryIds: string[]) => {
+      if (!categoryIds || categoryIds.length === 0) return Number.MAX_SAFE_INTEGER
+      return Math.min(...categoryIds.map((id) => categoryOrderMap.get(id) ?? Number.MAX_SAFE_INTEGER))
+    },
+    [categoryOrderMap]
+  )
 
-  useEffect(() => {
+  const refreshAll = useCallback(() => {
     setCategories(getCategories())
     setAccountTitles(getAccountTitles())
     setTransactions(getTransactions())
+    setOpeningCarryover(getSystemSettings().openingCarryover ?? 0)
+    setCollectionSchedules(getCollectionSchedules())
+    setCollectionRecords(getCollectionRecords())
   }, [])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCategories(getCategories())
-      setAccountTitles(getAccountTitles())
-      setTransactions(getTransactions())
-    }, 500)
-    return () => clearInterval(interval)
-  }, [])
+    refreshAll()
+  }, [refreshAll])
+
+  useEffect(() => {
+    const interval = setInterval(refreshAll, 500)
+    const onStorage = () => refreshAll()
+    window.addEventListener("storage", onStorage)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [refreshAll])
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -136,34 +170,141 @@ export default function SummaryPage() {
     return categories.find((c) => c.id === selectedCategoryId)?.name ?? null
   }, [selectedCategoryId, categories])
 
-  // カテゴリーでフィルタした収入・支出科目（科目名でユニーク化、重複解消）
+  const collectionIncomeEntries = useMemo(() => {
+    const scheduleMap = new Map(collectionSchedules.map((s) => [s.id, s]))
+    const existingCollectionTxIds = new Set(
+      transactions.filter((t) => t.type === "collection").map((t) => t.id)
+    )
+    const list: Array<{ date: string; amount: number; accountTitle: string; category: string }> = []
+
+    collectionRecords.forEach((record) => {
+      const schedule = scheduleMap.get(record.scheduleId)
+      if (!schedule) return
+      const accountTitle = schedule.accountTitleName || schedule.name || "会費収入"
+      const category = schedule.categoryName || "集金"
+
+      const history = record.paymentHistory ?? []
+      if (history.length > 0) {
+        history.forEach((h) => {
+          if (h.transactionId && existingCollectionTxIds.has(h.transactionId)) return
+          list.push({
+            date: h.date,
+            amount: h.amount,
+            accountTitle,
+            category,
+          })
+        })
+        return
+      }
+
+      if (record.status !== "UNPAID" && (record.paidAmount ?? 0) !== 0 && record.paidAt) {
+        if (record.linkedTransactionId && existingCollectionTxIds.has(record.linkedTransactionId)) return
+        list.push({
+          date: record.paidAt,
+          amount: record.paidAmount ?? 0,
+          accountTitle,
+          category,
+        })
+      }
+    })
+    return list
+  }, [collectionSchedules, collectionRecords, transactions])
+
+  // 現金・預金科目名（口座名）を集計表の項目から除外するための集合
+  const cashAccountNameSet = useMemo(
+    () => new Set(accountTitles.filter((a) => a.group === "cash").map((a) => a.name)),
+    [accountTitles]
+  )
+
+  // カテゴリーでフィルタした収入・支出科目（マスタ + 実取引）
   const incomeTitles = useMemo(() => {
     let list = accountTitles.filter((a) => a.group === "income")
     if (selectedCategoryId !== "all") {
       list = list.filter((a) => a.categoryIds.includes(selectedCategoryId))
     }
-    const sorted = [...list].sort((a, b) => a.order - b.order)
-    const seen = new Set<string>()
-    return sorted.filter((t) => {
-      if (seen.has(t.name)) return false
-      seen.add(t.name)
-      return true
+    const map = new Map<string, { id?: string; name: string; order: number; categoryOrder: number }>()
+    ;[...list].sort((a, b) => a.order - b.order).forEach((t) => {
+      if (!map.has(t.name)) {
+        map.set(t.name, {
+          id: t.id,
+          name: t.name,
+          order: t.order,
+          categoryOrder: getMinCategoryOrder(t.categoryIds),
+        })
+      }
     })
-  }, [accountTitles, selectedCategoryId])
+    const incomeSources = [
+      ...transactions
+        .filter((t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t))
+        .map((t) => ({ accountTitle: t.accountTitle, category: t.category })),
+      ...collectionIncomeEntries.map((c) => ({ accountTitle: c.accountTitle, category: c.category })),
+    ]
+    incomeSources
+      .filter((t) => !cashAccountNameSet.has(t.accountTitle))
+      .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
+      .forEach((t) => {
+        if (!map.has(t.accountTitle)) {
+          const byName = accountTitles.find((a) => a.group === "income" && a.name === t.accountTitle)
+          if (!byName) return
+          map.set(t.accountTitle, {
+            id: byName.id,
+            name: t.accountTitle,
+            order: byName.order,
+            categoryOrder: getMinCategoryOrder(byName.categoryIds),
+          })
+        }
+      })
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        a.categoryOrder - b.categoryOrder ||
+        a.order - b.order ||
+        a.name.localeCompare(b.name, "ja")
+    )
+  }, [accountTitles, selectedCategoryId, selectedCategoryName, transactions, collectionIncomeEntries, getMinCategoryOrder, cashAccountNameSet])
 
   const expenseTitles = useMemo(() => {
     let list = accountTitles.filter((a) => a.group === "expense")
     if (selectedCategoryId !== "all") {
       list = list.filter((a) => a.categoryIds.includes(selectedCategoryId))
     }
-    const sorted = [...list].sort((a, b) => a.order - b.order)
-    const seen = new Set<string>()
-    return sorted.filter((t) => {
-      if (seen.has(t.name)) return false
-      seen.add(t.name)
-      return true
+    const map = new Map<string, { id?: string; name: string; order: number; categoryOrder: number }>()
+    ;[...list].sort((a, b) => a.order - b.order).forEach((t) => {
+      if (!map.has(t.name)) {
+        map.set(t.name, {
+          id: t.id,
+          name: t.name,
+          order: t.order,
+          categoryOrder: getMinCategoryOrder(t.categoryIds),
+        })
+      }
     })
-  }, [accountTitles, selectedCategoryId])
+    transactions
+      // 振替（=出金元/入金先の2レコード）と現金・預金口座名を支出集計から除外
+      .filter((t) => t.type === "expense" && !isTransferLeg(t))
+      .filter((t) => !cashAccountNameSet.has(t.accountTitle))
+      .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
+      .forEach((t) => {
+        if (!map.has(t.accountTitle)) {
+          const byName = accountTitles.find(
+            (a) => a.group === "expense" && a.name === t.accountTitle
+          )
+          // マスタに「支出科目」として登録されていない名前は表に出さない
+          if (!byName) return
+          map.set(t.accountTitle, {
+            id: byName.id,
+            name: t.accountTitle,
+            order: byName.order,
+            categoryOrder: getMinCategoryOrder(byName.categoryIds),
+          })
+        }
+      })
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        a.categoryOrder - b.categoryOrder ||
+        a.order - b.order ||
+        a.name.localeCompare(b.name, "ja")
+    )
+  }, [accountTitles, selectedCategoryId, selectedCategoryName, transactions, getMinCategoryOrder, cashAccountNameSet])
 
   // ===== 年間集計用 =====
   const incomeByMonthAndTitle = useMemo(() => {
@@ -175,8 +316,13 @@ export default function SummaryPage() {
       })
     })
 
-    transactions
-      .filter((t) => t.type === "income")
+    const incomeSources = [
+      ...transactions
+        .filter((t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t))
+        .map((t) => ({ date: t.date, amount: t.amount, accountTitle: t.accountTitle, category: t.category })),
+      ...collectionIncomeEntries,
+    ]
+    incomeSources
       .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
       .forEach((t) => {
         for (const month of FISCAL_MONTHS) {
@@ -189,7 +335,7 @@ export default function SummaryPage() {
       })
 
     return map
-  }, [transactions, fiscalYear, selectedCategoryName, incomeTitles])
+  }, [transactions, collectionIncomeEntries, fiscalYear, selectedCategoryName, incomeTitles])
 
   const expenseByMonthAndTitle = useMemo(() => {
     const map: Record<number, Record<string, number>> = {}
@@ -201,7 +347,7 @@ export default function SummaryPage() {
     })
 
     transactions
-      .filter((t) => t.type === "expense")
+      .filter((t) => t.type === "expense" && !isTransferLeg(t))
       .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
       .forEach((t) => {
         for (const month of FISCAL_MONTHS) {
@@ -241,6 +387,8 @@ export default function SummaryPage() {
     [expenseTotalByMonth]
   )
   const yearBalanceTotal = yearTotalIncome - yearTotalExpense
+  const isAllCategory = selectedCategoryId === "all"
+  const nextCarryoverTotal = openingCarryover + yearTotalIncome - yearTotalExpense
 
   // ===== 月次集計用 =====
   const { start: monthStart, end: monthEnd } = useMemo(
@@ -261,12 +409,26 @@ export default function SummaryPage() {
     })
   }, [transactions, monthStart, monthEnd, selectedCategoryName])
 
+  const filteredCollectionIncomeEntries = useMemo(() => {
+    return collectionIncomeEntries.filter((t) => {
+      if (!t.date) return false
+      if (!isDateInRange(t.date, monthStart, monthEnd)) return false
+      if (selectedCategoryName !== null && t.category !== selectedCategoryName) return false
+      return true
+    })
+  }, [collectionIncomeEntries, monthStart, monthEnd, selectedCategoryName])
+
   const incomeRowsMonthly = useMemo((): SummaryRow[] => {
     return incomeTitles.map((title) => {
       const txs = filteredTransactionsMonthly.filter(
-        (t) => t.type === "income" && t.accountTitle === title.name
+        (t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t) && t.accountTitle === title.name
       )
-      const totalAmount = txs.reduce((s, t) => s + t.amount, 0)
+      const fallbackCollections = filteredCollectionIncomeEntries.filter(
+        (t) => t.accountTitle === title.name
+      )
+      const totalAmount =
+        txs.reduce((s, t) => s + t.amount, 0) +
+        fallbackCollections.reduce((s, t) => s + t.amount, 0)
       return {
         subjectId: title.id,
         subjectName: title.name,
@@ -274,12 +436,12 @@ export default function SummaryPage() {
         type: "income",
       }
     })
-  }, [incomeTitles, filteredTransactionsMonthly])
+  }, [incomeTitles, filteredTransactionsMonthly, filteredCollectionIncomeEntries])
 
   const expenseRowsMonthly = useMemo((): SummaryRow[] => {
     return expenseTitles.map((title) => {
       const txs = filteredTransactionsMonthly.filter(
-        (t) => t.type === "expense" && t.accountTitle === title.name
+        (t) => t.type === "expense" && !isTransferLeg(t) && t.accountTitle === title.name
       )
       const totalAmount = txs.reduce((s, t) => s + t.amount, 0)
       return {
@@ -306,7 +468,8 @@ export default function SummaryPage() {
   const formatAmountMonthly = (n: number) => n.toLocaleString()
 
   /** 科目別台帳へ遷移（年間：科目名クリック＝全期間） */
-  const handleSubjectClickAnnual = (subjectId: string) => {
+  const handleSubjectClickAnnual = (subjectId?: string) => {
+    if (!subjectId) return
     const params = new URLSearchParams()
     params.set("category", selectedCategoryId)
     params.set("subject", subjectId)
@@ -314,7 +477,8 @@ export default function SummaryPage() {
   }
 
   /** 科目別台帳へ遷移（年間：月次金額クリック＝該当月でフィルター） */
-  const handleMonthAmountClick = (subjectId: string, month: number) => {
+  const handleMonthAmountClick = (subjectId: string | undefined, month: number) => {
+    if (!subjectId) return
     const { start, end } = getFiscalMonthRange(fiscalYear, month)
     const params = new URLSearchParams()
     params.set("category", selectedCategoryId)
@@ -325,7 +489,8 @@ export default function SummaryPage() {
   }
 
   /** 科目別台帳へ遷移（月次：該当月フィルター済み） */
-  const handleSubjectClickMonthly = (subjectId: string) => {
+  const handleSubjectClickMonthly = (subjectId?: string) => {
+    if (!subjectId) return
     const params = new URLSearchParams()
     params.set("category", selectedCategoryId)
     params.set("subject", subjectId)
@@ -485,7 +650,7 @@ export default function SummaryPage() {
                 </tr>
                 {incomeTitles.map((title, idx) => (
                   <tr
-                    key={title.id}
+                    key={title.name}
                     className={`border-b border-gray-200 ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                     } hover:bg-gray-100/50`}
@@ -559,7 +724,7 @@ export default function SummaryPage() {
                 </tr>
                 {expenseTitles.map((title, idx) => (
                   <tr
-                    key={title.id}
+                    key={title.name}
                     className={`border-b border-gray-200 ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                     } hover:bg-gray-100/50`}
@@ -646,6 +811,38 @@ export default function SummaryPage() {
                     {formatAmount(yearBalanceTotal)}
                   </td>
                 </tr>
+                {isAllCategory && (
+                  <>
+                    <tr className="font-bold border-t-2 border-gray-300 bg-slate-100/80">
+                      <td
+                        colSpan={13}
+                        className="px-4 py-3 text-left text-[#334155] font-extrabold border-r border-gray-200 bg-slate-100/80"
+                      >
+                        前期繰越金
+                      </td>
+                      <td
+                        className="px-3 py-3 text-right tabular-nums font-extrabold text-[#334155] border-r border-gray-200 sticky right-0 z-10 bg-slate-100/80"
+                        style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                      >
+                        {formatAmount(openingCarryover)}
+                      </td>
+                    </tr>
+                    <tr className="font-bold bg-slate-200/80">
+                      <td
+                        colSpan={13}
+                        className="px-4 py-3 text-left text-[#374151] border-r border-gray-200 bg-slate-200/80"
+                      >
+                        次期繰越金
+                      </td>
+                      <td
+                        className="px-3 py-3 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 sticky right-0 z-10 bg-slate-200/80"
+                        style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                      >
+                        {formatAmount(nextCarryoverTotal)}
+                      </td>
+                    </tr>
+                  </>
+                )}
               </tbody>
             </table>
           </div>
@@ -696,7 +893,7 @@ export default function SummaryPage() {
                 ) : (
                   incomeRowsMonthly.map((row, idx) => (
                     <tr
-                      key={row.subjectId}
+                      key={row.subjectName}
                       className={`hover:bg-gray-100/50 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"}`}
                     >
                       <td
@@ -713,7 +910,7 @@ export default function SummaryPage() {
                       </td>
                       <td className="px-2 py-1 text-center border border-gray-200">
                         <MemoCell
-                          key={`${memoKey}-${row.subjectId}`}
+                          key={`${memoKey}-${row.subjectName}`}
                           subjectId={row.subjectId}
                           year={displayYear}
                           month={selectedMonth}
@@ -758,7 +955,7 @@ export default function SummaryPage() {
                 ) : (
                   expenseRowsMonthly.map((row, idx) => (
                     <tr
-                      key={row.subjectId}
+                      key={row.subjectName}
                       className={`hover:bg-gray-100/50 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"}`}
                     >
                       <td
@@ -775,7 +972,7 @@ export default function SummaryPage() {
                       </td>
                       <td className="px-2 py-1 text-center border border-gray-200">
                         <MemoCell
-                          key={`${memoKey}-${row.subjectId}`}
+                          key={`${memoKey}-${row.subjectName}`}
                           subjectId={row.subjectId}
                           year={displayYear}
                           month={selectedMonth}

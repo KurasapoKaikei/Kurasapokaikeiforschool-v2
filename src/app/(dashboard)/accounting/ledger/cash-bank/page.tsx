@@ -1,24 +1,27 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { DatePickerField } from "@/components/ui/date-picker-field"
-import { EditTransactionModal } from "@/components/accounting/EditTransactionModal"
 import { Pencil, Trash2 } from "lucide-react"
 import {
   getCategories,
   getAccountTitles,
   getTransactions,
+  getCollectionSchedules,
   deleteTransaction,
+  isTransferLeg,
   type Category,
   type AccountTitle,
   type Transaction,
+  type CollectionSchedule,
 } from "@/utils/localStorage"
+import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
 
-// カラム幅比率（合計32）: 日付3, カテゴリー3, 科目3, 収入3, 支出3, 残高3, メモ6, 証憑3, 編集2, 削除2 (※最後に行追加)
+// カラム幅比率（合計32）: 日付3, カテゴリー3, 科目3, 入金3, 出金3, 残高3, メモ6, 証憑3, 編集2, 削除2 (※最後に行追加)
 const COL_RATIOS = [3, 3, 3, 3, 3, 3, 6, 3, 2, 2] as const
 const TOTAL_RATIO = COL_RATIOS.reduce((a, b) => a + b, 0)
 const COL_WIDTHS = COL_RATIOS.map((r) => `${(r / TOTAL_RATIO) * 100}%`)
@@ -33,6 +36,19 @@ function getFiscalYearStart(): string {
 /** 本日を YYYY-MM-DD で返す */
 function getTodayString(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/** 現金・預金出納帳に載せるか（counterparty 一致、または集金設定の入金先口座と一致） */
+function transactionMatchesCashAccount(
+  t: Transaction,
+  cashName: string,
+  scheduleById: Map<string, CollectionSchedule>
+): boolean {
+  if (t.counterparty === cashName) return true
+  if (t.type !== "collection" || !t.collectionScheduleId) return false
+  const schedule = scheduleById.get(t.collectionScheduleId)
+  const scheduleCash = (schedule?.counterpartyName ?? "").trim()
+  return scheduleCash === cashName
 }
 
 type RowKind = "opening" | "data" | "subtotal"
@@ -56,14 +72,21 @@ interface TableRow {
 }
 
 export default function LedgerCashBankPage() {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const searchQs = searchParams.toString()
+  const editReturnTo = useMemo(
+    () => pathname + (searchQs ? `?${searchQs}` : ""),
+    [pathname, searchQs]
+  )
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [collectionSchedules, setCollectionSchedules] = useState<CollectionSchedule[]>([])
   const [cashAccountId, setCashAccountId] = useState<string>("")
   const [startDate, setStartDate] = useState<string>(getFiscalYearStart())
   const [endDate, setEndDate] = useState<string>(getTodayString())
-  const [editTransaction, setEditTransaction] = useState<Transaction | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
 
   const refreshTransactions = () => setTransactions(getTransactions())
@@ -75,13 +98,73 @@ export default function LedgerCashBankPage() {
     }
   }
 
-  const handleEdit = (t: Transaction) => setEditTransaction(t)
+  /**
+   * 振替片側レコードから対の expense/income を解決する。
+   * - `transferGroupId` がある新データは同IDで対を引く
+   * - 旧データは memo プレフィックス + 同日付 + 同金額のヒューリスティックで対を推定
+   */
+  const resolveTransferPair = (t: Transaction): { expenseId: string; incomeId: string } | null => {
+    if (t.transferGroupId) {
+      const pair = transactions.filter((x) => x.transferGroupId === t.transferGroupId)
+      const exp = pair.find((x) => x.type === "expense")
+      const inc = pair.find((x) => x.type === "income")
+      if (exp && inc) return { expenseId: exp.id, incomeId: inc.id }
+    }
+    if (t.type === "expense" && /^振替（出金）/.test(t.memo ?? "")) {
+      const inc = transactions.find(
+        (x) =>
+          x.type === "income" &&
+          /^振替（入金）/.test(x.memo ?? "") &&
+          x.date === t.date &&
+          x.amount === t.amount
+      )
+      if (inc) return { expenseId: t.id, incomeId: inc.id }
+    }
+    if (t.type === "income" && /^振替（入金）/.test(t.memo ?? "")) {
+      const exp = transactions.find(
+        (x) =>
+          x.type === "expense" &&
+          /^振替（出金）/.test(x.memo ?? "") &&
+          x.date === t.date &&
+          x.amount === t.amount
+      )
+      if (exp) return { expenseId: exp.id, incomeId: t.id }
+    }
+    return null
+  }
+
+  const handleEdit = (t: Transaction) => {
+    // 振替の片側レコードは登録履歴と同じく「振替専用編集モード」へ遷移する
+    if (isTransferLeg(t)) {
+      const pair = resolveTransferPair(t)
+      if (pair) {
+        const url = withReturnTo(
+          `/accounting/register/new?tab=transfer&editTransfer=${encodeURIComponent(`${pair.expenseId}:${pair.incomeId}`)}`,
+          editReturnTo
+        )
+        router.push(url)
+        return
+      }
+    }
+    router.push(getEditUrl(t, editReturnTo))
+  }
+  const handleOpenCollection = (t: Transaction) => {
+    if (t.type !== "collection" || !t.collectionMemberId) return
+    const month = Number(t.date.slice(5, 7))
+    const params = new URLSearchParams()
+    params.set("tab", "collection")
+    params.set("memberId", t.collectionMemberId)
+    if (Number.isFinite(month)) params.set("month", String(month))
+    params.set("transactionId", t.id)
+    router.push(`/accounting/register/new?${params.toString()}`)
+  }
 
   // 初期データ読み込み
   useEffect(() => {
     setCategories(getCategories())
     setAccountTitles(getAccountTitles())
     setTransactions(getTransactions())
+    setCollectionSchedules(getCollectionSchedules())
   }, [])
 
   // URLパラメータから科目IDを取得して自動選択
@@ -106,9 +189,15 @@ export default function LedgerCashBankPage() {
       setCategories(getCategories())
       setAccountTitles(getAccountTitles())
       setTransactions(getTransactions())
+      setCollectionSchedules(getCollectionSchedules())
     }, 500)
     return () => clearInterval(interval)
   }, [])
+
+  const collectionScheduleById = useMemo(
+    () => new Map(collectionSchedules.map((s) => [s.id, s])),
+    [collectionSchedules]
+  )
 
   // 現金・預金科目のみを選択肢として表示
   const cashAccountTitles = useMemo(
@@ -136,11 +225,14 @@ export default function LedgerCashBankPage() {
     const list = transactions.filter((t) => {
       if (!t.date) return false
       if (t.date < startDate || t.date > endDate) return false
-      if (t.counterparty !== cashName) return false
-      return true
+      return transactionMatchesCashAccount(t, cashName, collectionScheduleById)
     })
-    return list.sort((a, b) => a.date.localeCompare(b.date))
-  }, [transactions, startDate, endDate, selectedCashAccount])
+    return list.sort((a, b) => {
+      const d = a.date.localeCompare(b.date)
+      if (d !== 0) return d
+      return (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+    })
+  }, [transactions, startDate, endDate, selectedCashAccount, collectionScheduleById])
 
   // 期首から開始日前日までの取引を計算し、表示開始時点の残高を求める
   const startingBalance = useMemo(() => {
@@ -152,8 +244,7 @@ export default function LedgerCashBankPage() {
     const priorTransactions = transactions.filter((t) => {
       if (!t.date) return false
       if (t.date < fiscalYearStartDate || t.date >= startDate) return false
-      if (t.counterparty !== cashName) return false
-      return true
+      return transactionMatchesCashAccount(t, cashName, collectionScheduleById)
     })
     
     priorTransactions.forEach((t) => {
@@ -164,7 +255,7 @@ export default function LedgerCashBankPage() {
     })
     
     return balance
-  }, [selectedCashAccount, transactions, openingBalance, startDate, fiscalYearStartDate])
+  }, [selectedCashAccount, transactions, openingBalance, startDate, fiscalYearStartDate, collectionScheduleById])
 
   const tableRows = useMemo((): TableRow[] => {
     const rows: TableRow[] = []
@@ -194,9 +285,13 @@ export default function LedgerCashBankPage() {
       byMonth.get(monthKey)!.push(t)
     }
 
-    const sortedMonths = [...byMonth.keys()].sort()
+    const sortedMonths = Array.from(byMonth.keys()).sort()
     for (const monthKey of sortedMonths) {
-      const monthTx = byMonth.get(monthKey)!.sort((a, b) => a.date.localeCompare(b.date))
+      const monthTx = byMonth.get(monthKey)!.sort((a, b) => {
+        const d = a.date.localeCompare(b.date)
+        if (d !== 0) return d
+        return (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+      })
       let monthIncome = 0
       let monthExpense = 0
       let monthEndBalance = runningBalance
@@ -211,7 +306,7 @@ export default function LedgerCashBankPage() {
         if (isIncome) monthIncome += t.amount
         if (isExpense) monthExpense += t.amount
         
-        // 残高計算: 前行の残高 + 収入 - 支出
+        // 残高計算: 前行の残高 + 入金 - 出金
         runningBalance = runningBalance + incomeAmt - expenseAmt
         monthEndBalance = runningBalance
         
@@ -362,10 +457,10 @@ export default function LedgerCashBankPage() {
                     科目
                   </th>
                   <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 text-xs whitespace-nowrap">
-                    収入金額
+                    入金額
                   </th>
                   <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 text-xs whitespace-nowrap">
-                    支出金額
+                    出金額
                   </th>
                   <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 text-xs whitespace-nowrap">
                     残高
@@ -435,13 +530,13 @@ export default function LedgerCashBankPage() {
                       <td className={`px-2 py-2 text-left text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isOpening ? "font-semibold" : ""}`}>
                         {row.isOpening ? "期首残高" : row.kind === "data" ? row.accountTitle ?? "-" : ""}
                       </td>
-                      {/* 収入金額 */}
+                      {/* 入金額 */}
                       <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden`}>
                         {row.isOpening
                           ? formatBalance(row.incomeAmount)
                           : formatAmount(row.incomeAmount)}
                       </td>
-                      {/* 支出金額 */}
+                      {/* 出金額 */}
                       <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden`}>
                         {row.isOpening ? "-" : formatAmount(row.expenseAmount)}
                       </td>
@@ -455,55 +550,77 @@ export default function LedgerCashBankPage() {
                           {row.isOpening || row.isSubtotal ? "" : row.kind === "data" ? row.memo ?? "-" : ""}
                         </span>
                       </td>
-                      {/* レシート・証憑 */}
-                      <td
-                        className={`px-2 py-2 text-center border-r border-gray-200 text-xs whitespace-nowrap ${
-                          row.isSubtotal || row.isOpening
-                            ? ""
-                            : row.receiptUrl
-                              ? ""
-                              : ""
-                        }`}
-                        style={
-                          !row.isSubtotal && !row.isOpening && !row.receiptUrl
-                            ? { backgroundColor: RECEIPT_ALERT_BG }
-                            : undefined
-                        }
-                      >
-                        {row.isSubtotal || row.isOpening ? (
-                          ""
-                        ) : row.receiptUrl ? (
-                          <a
-                            href={row.receiptUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block"
-                            title="証憑を表示"
+                      {/*
+                       * レシート・証憑
+                       * - 振替（transferGroupId or 振替memo の片側レコード）は証憑を必須としないので一律「ー」
+                       * - 集金（collection）は自動生成のため証憑が存在せず、振替と同じく「ー」
+                       * - 通常の収入/支出は画像表示 / 未登録（赤字 + 背景アラート）
+                       */}
+                      {(() => {
+                        const isTransferRow =
+                          row.transaction != null && isTransferLeg(row.transaction)
+                        const isCollectionRow = row.transaction?.type === "collection"
+                        const showAlertBg =
+                          !row.isSubtotal &&
+                          !row.isOpening &&
+                          !row.receiptUrl &&
+                          !isCollectionRow &&
+                          !isTransferRow
+                        return (
+                          <td
+                            className="px-2 py-2 text-center border-r border-gray-200 text-xs whitespace-nowrap"
+                            style={showAlertBg ? { backgroundColor: RECEIPT_ALERT_BG } : undefined}
                           >
-                            <img
-                              src={row.receiptUrl}
-                              alt="証憑"
-                              className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80"
-                            />
-                          </a>
-                        ) : (
-                          <span className="text-red-600 text-xs">未登録</span>
-                        )}
-                      </td>
+                            {row.isSubtotal || row.isOpening ? (
+                              ""
+                            ) : isTransferRow || isCollectionRow ? (
+                              <span className="text-[#9CA3AF] text-xs">ー</span>
+                            ) : row.receiptUrl ? (
+                              <a
+                                href={row.receiptUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-block"
+                                title="証憑を表示"
+                              >
+                                <img
+                                  src={row.receiptUrl}
+                                  alt="証憑"
+                                  className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80"
+                                />
+                              </a>
+                            ) : (
+                              <span className="text-red-600 text-xs">未登録</span>
+                            )}
+                          </td>
+                        )
+                      })()}
                       {/* 編集 */}
                       <td className={`px-2 py-2 text-center border-r border-gray-200 text-xs whitespace-nowrap`}>
                         {row.isSubtotal || row.isOpening ? (
                           ""
                         ) : row.transaction ? (
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(row.transaction!)}
-                            className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
-                            title="編集"
-                            aria-label="編集"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                          row.transaction.type === "collection" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCollection(row.transaction!)}
+                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
+                              title="集金タブへ移動"
+                              aria-label="集金タブへ移動"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(row.transaction!)}
+                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
+                              title={isCsvLinkedTransaction(row.transaction) ? "CSV一括編集へ" : "明細を編集"}
+                              aria-label="編集"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )
                         ) : (
                           ""
                         )}
@@ -535,12 +652,6 @@ export default function LedgerCashBankPage() {
         </div>
       </div>
 
-      <EditTransactionModal
-        transaction={editTransaction}
-        isOpen={!!editTransaction}
-        onClose={() => setEditTransaction(null)}
-        onSuccess={refreshTransactions}
-      />
     </div>
   )
 }

@@ -23,7 +23,7 @@ export default function LedgerPage() {
   return (
     <div className="px-6 py-8">
       <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2 text-[#374151]">集金・帳簿</h2>
+        <h2 className="text-xl font-semibold mb-2 text-[#374151]">集計・帳簿</h2>
         <p className="text-sm text-[#6B7280]">取引一覧と集金状況</p>
       </div>
 

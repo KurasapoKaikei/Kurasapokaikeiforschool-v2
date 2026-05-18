@@ -181,7 +181,7 @@ export default function CollectionSchedulePage() {
                 <th className="px-2 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200 whitespace-nowrap">カテゴリー</th>
                 <th className="px-2 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200">科目</th>
                 <th className="px-2 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200">入金先</th>
-                <th className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200">金額</th>
+                <th className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200 whitespace-nowrap">一人あたりの集金額</th>
                 <th className="px-1 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200 whitespace-nowrap text-xs">対象部員</th>
                 <th className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200">集金総額</th>
                 <th className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200">メモ</th>

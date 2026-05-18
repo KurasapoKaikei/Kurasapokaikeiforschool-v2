@@ -8,6 +8,7 @@ import {
   getCollectionSchedules,
   getCollectionRecords,
   syncAllCollectionRecords,
+  sumCollectionRecordNetPaid,
   type Member,
   type CollectionSchedule,
   type CollectionRecord,
@@ -109,7 +110,7 @@ export default function CollectionHistoryPage() {
       for (const s of monthSchedules) {
         total += s.amount
         const record = recordMap.get(`${s.id}_${memberId}`)
-        if (record) paid += record.paidAmount ?? 0
+        if (record) paid += sumCollectionRecordNetPaid(record)
       }
 
       const status = getCollectionPaymentStatus(paid, total)

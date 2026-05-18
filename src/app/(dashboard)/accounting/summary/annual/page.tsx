@@ -1,15 +1,21 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import {
   getCategories,
   getAccountTitles,
   getTransactions,
+  getSystemSettings,
+  getCollectionSchedules,
+  getCollectionRecords,
+  isTransferLeg,
   type Category,
   type AccountTitle,
   type Transaction,
+  type CollectionSchedule,
+  type CollectionRecord,
 } from "@/utils/localStorage"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
@@ -47,11 +53,26 @@ export default function SummaryAnnualPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [collectionSchedules, setCollectionSchedules] = useState<CollectionSchedule[]>([])
+  const [collectionRecords, setCollectionRecords] = useState<CollectionRecord[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all")
+  const [openingCarryover, setOpeningCarryover] = useState(0)
   const fiscalYear = getCurrentFiscalYear()
+  const categoryOrderMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.order])),
+    [categories]
+  )
+  const getMinCategoryOrder = useCallback(
+    (categoryIds: string[]) => {
+      if (!categoryIds || categoryIds.length === 0) return Number.MAX_SAFE_INTEGER
+      return Math.min(...categoryIds.map((id) => categoryOrderMap.get(id) ?? Number.MAX_SAFE_INTEGER))
+    },
+    [categoryOrderMap]
+  )
 
   /** 科目別台帳へ遷移（科目名クリック＝全期間） */
-  const handleSubjectClick = (subjectId: string) => {
+  const handleSubjectClick = (subjectId?: string) => {
+    if (!subjectId) return
     const params = new URLSearchParams()
     params.set("category", selectedCategoryId)
     params.set("subject", subjectId)
@@ -59,7 +80,8 @@ export default function SummaryAnnualPage() {
   }
 
   /** 科目別台帳へ遷移（月次金額クリック＝該当月でフィルター） */
-  const handleMonthAmountClick = (subjectId: string, month: number) => {
+  const handleMonthAmountClick = (subjectId: string | undefined, month: number) => {
+    if (!subjectId) return
     const { start, end } = getFiscalMonthRange(fiscalYear, month)
     const params = new URLSearchParams()
     params.set("category", selectedCategoryId)
@@ -69,54 +91,178 @@ export default function SummaryAnnualPage() {
     router.push(`/accounting/ledger/subject?${params.toString()}`)
   }
 
-  useEffect(() => {
+  const refreshAll = useCallback(() => {
     setCategories(getCategories())
     setAccountTitles(getAccountTitles())
     setTransactions(getTransactions())
+    setOpeningCarryover(getSystemSettings().openingCarryover ?? 0)
+    setCollectionSchedules(getCollectionSchedules())
+    setCollectionRecords(getCollectionRecords())
   }, [])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCategories(getCategories())
-      setAccountTitles(getAccountTitles())
-      setTransactions(getTransactions())
-    }, 500)
-    return () => clearInterval(interval)
-  }, [])
+    refreshAll()
+  }, [refreshAll])
+
+  useEffect(() => {
+    const interval = setInterval(refreshAll, 500)
+    const onStorage = () => refreshAll()
+    window.addEventListener("storage", onStorage)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [refreshAll])
 
   const selectedCategoryName = useMemo(() => {
     if (selectedCategoryId === "all") return null
     return categories.find((c) => c.id === selectedCategoryId)?.name ?? null
   }, [selectedCategoryId, categories])
 
-  // カテゴリーでフィルタした収入・支出科目（科目名でユニーク化、重複解消）
+  /**
+   * 集金実績（records）から収入エントリを補完生成する。
+   * 既に同じ transactionId の collection 取引がある場合は二重計上を避けるため除外する。
+   */
+  const collectionIncomeEntries = useMemo(() => {
+    const scheduleMap = new Map(collectionSchedules.map((s) => [s.id, s]))
+    const existingCollectionTxIds = new Set(
+      transactions.filter((t) => t.type === "collection").map((t) => t.id)
+    )
+    const list: Array<{ date: string; amount: number; accountTitle: string; category: string }> = []
+
+    collectionRecords.forEach((record) => {
+      const schedule = scheduleMap.get(record.scheduleId)
+      if (!schedule) return
+      const accountTitle = schedule.accountTitleName || schedule.name || "会費収入"
+      const category = schedule.categoryName || "集金"
+
+      const history = record.paymentHistory ?? []
+      if (history.length > 0) {
+        history.forEach((h) => {
+          // 既存 collection 取引と重複する履歴は補完対象から除外
+          if (h.transactionId && existingCollectionTxIds.has(h.transactionId)) return
+          list.push({
+            date: h.date,
+            amount: h.amount,
+            accountTitle,
+            category,
+          })
+        })
+        return
+      }
+
+      // 履歴未保存の旧データ向けフォールバック
+      if (record.status !== "UNPAID" && (record.paidAmount ?? 0) !== 0 && record.paidAt) {
+        if (record.linkedTransactionId && existingCollectionTxIds.has(record.linkedTransactionId)) return
+        list.push({
+          date: record.paidAt,
+          amount: record.paidAmount ?? 0,
+          accountTitle,
+          category,
+        })
+      }
+    })
+
+    return list
+  }, [collectionSchedules, collectionRecords, transactions])
+
+  // 現金・預金科目名（口座名）を集計表の項目から除外するための集合
+  const cashAccountNameSet = useMemo(
+    () => new Set(accountTitles.filter((a) => a.group === "cash").map((a) => a.name)),
+    [accountTitles]
+  )
+
+  // カテゴリーでフィルタした収入・支出科目（マスタ + 実取引）
   const incomeTitles = useMemo(() => {
     let list = accountTitles.filter((a) => a.group === "income")
     if (selectedCategoryId !== "all") {
       list = list.filter((a) => a.categoryIds.includes(selectedCategoryId))
     }
-    const sorted = [...list].sort((a, b) => a.order - b.order)
-    const seen = new Set<string>()
-    return sorted.filter((t) => {
-      if (seen.has(t.name)) return false
-      seen.add(t.name)
-      return true
+    const map = new Map<string, { id?: string; name: string; order: number; categoryOrder: number }>()
+    ;[...list].sort((a, b) => a.order - b.order).forEach((t) => {
+      if (!map.has(t.name)) {
+        map.set(t.name, {
+          id: t.id,
+          name: t.name,
+          order: t.order,
+          categoryOrder: getMinCategoryOrder(t.categoryIds),
+        })
+      }
     })
-  }, [accountTitles, selectedCategoryId])
+    const incomeSources = [
+      ...transactions
+        .filter((t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t))
+        .map((t) => ({ accountTitle: t.accountTitle, category: t.category })),
+      ...collectionIncomeEntries.map((c) => ({
+        accountTitle: c.accountTitle,
+        category: c.category,
+      })),
+    ]
+    incomeSources
+      .filter((t) => !cashAccountNameSet.has(t.accountTitle))
+      .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
+      .forEach((t) => {
+        if (!map.has(t.accountTitle)) {
+          const byName = accountTitles.find((a) => a.group === "income" && a.name === t.accountTitle)
+          if (!byName) return
+          map.set(t.accountTitle, {
+            id: byName.id,
+            name: t.accountTitle,
+            order: byName.order,
+            categoryOrder: getMinCategoryOrder(byName.categoryIds),
+          })
+        }
+      })
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        a.categoryOrder - b.categoryOrder ||
+        a.order - b.order ||
+        a.name.localeCompare(b.name, "ja")
+    )
+  }, [accountTitles, selectedCategoryId, selectedCategoryName, transactions, collectionIncomeEntries, getMinCategoryOrder, cashAccountNameSet])
 
   const expenseTitles = useMemo(() => {
     let list = accountTitles.filter((a) => a.group === "expense")
     if (selectedCategoryId !== "all") {
       list = list.filter((a) => a.categoryIds.includes(selectedCategoryId))
     }
-    const sorted = [...list].sort((a, b) => a.order - b.order)
-    const seen = new Set<string>()
-    return sorted.filter((t) => {
-      if (seen.has(t.name)) return false
-      seen.add(t.name)
-      return true
+    const map = new Map<string, { id?: string; name: string; order: number; categoryOrder: number }>()
+    ;[...list].sort((a, b) => a.order - b.order).forEach((t) => {
+      if (!map.has(t.name)) {
+        map.set(t.name, {
+          id: t.id,
+          name: t.name,
+          order: t.order,
+          categoryOrder: getMinCategoryOrder(t.categoryIds),
+        })
+      }
     })
-  }, [accountTitles, selectedCategoryId])
+    transactions
+      // 振替（=出金元/入金先の2レコード）と現金・預金口座名を支出集計から除外
+      .filter((t) => t.type === "expense" && !isTransferLeg(t))
+      .filter((t) => !cashAccountNameSet.has(t.accountTitle))
+      .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
+      .forEach((t) => {
+        if (!map.has(t.accountTitle)) {
+          const byName = accountTitles.find(
+            (a) => a.group === "expense" && a.name === t.accountTitle
+          )
+          if (!byName) return
+          map.set(t.accountTitle, {
+            id: byName.id,
+            name: t.accountTitle,
+            order: byName.order,
+            categoryOrder: getMinCategoryOrder(byName.categoryIds),
+          })
+        }
+      })
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        a.categoryOrder - b.categoryOrder ||
+        a.order - b.order ||
+        a.name.localeCompare(b.name, "ja")
+    )
+  }, [accountTitles, selectedCategoryId, selectedCategoryName, transactions, getMinCategoryOrder, cashAccountNameSet])
 
   // 月別・科目別集計（収入）
   const incomeByMonthAndTitle = useMemo(() => {
@@ -128,8 +274,19 @@ export default function SummaryAnnualPage() {
       })
     })
 
-    transactions
-      .filter((t) => t.type === "income")
+    const incomeSources = [
+      ...transactions
+        .filter((t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t))
+        .map((t) => ({
+          date: t.date,
+          amount: t.amount,
+          accountTitle: t.accountTitle,
+          category: t.category,
+        })),
+      ...collectionIncomeEntries,
+    ]
+
+    incomeSources
       .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
       .forEach((t) => {
         for (const month of FISCAL_MONTHS) {
@@ -142,7 +299,7 @@ export default function SummaryAnnualPage() {
       })
 
     return map
-  }, [transactions, fiscalYear, selectedCategoryName, incomeTitles])
+  }, [transactions, collectionIncomeEntries, fiscalYear, selectedCategoryName, incomeTitles])
 
   // 月別・科目別集計（支出）
   const expenseByMonthAndTitle = useMemo(() => {
@@ -155,7 +312,7 @@ export default function SummaryAnnualPage() {
     })
 
     transactions
-      .filter((t) => t.type === "expense")
+      .filter((t) => t.type === "expense" && !isTransferLeg(t))
       .filter((t) => selectedCategoryName === null || t.category === selectedCategoryName)
       .forEach((t) => {
         for (const month of FISCAL_MONTHS) {
@@ -196,6 +353,8 @@ export default function SummaryAnnualPage() {
     [expenseTotalByMonth]
   )
   const balanceTotal = yearTotalIncome - yearTotalExpense
+  const isAllCategory = selectedCategoryId === "all"
+  const nextCarryoverTotal = openingCarryover + yearTotalIncome - yearTotalExpense
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -286,7 +445,7 @@ export default function SummaryAnnualPage() {
               </tr>
               {incomeTitles.map((title, idx) => (
                 <tr
-                  key={title.id}
+                  key={title.name}
                   className={`border-b border-gray-200 ${
                     idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                   } hover:bg-gray-100/50`}
@@ -360,7 +519,7 @@ export default function SummaryAnnualPage() {
               </tr>
               {expenseTitles.map((title, idx) => (
                 <tr
-                  key={title.id}
+                  key={title.name}
                   className={`border-b border-gray-200 ${
                     idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                   } hover:bg-gray-100/50`}
@@ -447,6 +606,32 @@ export default function SummaryAnnualPage() {
                   {formatAmount(balanceTotal)}
                 </td>
               </tr>
+              {isAllCategory && (
+                <>
+                  <tr className="font-bold border-t-2 border-gray-300 bg-slate-100/80">
+                    <td colSpan={13} className="px-4 py-3 text-left text-[#374151] border-r border-gray-200">
+                      前期繰越金
+                    </td>
+                    <td
+                      className="px-3 py-3 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 sticky right-0 z-10 bg-slate-100/80"
+                      style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                    >
+                      {formatAmount(openingCarryover)}
+                    </td>
+                  </tr>
+                  <tr className="font-bold bg-slate-200/80">
+                    <td colSpan={13} className="px-4 py-3 text-left text-[#374151] border-r border-gray-200">
+                      次期繰越金
+                    </td>
+                    <td
+                      className="px-3 py-3 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 sticky right-0 z-10 bg-slate-200/80"
+                      style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                    >
+                      {formatAmount(nextCarryoverTotal)}
+                    </td>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
         </div>

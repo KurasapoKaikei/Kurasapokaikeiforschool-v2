@@ -2,12 +2,8 @@ import type { Config } from "tailwindcss"
 
 const config = {
   darkMode: ["class"],
-  content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-	],
+  // Next.js の src ディレクトリ配下を明示（ルートに app/ が無い場合も確実にスキャンされるようにする）
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   prefix: "",
   theme: {
     container: {
@@ -71,6 +67,10 @@ const config = {
         },
         settings: {
           DEFAULT: "#77B8DA",
+          foreground: "#ffffff",
+        },
+        budget: {
+          DEFAULT: "#1A237E",
           foreground: "#ffffff",
         },
         alert: {

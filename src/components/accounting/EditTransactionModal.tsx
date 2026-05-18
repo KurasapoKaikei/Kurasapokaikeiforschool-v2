@@ -12,6 +12,13 @@ import {
   type AccountTitle,
   type Transaction,
 } from "@/utils/localStorage"
+import { isCsvLinkedTransaction } from "@/utils/transactionEditPath"
+import {
+  formatAmountInputDisplay,
+  isAllowedSignedIntegerTyping,
+  parseSubmitAmount,
+} from "@/utils/amountInput"
+import { useUserInfo } from "@/contexts/UserInfoContext"
 
 const THEME_COLOR = "#68A384"
 
@@ -32,6 +39,7 @@ export function EditTransactionModal({
   onClose,
   onSuccess,
 }: EditTransactionModalProps) {
+  const { currentOperatorName } = useUserInfo()
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [formData, setFormData] = useState({
@@ -95,16 +103,16 @@ export function EditTransactionModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!transaction || !canEdit) return
+    if (!transaction || !canEdit || isCsvLinkedTransaction(transaction)) return
 
-    const amount = parseFloat(formData.amount)
+    const amount = parseSubmitAmount(formData.amount)
     if (
       !formData.date ||
       !formData.category ||
       !formData.accountTitle ||
       !formData.counterpartyAccountTitle ||
       Number.isNaN(amount) ||
-      amount <= 0
+      amount === 0
     ) {
       alert("日付・カテゴリー・科目・入金先/出金元・金額を入力してください")
       return
@@ -122,6 +130,7 @@ export function EditTransactionModal({
       accountTitle: formData.accountTitle,
       memo: formData.memo,
       receiptUrl: formData.receiptUrl,
+      updatedBy: currentOperatorName,
     })
 
     alert("編集を保存しました")
@@ -141,6 +150,23 @@ export function EditTransactionModal({
   }
 
   if (!isOpen) return null
+
+  if (transaction && isCsvLinkedTransaction(transaction)) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/50" aria-hidden onClick={onClose} />
+        <div className="relative w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl">
+          <p className="text-[#374151] font-medium">CSV取込の明細は個別編集できません</p>
+          <p className="text-sm text-[#6B7280] mt-2">
+            登録履歴の「CSV」タブ、または帳簿から、該当CSVの一括編集画面を開いてください。
+          </p>
+          <Button type="button" onClick={onClose} className="mt-4 w-full" variant="outline">
+            閉じる
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   if (!canEdit) {
     return (
@@ -260,12 +286,18 @@ export function EditTransactionModal({
               <label className="block text-sm font-medium text-[#374151] mb-1.5">金額（円）</label>
               <div className="relative">
                 <input
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, amount: e.target.value }))}
-                  className="w-full pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#68A384] text-right"
-                  min="1"
-                  step="1"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={formatAmountInputDisplay(formData.amount)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/,/g, "")
+                    if (isAllowedSignedIntegerTyping(raw)) {
+                      setFormData((prev) => ({ ...prev, amount: raw }))
+                    }
+                  }}
+                  className="w-full pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#68A384] text-right tabular-nums"
+                  placeholder="0"
                   required
                 />
               </div>

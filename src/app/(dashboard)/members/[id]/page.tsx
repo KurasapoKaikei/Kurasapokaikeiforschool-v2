@@ -8,6 +8,7 @@ import {
   getCollectionRecords,
   getTransactions,
   syncAllCollectionRecords,
+  sumCollectionRecordNetPaid,
   type Member,
   type CollectionSchedule,
   type CollectionRecord,
@@ -18,8 +19,24 @@ import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 const THEME_COLOR = "#D99529"
 const FISCAL_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
 const FISCAL_START_MONTH = 4
+const CURRENT_FISCAL_YEAR = 2026
+const CURRENT_DISPLAY_MONTH = 5
 
 const fmt = (n: number): string => n.toLocaleString()
+
+function normalizeTargetMonth(schedule: CollectionSchedule): string {
+  const ym = (schedule.targetMonth || "").trim()
+  const fromTarget = ym.match(/(\d{4})[-/.年](\d{1,2})/)
+  if (fromTarget) {
+    return `${fromTarget[1]}-${String(Number(fromTarget[2])).padStart(2, "0")}`
+  }
+  const due = (schedule.dueDate || "").trim()
+  const fromDue = due.match(/(\d{4})[-/.年](\d{1,2})/)
+  if (fromDue) {
+    return `${fromDue[1]}-${String(Number(fromDue[2])).padStart(2, "0")}`
+  }
+  return ""
+}
 
 function toMonthNum(yyyymm: string): number {
   const m = Number((yyyymm || "").split("-")[1] || 0)
@@ -29,6 +46,15 @@ function toMonthNum(yyyymm: string): number {
 function fiscalOrderIndex(month: number): number {
   const idx = FISCAL_ORDER.indexOf(month as (typeof FISCAL_ORDER)[number])
   return idx >= 0 ? idx : 99
+}
+
+function ymToNumber(ym: string): number | null {
+  const m = ym.trim().match(/^(\d{4})[-/.年](\d{1,2})/)
+  if (!m) return null
+  const year = Number(m[1])
+  const month = Number(m[2])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return null
+  return year * 100 + month
 }
 
 type DetailRow = {
@@ -76,29 +102,45 @@ export default function MemberDetailPage() {
     return map
   }, [records])
 
+  const memberRecordScheduleIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of records) {
+      if (r.memberId === memberId) set.add(r.scheduleId)
+    }
+    return set
+  }, [records, memberId])
+
   const transactionMap = useMemo(() => {
     const map = new Map<string, Transaction>()
     transactions.forEach((t) => map.set(t.id, t))
     return map
   }, [transactions])
 
-  const rows = useMemo<DetailRow[]>(() => {
-    const targetSchedules = schedules.filter((s) => {
+  const targetSchedules = useMemo(
+    () =>
+      schedules.filter((s) => {
+      if (memberRecordScheduleIds.has(s.id)) return true
       if (!s.memberIds || s.memberIds.length === 0) return true
       return s.memberIds.includes(memberId)
-    })
+      }),
+    [schedules, memberRecordScheduleIds, memberId]
+  )
+
+  const rows = useMemo<DetailRow[]>(() => {
 
     const monthTotals = new Map<number, number>()
     for (const s of targetSchedules) {
-      const month = toMonthNum(s.targetMonth)
+      const targetMonth = normalizeTargetMonth(s)
+      const month = toMonthNum(targetMonth)
       monthTotals.set(month, (monthTotals.get(month) ?? 0) + s.amount)
     }
 
     return targetSchedules
       .map((s) => {
         const rec = recordMap.get(`${s.id}_${memberId}`)
-        const paid = rec?.paidAmount ?? 0
-        const month = toMonthNum(s.targetMonth)
+        const paid = rec ? sumCollectionRecordNetPaid(rec, transactions) : 0
+        const targetMonth = normalizeTargetMonth(s)
+        const month = toMonthNum(targetMonth)
         const status = getCollectionPaymentStatus(paid, s.amount)
         const payments = (rec?.paymentHistory ?? []).map((h) => ({
           amount: h.amount,
@@ -109,7 +151,7 @@ export default function MemberDetailPage() {
         const memoFromHistory = payments.map((p) => p.memo).filter((m) => m && m.trim() !== "").join(" / ")
         return {
           scheduleId: s.id,
-          targetMonth: s.targetMonth,
+          targetMonth,
           month,
           category: s.categoryName ?? "-",
           subject: s.accountTitleName ?? s.name,
@@ -126,7 +168,7 @@ export default function MemberDetailPage() {
         if (mo !== 0) return mo
         return a.subject.localeCompare(b.subject, "ja")
       })
-  }, [memberId, schedules, recordMap])
+  }, [memberId, targetSchedules, recordMap, transactions])
 
   const totals = useMemo(() => {
     const expected = rows.reduce((s, r) => s + r.expected, 0)
@@ -153,7 +195,7 @@ export default function MemberDetailPage() {
       grouped.set(row.targetMonth, list)
     }
 
-    const groups = [...grouped.entries()].map(([targetMonth, items]) => {
+    const groups = Array.from(grouped.entries()).map(([targetMonth, items]) => {
       const month = items[0]?.month ?? 0
       const expected = items.reduce((s, r) => s + r.expected, 0)
       const paid = items.reduce((s, r) => s + r.paid, 0)
@@ -169,7 +211,7 @@ export default function MemberDetailPage() {
           paymentMap.set(key, p)
         }
       }
-      const payments = [...paymentMap.values()]
+      const payments = Array.from(paymentMap.values())
         .map((p) => {
           const tx = transactionMap.get(p.transactionId)
           if (!tx) return p
@@ -198,18 +240,107 @@ export default function MemberDetailPage() {
     })
   }, [rows, transactionMap])
 
-  const today = useMemo(() => new Date(), [])
-  const asOfLabel = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日時点の未収入金総額`
-  const fiscalStartYear = today.getMonth() + 1 >= FISCAL_START_MONTH ? today.getFullYear() : today.getFullYear() - 1
-  const fiscalStartYm = `${fiscalStartYear}-${String(FISCAL_START_MONTH).padStart(2, "0")}`
-  const currentYm = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+  // 初年度運用方針: 2026年度（2026/04〜）に固定
+  const displayYear = CURRENT_FISCAL_YEAR
+  const currentMonth = CURRENT_DISPLAY_MONTH
+  const asOfLabel = `${displayYear}年${currentMonth}月時点の未収入金総額`
+  const currentYm = `${displayYear}-${String(currentMonth).padStart(2, "0")}`
+  const currentYmNum = ymToNumber(currentYm) ?? 0
+  const currentFiscalStartYear = CURRENT_FISCAL_YEAR
+  const fiscalStartYmNum = currentFiscalStartYear * 100 + FISCAL_START_MONTH
+  const effectiveEndYmNum = currentYmNum
+  const fiscalStartYm = `${currentFiscalStartYear}-${String(FISCAL_START_MONTH).padStart(2, "0")}`
 
   const overdueTotals = useMemo(() => {
-    const inRange = rows.filter((r) => r.targetMonth >= fiscalStartYm && r.targetMonth <= currentYm)
+    const inRange = rows.filter((r) => {
+      const normalizedYmNum = ymToNumber(r.targetMonth)
+      return normalizedYmNum !== null && normalizedYmNum >= fiscalStartYmNum && normalizedYmNum <= effectiveEndYmNum
+    })
     const expected = inRange.reduce((s, r) => s + r.expected, 0)
     const paid = inRange.reduce((s, r) => s + r.paid, 0)
     return { expected, paid, unpaid: expected - paid }
-  }, [rows, fiscalStartYm, currentYm])
+  }, [rows, fiscalStartYmNum, effectiveEndYmNum])
+
+  const inRangeRowCount = useMemo(
+    () =>
+      rows.filter((r) => {
+        const normalizedYmNum = ymToNumber(r.targetMonth)
+        return normalizedYmNum !== null && normalizedYmNum >= fiscalStartYmNum && normalizedYmNum <= effectiveEndYmNum
+      }).length,
+    [rows, fiscalStartYmNum, effectiveEndYmNum]
+  )
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return
+    const monthValues = targetSchedules.map((s) => ({
+      scheduleId: s.id,
+      rawTargetMonth: s.targetMonth,
+      rawDueDate: s.dueDate,
+      normalizedYm: normalizeTargetMonth(s),
+      normalizedYmNum: ymToNumber(normalizeTargetMonth(s)),
+    }))
+    console.log("[MemberDetailMonthCheck] current_month", {
+      currentYm,
+      currentYmNum,
+      fiscalStartYm,
+      fiscalStartYmNum,
+      effectiveEndYmNum,
+      currentFiscalStartYear,
+    })
+    console.log("[MemberDetailMonthCheck] month_values", monthValues)
+    console.log(
+      "[MemberDetailMonthCheck] month_values_with_type",
+      monthValues.map((v) => ({
+        scheduleId: v.scheduleId,
+        normalizedYm: v.normalizedYm,
+        normalizedYmNum: v.normalizedYmNum,
+        normalizedYmNumType: typeof v.normalizedYmNum,
+      }))
+    )
+    console.debug("[MemberDetailSummary]", {
+      memberId,
+      schedulesTotal: schedules.length,
+      targetSchedules: targetSchedules.length,
+      recordsTotal: records.length,
+      rowsTotal: rows.length,
+      inRangeRowCount,
+      expected: overdueTotals.expected,
+      paid: overdueTotals.paid,
+      unpaid: overdueTotals.unpaid,
+      fiscalStartYm,
+      currentYm,
+      effectiveEndYmNum,
+      inRangeMonths: rows
+        .filter((r) => {
+          const normalizedYmNum = ymToNumber(r.targetMonth)
+          return normalizedYmNum !== null && normalizedYmNum >= fiscalStartYmNum && normalizedYmNum <= effectiveEndYmNum
+        })
+        .map((r) => r.targetMonth),
+      monthProbe: targetSchedules.slice(0, 10).map((s) => ({
+        scheduleId: s.id,
+        rawTargetMonth: s.targetMonth,
+        rawDueDate: s.dueDate,
+        normalizedYm: normalizeTargetMonth(s),
+      })),
+    })
+  }, [
+    memberId,
+    schedules.length,
+    targetSchedules.length,
+    records.length,
+    rows.length,
+    inRangeRowCount,
+    overdueTotals.expected,
+    overdueTotals.paid,
+    overdueTotals.unpaid,
+    fiscalStartYm,
+    currentYm,
+    currentFiscalStartYear,
+    effectiveEndYmNum,
+    fiscalStartYmNum,
+    targetSchedules,
+    rows,
+  ])
 
   if (!member) {
     return (
@@ -253,24 +384,27 @@ export default function MemberDetailPage() {
             <p className={`mt-1 text-3xl font-bold ${overdueTotals.unpaid > 0 ? "text-[#DC2626]" : "text-[#B45309]"}`}>
               {fmt(overdueTotals.unpaid)}
             </p>
+            <p className="mt-1 text-[11px] text-[#92400E]">
+              対象期間の集金設定件数: {inRangeRowCount}件
+            </p>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="rounded-md border border-amber-100 bg-white/70 p-3">
-                <p className="text-[11px] font-medium text-[#6B7280]">当期実績（{FISCAL_START_MONTH}月〜当月）</p>
+                <p className="text-[11px] font-medium text-[#6B7280]">現時点実績（{FISCAL_START_MONTH}月〜当月）</p>
                 <div className="mt-2 space-y-1">
-                  <p className="text-xs text-[#6B7280]">予定合計</p>
-                  <p className="text-base font-semibold text-[#111827]">{fmt(overdueTotals.expected)}</p>
-                  <p className="text-xs text-[#6B7280]">入金合計</p>
-                  <p className="text-base font-semibold text-[#111827]">{fmt(overdueTotals.paid)}</p>
+                  <p className="text-xs text-[#6B7280]">集金予定合計</p>
+                  <p className="text-xl md:text-2xl font-bold text-[#111827]">{fmt(overdueTotals.expected)}</p>
+                  <p className="text-xs text-[#6B7280]">入金実績合計</p>
+                  <p className="text-xl md:text-2xl font-bold text-[#111827]">{fmt(overdueTotals.paid)}</p>
                 </div>
               </div>
 
               <div className="rounded-md border border-gray-200 bg-white/70 p-3">
                 <p className="text-[11px] font-medium text-[#6B7280]">全期間参考（年度全体）</p>
                 <div className="mt-2 space-y-1">
-                  <p className="text-xs text-[#6B7280]">予定合計</p>
+                  <p className="text-xs text-[#6B7280]">集金予定合計</p>
                   <p className="text-base font-semibold text-[#111827]">{fmt(totals.expected)}</p>
-                  <p className="text-xs text-[#6B7280]">入金合計</p>
+                  <p className="text-xs text-[#6B7280]">入金実績合計</p>
                   <p className="text-base font-semibold text-[#111827]">{fmt(totals.paid)}</p>
                 </div>
               </div>

@@ -1,20 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { useUserInfo } from "@/contexts/UserInfoContext"
 import {
   LayoutDashboard,
   Receipt,
   BookOpen,
   Wallet,
+  BarChart3,
   Users,
   Settings,
   HelpCircle,
   ChevronDown,
   ChevronRight,
+  type LucideIcon,
 } from "lucide-react"
 
 interface SubMenuItem {
@@ -25,7 +26,7 @@ interface SubMenuItem {
 interface MenuItem {
   title: string
   href: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
   color: string
   colorHex: string
   subItems?: SubMenuItem[]
@@ -41,7 +42,7 @@ const menuItems: MenuItem[] = [
   },
   {
     title: "入出金登録",
-    href: "/accounting/register",
+    href: "/accounting/input",
     icon: Receipt,
     color: "accounting",
     colorHex: "#A3BC68", // 黄緑
@@ -51,7 +52,7 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
-    title: "集金・帳簿",
+    title: "集計・帳簿",
     href: "/accounting/ledger",
     icon: BookOpen,
     color: "ledger",
@@ -76,6 +77,17 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
+    title: "予実管理",
+    href: "/budget",
+    icon: BarChart3,
+    color: "budget",
+    colorHex: "#1A237E", // ディープインディゴ
+    subItems: [
+      { title: "予算書", href: "/budget/book" },
+      { title: "前年度比", href: "/budget/comparison" },
+    ],
+  },
+  {
     title: "部員管理",
     href: "/members",
     icon: Users,
@@ -94,6 +106,7 @@ const menuItems: MenuItem[] = [
     colorHex: "#77B8DA", // ブルー
     subItems: [
       { title: "クラブ設定", href: "/settings/club" },
+      { title: "担当者設定", href: "/settings/staff" },
       { title: "カテゴリー設定", href: "/settings/category" },
       { title: "科目設定", href: "/settings/account-titles" },
     ],
@@ -107,16 +120,21 @@ const menuItems: MenuItem[] = [
   },
 ]
 
+/** サブメニュー href と現在パスの一致（`/budget/comparison` → `year-over-year` へのリダイレクトも同一扱い） */
+function subItemPathMatches(pathname: string, subHref: string): boolean {
+  if (pathname === subHref || pathname.startsWith(`${subHref}/`)) return true
+  if (subHref === "/budget/comparison" && pathname.startsWith("/budget/year-over-year")) return true
+  return false
+}
+
 export function Sidebar() {
   const pathname = usePathname()
-  const { userInfo } = useUserInfo()
   const [expandedItems, setExpandedItems] = useState<string[]>(() => {
-    // 現在のパスに基づいて初期展開状態を決定
     const initialExpanded: string[] = []
     menuItems.forEach((item) => {
       if (item.subItems) {
-        const hasActiveSubItem = item.subItems.some(
-          (subItem) => pathname === subItem.href || pathname.startsWith(subItem.href + "/")
+        const hasActiveSubItem = item.subItems.some((subItem) =>
+          subItemPathMatches(pathname, subItem.href)
         )
         if (hasActiveSubItem) {
           initialExpanded.push(item.href)
@@ -126,6 +144,19 @@ export function Sidebar() {
     return initialExpanded
   })
 
+  useEffect(() => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev)
+      menuItems.forEach((item) => {
+        if (!item.subItems) return
+        if (item.subItems.some((sub) => subItemPathMatches(pathname, sub.href))) {
+          next.add(item.href)
+        }
+      })
+      return Array.from(next)
+    })
+  }, [pathname])
+
   const toggleExpanded = (href: string) => {
     setExpandedItems((prev) =>
       prev.includes(href) ? prev.filter((h) => h !== href) : [...prev, href]
@@ -134,15 +165,13 @@ export function Sidebar() {
 
   const isItemActive = (item: MenuItem) => {
     if (item.subItems) {
-      return item.subItems.some(
-        (subItem) => pathname === subItem.href || pathname.startsWith(subItem.href + "/")
-      )
+      return item.subItems.some((subItem) => subItemPathMatches(pathname, subItem.href))
     }
     return pathname === item.href || pathname.startsWith(item.href + "/")
   }
 
   const isSubItemActive = (subItem: SubMenuItem) => {
-    return pathname === subItem.href || pathname.startsWith(subItem.href + "/")
+    return subItemPathMatches(pathname, subItem.href)
   }
 
   return (
@@ -230,33 +259,24 @@ export function Sidebar() {
                   <div className="ml-8 mt-1 space-y-1">
                     {item.subItems!.map((subItem) => {
                       const subIsActive = isSubItemActive(subItem)
-                      // 「for school」ユーザーの場合、「クラブ設定」をグレーアウト
-                      const isDisabled = userInfo.isForSchool && subItem.href === "/settings/club"
-                      
+
                       return (
                         <Link
                           key={subItem.href}
                           href={subItem.href}
                           className={cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-                            isDisabled
-                              ? "text-gray-400 cursor-not-allowed pointer-events-none"
-                              : subIsActive
+                            subIsActive
                               ? "bg-[#FCE7F3] text-[#374151] font-medium"
                               : "text-[#6B7280] hover:bg-gray-50 hover:text-[#374151]"
                           )}
-                          onClick={(e) => {
-                            if (isDisabled) {
-                              e.preventDefault()
-                            }
-                          }}
                         >
                           <div
                             className={cn(
                               "h-1.5 w-1.5 rounded-full",
-                              subIsActive ? item.colorHex : isDisabled ? "bg-gray-300" : "bg-gray-300"
+                              subIsActive ? item.colorHex : "bg-gray-300"
                             )}
-                            style={subIsActive && !isDisabled ? { backgroundColor: item.colorHex } : {}}
+                            style={subIsActive ? { backgroundColor: item.colorHex } : {}}
                           />
                           <span>{subItem.title}</span>
                         </Link>

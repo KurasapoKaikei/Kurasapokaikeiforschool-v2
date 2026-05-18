@@ -4,20 +4,23 @@ import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle } from "lucide-react"
 import { mockMessages } from "@/constants/mockData"
-import { getTransactions, getAccountTitles, getMembers, type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
+import { getTransactions, getAccountTitles, getMembers, getCurrentOperator, type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [selectedYear, setSelectedYear] = useState("2025年度")
+  const [selectedYear, setSelectedYear] = useState("2026年度")
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [members, setMembers] = useState<Member[]>([])
+
+  const [currentOperatorLabel, setCurrentOperatorLabel] = useState<string | null>(null)
 
   // LocalStorageから取引・科目・部員データを読み込み
   useEffect(() => {
     setTransactions(getTransactions())
     setAccountTitles(getAccountTitles())
     setMembers(getMembers())
+    setCurrentOperatorLabel(getCurrentOperator())
   }, [])
 
   // データの変更を監視（リアルタイム更新）
@@ -26,6 +29,7 @@ export default function DashboardPage() {
       setTransactions(getTransactions())
       setAccountTitles(getAccountTitles())
       setMembers(getMembers())
+      setCurrentOperatorLabel(getCurrentOperator())
     }, 500)
 
     return () => clearInterval(interval)
@@ -173,7 +177,7 @@ export default function DashboardPage() {
       <div className="bg-white border-b border-gray-200 px-6 py-2">
         <div className="flex items-center gap-2">
           <span className="text-xs text-[#6B7280] mr-2">年度切替:</span>
-          {["2023年度", "2024年度", "2025年度"].map((year) => (
+          {["2024年度", "2025年度", "2026年度"].map((year) => (
             <button
               key={year}
               onClick={() => setSelectedYear(year)}
@@ -186,6 +190,25 @@ export default function DashboardPage() {
               {year}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* 作業者表示（チェックイン前は未選択。値は localStorage classapo_current_operator） */}
+      <div className="bg-white border-b border-gray-200 px-6 py-3">
+        <div
+          className="rounded-lg border-2 border-[#E66A84]/40 bg-[#FCE7F3]/60 px-4 py-3 text-center shadow-sm"
+          role="status"
+        >
+          <p className="text-sm text-[#374151] sm:text-base">
+            現在の作業者は{" "}
+            <span className="font-semibold text-[#E66A84] tabular-nums">
+              [{currentOperatorLabel ?? "未選択"}]
+            </span>
+            です
+          </p>
+          <p className="text-xs text-[#6B7280] mt-1.5">
+            ※今後ここからチェックインできるようになります（現時点は表示のみ）
+          </p>
         </div>
       </div>
 

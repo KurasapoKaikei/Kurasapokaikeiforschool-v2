@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Download, Upload, CheckCircle2, AlertTriangle, FileSpreadsheet, UserPlus } from "lucide-react"
+import { Download, Upload, CheckCircle2, FileSpreadsheet, UserPlus } from "lucide-react"
 import { getMembers, addMember, type Member } from "@/utils/localStorage"
+import { createUtf8CsvBlob, stripLeadingCsvBom } from "@/utils/csvUtf8"
 
 const THEME_COLOR = "#9D8CC3"
 const GRADE_LABELS: Record<number, string> = { 1: "1年生", 2: "2年生", 3: "3年生", 4: "4年生" }
@@ -78,10 +79,8 @@ export default function MembersRegisterPage() {
 
   // ===== CSVテンプレート =====
   const handleDownloadTemplate = () => {
-    const bom = "\uFEFF"
     const header = "氏名,学年,メールアドレス\n"
-    const sample = "山田太郎,2,taro@example.com\n鈴木花子,1,\n"
-    const blob = new Blob([bom + header + sample], { type: "text/csv;charset=utf-8;" })
+    const blob = createUtf8CsvBlob(header)
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -92,7 +91,7 @@ export default function MembersRegisterPage() {
 
   // ===== CSV解析 =====
   const parseCsv = (text: string): CsvRow[] => {
-    const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "")
+    const lines = stripLeadingCsvBom(text).split(/\r?\n/).filter((line) => line.trim() !== "")
     if (lines.length <= 1) return []
 
     const existingMembers = getMembers()
@@ -469,64 +468,58 @@ export default function MembersRegisterPage() {
                           : `${validRows.length}名の部員データを確認してください。`}
                       </p>
 
-                      <div className="border border-gray-200 rounded-lg overflow-hidden mb-4">
-                        <div className="overflow-x-auto">
-                          <table className="w-full border-collapse text-sm">
-                            <thead>
-                              <tr className="bg-gray-50">
-                                <th className="px-4 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 w-12">
-                                  No.
-                                </th>
-                                <th className="px-4 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
-                                  氏名
-                                </th>
-                                <th className="px-4 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 w-20">
-                                  学年
-                                </th>
-                                <th className="px-4 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
-                                  メール
-                                </th>
-                                <th className="px-4 py-2.5 text-center font-semibold text-[#374151] border-b border-gray-200 w-16">
-                                  状態
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {csvRows.map((row, idx) => {
-                                const hasErr = row.errors.length > 0
-                                return (
-                                  <tr
-                                    key={idx}
-                                    className={`border-b border-gray-100 ${hasErr ? "bg-red-50" : ""}`}
-                                  >
-                                    <td className="px-4 py-2.5 text-right tabular-nums text-[#6B7280]">
-                                      {idx + 1}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-left text-[#374151]">
-                                      {row.name || <span className="text-red-400 italic">未入力</span>}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-center text-[#374151]">
-                                      {row.grade ? GRADE_LABELS[row.grade] : <span className="text-red-400 italic">-</span>}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-left text-[#6B7280]">
-                                      {row.email || "-"}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-center">
-                                      {hasErr ? (
-                                        <span className="inline-flex items-center gap-1 text-xs text-red-600">
-                                          <AlertTriangle className="h-3.5 w-3.5" />
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 text-xs text-green-600">
-                                          <CheckCircle2 className="h-3.5 w-3.5" />
-                                        </span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
+                      <div className="flex justify-center mb-4">
+                        <div className="border border-gray-200 rounded-lg overflow-hidden inline-block max-w-full">
+                          <div className="overflow-x-auto">
+                            <table className="table-fixed border-collapse text-sm w-[22rem] sm:w-[26rem]">
+                              <colgroup>
+                                <col className="w-10" />
+                                <col className="w-[7rem]" />
+                                <col className="w-12" />
+                                <col className="w-[9rem]" />
+                              </colgroup>
+                              <thead>
+                                <tr className="bg-gray-50">
+                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
+                                    No.
+                                  </th>
+                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
+                                    氏名
+                                  </th>
+                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
+                                    学年
+                                  </th>
+                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-gray-200">
+                                    メール
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {csvRows.map((row, idx) => {
+                                  const hasErr = row.errors.length > 0
+                                  return (
+                                    <tr
+                                      key={idx}
+                                      className={`border-b border-gray-100 last:border-b-0 ${hasErr ? "bg-red-50" : ""}`}
+                                    >
+                                      <td className="px-2 py-2.5 text-center tabular-nums text-[#6B7280] border-r border-gray-100">
+                                        {idx + 1}
+                                      </td>
+                                      <td className="px-2 py-2.5 text-left text-[#374151] border-r border-gray-100 truncate max-w-0" title={row.name || undefined}>
+                                        {row.name || <span className="text-red-400 italic">未入力</span>}
+                                      </td>
+                                      <td className="px-2 py-2.5 text-center tabular-nums text-[#374151] border-r border-gray-100">
+                                        {row.grade != null ? row.grade : <span className="text-red-400 italic">-</span>}
+                                      </td>
+                                      <td className="px-2 py-2.5 text-left text-[#6B7280] truncate max-w-0" title={row.email || undefined}>
+                                        {row.email || "-"}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       </div>
 

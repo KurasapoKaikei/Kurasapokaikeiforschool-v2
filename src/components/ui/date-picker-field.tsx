@@ -25,6 +25,8 @@ export interface DatePickerFieldProps {
   className?: string
   themeColor?: string
   disabled?: boolean
+  /** true のとき表示を `yyyy/MM/dd (曜)` 形式にする */
+  showWeekday?: boolean
   "aria-label"?: string
 }
 
@@ -61,6 +63,7 @@ export function DatePickerField({
   className,
   themeColor = "#68A384",
   disabled = false,
+  showWeekday = false,
   "aria-label": ariaLabel,
 }: DatePickerFieldProps) {
   const [open, setOpen] = React.useState(false)
@@ -72,7 +75,9 @@ export function DatePickerField({
   const containerRef = React.useRef<HTMLDivElement>(null)
 
   const valueDate = value ? new Date(value + "T12:00:00") : null
-  const displayStr = valueDate ? format(valueDate, "yyyy/MM/dd", { locale: ja }) : ""
+  const displayStr = valueDate
+    ? format(valueDate, showWeekday ? "yyyy/MM/dd (EEE)" : "yyyy/MM/dd", { locale: ja })
+    : ""
 
   React.useEffect(() => {
     if (value) setViewDate(new Date(value + "T12:00:00"))

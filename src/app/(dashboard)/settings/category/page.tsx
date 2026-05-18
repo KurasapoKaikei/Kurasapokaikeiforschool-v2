@@ -3,7 +3,17 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { HelpCircle, GripVertical, Edit2, Trash2 } from "lucide-react"
-import { getCategories, saveCategories, type Category } from "@/utils/localStorage"
+import {
+  getCategories,
+  saveCategories,
+  propagateMasterRename,
+  type Category,
+} from "@/utils/localStorage"
+import { isDuplicateName } from "@/utils/nameNormalize"
+
+/** v2.9 §6.6 整合性チェック：名称重複禁止のメッセージ */
+const MSG_CATEGORY_DUPLICATE =
+  "このカテゴリー名はすでに登録されています。別の名前を入力してください。"
 
 export default function CategorySettingsPage() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -41,11 +51,18 @@ export default function CategorySettingsPage() {
   }
 
   const handleAddCategory = () => {
-    if (!newCategoryName.trim()) return
+    const trimmed = newCategoryName.trim()
+    if (!trimmed) return
+
+    // v2.9 §6.6 整合性チェック：カテゴリー名の重複禁止（NFKC + 小文字 + trim で比較）
+    if (isDuplicateName(trimmed, categories.map((c) => c.name))) {
+      alert(MSG_CATEGORY_DUPLICATE)
+      return
+    }
 
     const newCategory: Category = {
       id: Date.now().toString(),
-      name: newCategoryName.trim(),
+      name: trimmed,
       order: categories.length + 1,
       isUsed: false,
     }
@@ -61,13 +78,41 @@ export default function CategorySettingsPage() {
   }
 
   const handleSaveEdit = (id: string) => {
-    setCategories(
-      categories.map((cat) =>
-        cat.id === id ? { ...cat, name: editingName.trim() } : cat
+    const target = categories.find((c) => c.id === id)
+    if (!target) return
+    const trimmed = editingName.trim()
+    if (!trimmed) {
+      // 空名は従来通り無視（編集をキャンセル相当の挙動）
+      handleCancelEdit()
+      return
+    }
+    // v2.9 §6.6 整合性チェック：自分自身の旧名は除外して重複判定
+    if (
+      isDuplicateName(
+        trimmed,
+        categories.map((c) => c.name),
+        target.name
       )
+    ) {
+      alert(MSG_CATEGORY_DUPLICATE)
+      return
+    }
+    setCategories(
+      categories.map((cat) => (cat.id === id ? { ...cat, name: trimmed } : cat))
     )
+    // v2.9 §6.7 名称変更の集金設定・仕訳への自動波及
+    const propagated =
+      target.name.trim() !== trimmed
+        ? propagateMasterRename("category", target.name, trimmed)
+        : { schedules: 0, transactions: 0 }
     setEditingId(null)
     setEditingName("")
+    const total = propagated.schedules + propagated.transactions
+    if (total > 0) {
+      showToast(
+        `カテゴリー名を更新（集金設定 ${propagated.schedules} 件・仕訳 ${propagated.transactions} 件に反映）`
+      )
+    }
   }
 
   const handleCancelEdit = () => {

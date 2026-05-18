@@ -1,25 +1,26 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { DatePickerField } from "@/components/ui/date-picker-field"
-import { EditTransactionModal } from "@/components/accounting/EditTransactionModal"
 import { Pencil, Trash2 } from "lucide-react"
 import {
   getCategories,
   getAccountTitles,
   getTransactions,
   deleteTransaction,
+  isTransferLeg,
   type Category,
   type AccountTitle,
   type Transaction,
 } from "@/utils/localStorage"
+import { getEditUrl, isCsvLinkedTransaction } from "@/utils/transactionEditPath"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
 
-// カラム幅比率（合計29）: 日付4, 現金/預金5, 収入3, 支出3, メモ10, 証憑2, 編集1, 削除1
-const COL_RATIOS = [4, 5, 3, 3, 10, 2, 1, 1] as const
+// カラム幅比率（合計29）: 日付4, 現金/預金5, 金額6, メモ10, 証憑2, 編集1, 削除1
+const COL_RATIOS = [4, 5, 6, 10, 2, 1, 1] as const
 const COL_WIDTHS = COL_RATIOS.map((r) => `${(r / 29) * 100}%`)
 
 /** 今期の期首（4月1日）を YYYY-MM-DD で返す */
@@ -34,7 +35,7 @@ function getTodayString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-type RowKind = "data" | "subtotal"
+type RowKind = "data" | "subtotal" | "grandTotal"
 
 interface TableRow {
   kind: RowKind
@@ -43,16 +44,33 @@ interface TableRow {
   monthLabel?: string
   counterparty?: string
   memo?: string
-  incomeAmount?: number
-  expenseAmount?: number
+  /** 単式簿記：取引の増減を符号付きで表示・合計（プラスの入金・マイナスの返金など） */
+  amount?: number
   isSubtotal?: boolean
   transactionId?: string
   receiptUrl?: string | null
   transaction?: Transaction
 }
 
+function subjectGroupLabel(group: AccountTitle["group"] | undefined): "【収入】" | "【支出】" | "" {
+  if (group === "income") return "【収入】"
+  if (group === "expense") return "【支出】"
+  return ""
+}
+
+function formatSignedLedgerAmount(n: number): string {
+  return n.toLocaleString("ja-JP")
+}
+
 export default function LedgerSubjectPage() {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const searchQs = searchParams.toString()
+  const editReturnTo = useMemo(
+    () => pathname + (searchQs ? `?${searchQs}` : ""),
+    [pathname, searchQs]
+  )
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -60,7 +78,6 @@ export default function LedgerSubjectPage() {
   const [subjectId, setSubjectId] = useState<string>("")
   const [startDate, setStartDate] = useState<string>(getFiscalYearStart())
   const [endDate, setEndDate] = useState<string>(getTodayString())
-  const [editTransaction, setEditTransaction] = useState<Transaction | null>(null)
 
   const refreshTransactions = () => setTransactions(getTransactions())
 
@@ -71,7 +88,19 @@ export default function LedgerSubjectPage() {
     }
   }
 
-  const handleEdit = (t: Transaction) => setEditTransaction(t)
+  const handleEdit = (t: Transaction) => {
+    router.push(getEditUrl(t, editReturnTo))
+  }
+  const handleOpenCollection = (t: Transaction) => {
+    if (t.type !== "collection" || !t.collectionMemberId) return
+    const month = Number(t.date.slice(5, 7))
+    const params = new URLSearchParams()
+    params.set("tab", "collection")
+    params.set("memberId", t.collectionMemberId)
+    if (Number.isFinite(month)) params.set("month", String(month))
+    params.set("transactionId", t.id)
+    router.push(`/accounting/register/new?${params.toString()}`)
+  }
 
   // URLパラメータから初期値を反映（収支集計表からのドリルダウン用）
   useEffect(() => {
@@ -110,16 +139,35 @@ export default function LedgerSubjectPage() {
     [accountTitles]
   )
 
-  // 科目選択肢：カテゴリー連動。現金・預金は除外。選択カテゴリーに紐づく収入・支出のみ
+  // 科目選択肢：カテゴリー連動。現金・預金は除外。
+  // 並び順は「収入 -> 支出」かつ設定順（order）を維持する。
   const filteredSubjectsForSelect = useMemo(() => {
     const incomeExpense = accountTitles.filter((t) => t.group === "income" || t.group === "expense")
-    if (categoryId === "all") {
-      return incomeExpense.sort((a, b) => a.order - b.order)
+    const categoryOrder = new Map(categories.map((c) => [c.id, c.order]))
+    const minCategoryOrder = (title: AccountTitle): number => {
+      if (!title.categoryIds || title.categoryIds.length === 0) return Number.MAX_SAFE_INTEGER
+      return Math.min(
+        ...title.categoryIds.map((id) => categoryOrder.get(id) ?? Number.MAX_SAFE_INTEGER)
+      )
     }
-    return incomeExpense
+    const sortFn = (a: AccountTitle, b: AccountTitle) => {
+      const groupRankA = a.group === "income" ? 0 : 1
+      const groupRankB = b.group === "income" ? 0 : 1
+      if (groupRankA !== groupRankB) return groupRankA - groupRankB
+      const catA = minCategoryOrder(a)
+      const catB = minCategoryOrder(b)
+      if (catA !== catB) return catA - catB
+      if (a.order !== b.order) return a.order - b.order
+      return a.name.localeCompare(b.name, "ja")
+    }
+
+    if (categoryId === "all") {
+      return [...incomeExpense].sort(sortFn)
+    }
+    return [...incomeExpense]
       .filter((t) => t.categoryIds.includes(categoryId))
-      .sort((a, b) => a.order - b.order)
-  }, [accountTitles, categoryId])
+      .sort(sortFn)
+  }, [accountTitles, categoryId, categories])
 
   const selectedSubject = useMemo(
     () => accountTitles.find((t) => t.id === subjectId),
@@ -145,6 +193,8 @@ export default function LedgerSubjectPage() {
       if (!t.date) return false
       if (t.date < startDate || t.date > endDate) return false
       if (t.accountTitle !== subjectName) return false
+      // 振替（出金元/入金先の対レコード）は科目別台帳の集計から除外
+      if (isTransferLeg(t)) return false
       if (categoryId !== "all") {
         const cat = categories.find((c) => c.id === categoryId)
         if (cat && t.category !== cat.name) return false
@@ -165,24 +215,19 @@ export default function LedgerSubjectPage() {
       byMonth.get(monthKey)!.push(t)
     }
 
-    const sortedMonths = [...byMonth.keys()].sort()
+    const sortedMonths = Array.from(byMonth.keys()).sort()
     for (const monthKey of sortedMonths) {
       const monthTx = byMonth.get(monthKey)!.sort((a, b) => a.date.localeCompare(b.date))
-      let monthIncome = 0
-      let monthExpense = 0
+      let monthSum = 0
       monthTx.forEach((t, i) => {
-        const isIncome = t.type === "income" || t.type === "collection"
-        const isExpense = t.type === "expense" || t.type === "transfer" || t.type === "deferred"
-        if (isIncome) monthIncome += t.amount
-        if (isExpense) monthExpense += t.amount
+        monthSum += t.amount
         rows.push({
           kind: "data",
           key: `data-${monthKey}-${i}-${t.id}`,
           date: t.date,
           counterparty: t.counterparty,
           memo: t.memo,
-          incomeAmount: isIncome ? t.amount : undefined,
-          expenseAmount: isExpense ? t.amount : undefined,
+          amount: t.amount,
           transactionId: t.id,
           receiptUrl: t.receiptUrl,
           transaction: t,
@@ -193,18 +238,29 @@ export default function LedgerSubjectPage() {
         kind: "subtotal",
         key: `sub-${monthKey}`,
         monthLabel: `${m}月合計`,
-        incomeAmount: monthIncome,
-        expenseAmount: monthExpense,
+        amount: monthSum,
         isSubtotal: true,
       })
     }
+
+    const periodSum = filteredTransactions.reduce((s, t) => s + t.amount, 0)
+    rows.push({
+      kind: "grandTotal",
+      key: "grand-total",
+      monthLabel: "合計金額",
+      amount: periodSum,
+    })
+
     return rows
   }, [filteredTransactions])
 
   const dynamicTitle = useMemo(() => {
-    const subjectName = selectedSubject?.name ?? "科目未選択"
     const categoryLabel = categoryId === "all" ? "すべて" : selectedCategory?.name ?? "すべて"
-    return `${subjectName}（${categoryLabel}）`
+    if (!selectedSubject) {
+      return `科目未選択（${categoryLabel}）`
+    }
+    const prefix = subjectGroupLabel(selectedSubject.group)
+    return `${prefix}${selectedSubject.name}（${categoryLabel}）`
   }, [selectedSubject, categoryId, selectedCategory])
 
   /** 日付表示用: YYYY-MM-DD → YYYY/MM/DD */
@@ -262,7 +318,7 @@ export default function LedgerSubjectPage() {
                 <option value="">選択してください</option>
                 {filteredSubjectsForSelect.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}（{t.group === "income" ? "収入" : "支出"}）
+                    {t.name}
                   </option>
                 ))}
               </select>
@@ -322,10 +378,7 @@ export default function LedgerSubjectPage() {
                     現金/預金
                   </th>
                   <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 text-xs whitespace-nowrap">
-                    収入金額
-                  </th>
-                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 text-xs whitespace-nowrap">
-                    支出金額
+                    金額
                   </th>
                   <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 text-xs whitespace-nowrap">
                     メモ
@@ -345,7 +398,7 @@ export default function LedgerSubjectPage() {
                 {tableRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={7}
                       className="border-b border-gray-200 px-4 py-16 text-center"
                     >
                       {!subjectId ? (
@@ -367,35 +420,35 @@ export default function LedgerSubjectPage() {
                     <tr
                       key={row.key}
                       className={`border-b border-gray-200 hover:bg-gray-100/50 ${
-                        row.isSubtotal
-                          ? "bg-[#68A384]/15 font-semibold"
-                          : index % 2 === 0
-                            ? "bg-white"
-                            : "bg-gray-50/70"
+                        row.kind === "grandTotal"
+                          ? "bg-[#68A384]/25 font-semibold border-t-2 border-[#68A384]/40"
+                          : row.isSubtotal
+                            ? "bg-[#68A384]/15 font-semibold"
+                            : index % 2 === 0
+                              ? "bg-white"
+                              : "bg-gray-50/70"
                       }`}
                     >
                       {/* 日付 */}
-                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isSubtotal ? "font-medium" : ""} ${index % 2 === 0 && !row.isSubtotal ? "bg-white" : row.isSubtotal ? "" : "bg-gray-50/70"}`}>
+                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isSubtotal || row.kind === "grandTotal" ? "font-medium" : ""} ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
                         {row.kind === "data" && row.date ? formatDateDisplay(row.date) : row.monthLabel}
                       </td>
                       {/* 現金/預金 */}
-                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal ? "bg-white" : row.isSubtotal ? "" : "bg-gray-50/70"}`}>
+                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
                         {row.kind === "data" ? row.counterparty ?? "-" : ""}
                       </td>
-                      {/* 収入金額 */}
-                      <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal ? "bg-white" : row.isSubtotal ? "" : "bg-gray-50/70"}`}>
-                        {row.incomeAmount != null && row.incomeAmount > 0
-                          ? row.incomeAmount.toLocaleString()
-                          : "-"}
-                      </td>
-                      {/* 支出金額 */}
-                      <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal ? "bg-white" : row.isSubtotal ? "" : "bg-gray-50/70"}`}>
-                        {row.expenseAmount != null && row.expenseAmount > 0
-                          ? row.expenseAmount.toLocaleString()
-                          : "-"}
+                      {/* 金額（符号付き・単式簿記） */}
+                      <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
+                        {row.kind === "data" && row.amount != null
+                          ? formatSignedLedgerAmount(row.amount)
+                          : row.isSubtotal || row.kind === "grandTotal"
+                            ? row.amount != null
+                              ? formatSignedLedgerAmount(row.amount)
+                              : "—"
+                            : "—"}
                       </td>
                       {/* メモ */}
-                      <td className={`px-2 py-2 text-left text-[#374151] border-r border-gray-200 text-xs overflow-hidden ${index % 2 === 0 && !row.isSubtotal ? "bg-white" : row.isSubtotal ? "" : "bg-gray-50/70"}`} title={row.kind === "data" ? row.memo ?? undefined : undefined}>
+                      <td className={`px-2 py-2 text-left text-[#374151] border-r border-gray-200 text-xs overflow-hidden ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`} title={row.kind === "data" ? row.memo ?? undefined : undefined}>
                         <span className="block truncate max-w-full">
                           {row.kind === "data" ? row.memo ?? "-" : ""}
                         </span>
@@ -403,7 +456,7 @@ export default function LedgerSubjectPage() {
                       {/* レシート・証憑 */}
                       <td
                         className={`px-2 py-2 text-center border-r border-gray-200 text-xs ${
-                          row.isSubtotal
+                          row.isSubtotal || row.kind === "grandTotal"
                             ? ""
                             : row.receiptUrl
                               ? index % 2 === 0
@@ -412,13 +465,18 @@ export default function LedgerSubjectPage() {
                               : ""
                         }`}
                         style={
-                          !row.isSubtotal && !row.receiptUrl
+                          !row.isSubtotal &&
+                          row.kind !== "grandTotal" &&
+                          !row.receiptUrl &&
+                          row.transaction?.type !== "collection"
                             ? { backgroundColor: RECEIPT_ALERT_BG }
                             : undefined
                         }
                       >
-                        {row.isSubtotal ? (
+                        {row.isSubtotal || row.kind === "grandTotal" ? (
                           ""
+                        ) : row.transaction?.type === "collection" ? (
+                          <span className="text-[#9CA3AF] text-xs">ー</span>
                         ) : row.receiptUrl ? (
                           <a
                             href={row.receiptUrl}
@@ -440,21 +498,33 @@ export default function LedgerSubjectPage() {
                       {/* 編集 */}
                       <td
                         className={`px-2 py-2 text-center border-r border-gray-200 text-xs whitespace-nowrap ${
-                          row.isSubtotal ? "" : index % 2 === 0 ? "bg-white" : "bg-gray-50/70"
+                          row.isSubtotal || row.kind === "grandTotal" ? "" : index % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                         }`}
                       >
-                        {row.isSubtotal ? (
+                        {row.isSubtotal || row.kind === "grandTotal" ? (
                           ""
                         ) : row.transaction ? (
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(row.transaction!)}
-                            className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
-                            title="編集"
-                            aria-label="編集"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                          row.transaction.type === "collection" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCollection(row.transaction!)}
+                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
+                              title="集金タブへ移動"
+                              aria-label="集金タブへ移動"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(row.transaction!)}
+                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
+                              title={isCsvLinkedTransaction(row.transaction) ? "CSV一括編集へ" : "明細を編集"}
+                              aria-label="編集"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )
                         ) : (
                           ""
                         )}
@@ -462,10 +532,10 @@ export default function LedgerSubjectPage() {
                       {/* 削除 */}
                       <td
                         className={`px-2 py-2 text-center border-gray-200 text-xs whitespace-nowrap ${
-                          row.isSubtotal ? "" : index % 2 === 0 ? "bg-white" : "bg-gray-50/70"
+                          row.isSubtotal || row.kind === "grandTotal" ? "" : index % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                         }`}
                       >
-                        {row.isSubtotal ? (
+                        {row.isSubtotal || row.kind === "grandTotal" ? (
                           ""
                         ) : row.transaction ? (
                           <button
@@ -490,12 +560,6 @@ export default function LedgerSubjectPage() {
         </div>
       </div>
 
-      <EditTransactionModal
-        transaction={editTransaction}
-        isOpen={!!editTransaction}
-        onClose={() => setEditTransaction(null)}
-        onSuccess={refreshTransactions}
-      />
     </div>
   )
 }

@@ -11,6 +11,11 @@ import {
   type Category,
   type AccountTitle,
 } from "@/utils/localStorage"
+import {
+  formatAmountInputDisplay,
+  isAllowedSignedIntegerTyping,
+  parseSubmitAmount,
+} from "@/utils/amountInput"
 
 const THEME_COLOR = "#A3BC68"
 
@@ -92,9 +97,9 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    const amount = parseFloat(formData.amount)
-    if (!formData.date || !formData.category || !formData.accountTitle || !formData.counterpartyAccountTitle || Number.isNaN(amount) || amount <= 0) {
-      alert("日付・カテゴリー・科目・入金先/出金元・金額（0より大きい数値）を入力してください。")
+    const amount = parseSubmitAmount(formData.amount)
+    if (!formData.date || !formData.category || !formData.accountTitle || !formData.counterpartyAccountTitle || Number.isNaN(amount) || amount === 0) {
+      alert("日付・カテゴリー・科目・入金先/出金元・金額（0以外の数値）を入力してください。")
       return
     }
 
@@ -245,14 +250,19 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
                 金額（円） <span className="text-[#EF4444]">*</span>
               </label>
               <input
-                type="number"
+                type="text"
                 id="modal-amount"
-                value={formData.amount}
-                onChange={(e) => setFormData((prev) => ({ ...prev, amount: e.target.value }))}
+                inputMode="numeric"
+                autoComplete="off"
+                value={formatAmountInputDisplay(formData.amount)}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/,/g, "")
+                  if (isAllowedSignedIntegerTyping(raw)) {
+                    setFormData((prev) => ({ ...prev, amount: raw }))
+                  }
+                }}
                 className="w-full px-3 py-2 text-right tabular-nums border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#A3BC68] focus:border-transparent"
                 placeholder="0"
-                min="1"
-                step="1"
                 required
               />
             </div>

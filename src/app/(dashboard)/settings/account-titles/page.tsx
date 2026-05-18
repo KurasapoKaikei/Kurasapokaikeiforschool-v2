@@ -3,7 +3,36 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { GripVertical, Edit2, Trash2 } from "lucide-react"
-import { getCategories, getAccountTitles, saveAccountTitles, type Category, type AccountTitle } from "@/utils/localStorage"
+import {
+  getCategories,
+  getAccountTitles,
+  saveAccountTitles,
+  getSystemSettings,
+  saveSystemSettings,
+  getTransactions,
+  getCollectionSchedules,
+  propagateMasterRename,
+  type Category,
+  type AccountTitle,
+  type Transaction,
+  type CollectionSchedule,
+} from "@/utils/localStorage"
+import { isDuplicateName } from "@/utils/nameNormalize"
+
+/**
+ * データ整合性メッセージ（v2.9 §6.5 / §6.6「整合性チェック」準拠。§6.5 では仕訳に加え集金設定も参照）。
+ * 直接ハードコードせず定数化することで、テキストの揺れを防ぐ。
+ */
+const MSG_CATEGORY_UNLINK_BLOCKED =
+  "このカテゴリーには既にこの科目の仕訳データが存在するため、変更できません。カテゴリーを変更する場合は、対象の仕訳をすべて削除するか、別の科目に振り替えて、残高を0にする必要があります。"
+const MSG_CATEGORY_UNLINK_BLOCKED_COLLECTION =
+  "このカテゴリーと科目の組み合わせは、集金設定で使用されています。変更するには、先に集金設定（集金管理画面）から該当の設定を削除するか、別のカテゴリー・科目に変更してください。"
+const MSG_ACCOUNT_TITLE_DELETE_BLOCKED =
+  "この科目は既に使用されているため削除できません。削除するには、この科目に関連するすべての仕訳データを削除し、残高を0の状態にする必要があります。"
+const MSG_ACCOUNT_TITLE_DELETE_BLOCKED_COLLECTION =
+  "この科目は集金設定に登録されているため削除できません。先に集金設定からこの科目を取り除いてください。"
+const MSG_ACCOUNT_TITLE_DUPLICATE =
+  "この科目名はすでに登録されています。別の名前を入力してください。"
 
 type AccountGroup = "cash" | "income" | "expense"
 
@@ -16,9 +45,23 @@ const groupLabels: Record<AccountGroup, string> = {
 /** 現金・預金グループ選択時の説明文（カテゴリー設定なし＝共通） */
 const CASH_GROUP_CATEGORY_MESSAGE = "現金・預金グループはカテゴリーの設定はありません。"
 
+/** 一覧テーブル：合計18ユニット（科目名7 / カテゴリー9 / 編集1 / 削除1） */
+const ACCOUNT_TITLE_LIST_GRID =
+  "sm:[grid-template-columns:minmax(0,7fr)_minmax(0,9fr)_minmax(2.25rem,1fr)_minmax(2.25rem,1fr)]"
+
+/**
+ * 前期繰越金を編集できる「初年度運用中」かを判定する。
+ * TODO: 年度更新（次年度繰越）実装時に、FiscalYear/Club 側のロック情報と連動させる。
+ */
+function isInitialYear(settings: { yearRolloverCompletedAt: string | null }): boolean {
+  return settings.yearRolloverCompletedAt === null
+}
+
 export default function AccountTitlesPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [collectionSchedules, setCollectionSchedules] = useState<CollectionSchedule[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<string>("all")
   const [newAccountTitle, setNewAccountTitle] = useState({
@@ -34,6 +77,9 @@ export default function AccountTitlesPage() {
   const [dragOverTitleId, setDragOverTitleId] = useState<string | null>(null)
   const [addToast, setAddToast] = useState(false)
   const [toastMessage, setToastMessage] = useState("")
+  const [openingCarryoverInput, setOpeningCarryoverInput] = useState("")
+  const [openingCarryoverLocked, setOpeningCarryoverLocked] = useState(false)
+  const [yearRolloverCompletedAt, setYearRolloverCompletedAt] = useState<string | null>(null)
 
   const showToast = (message: string) => {
     setToastMessage(message)
@@ -48,18 +94,30 @@ export default function AccountTitlesPage() {
   useEffect(() => {
     const loadedCategories = getCategories()
     const loadedAccountTitles = getAccountTitles()
+    const loadedTransactions = getTransactions()
+    const loadedSchedules = getCollectionSchedules()
+    const settings = getSystemSettings()
     setCategories(loadedCategories)
     setAccountTitles(loadedAccountTitles)
+    setTransactions(loadedTransactions)
+    setCollectionSchedules(loadedSchedules)
+    setOpeningCarryoverInput(
+      settings.openingCarryover !== null ? settings.openingCarryover.toLocaleString() : ""
+    )
+    setOpeningCarryoverLocked(settings.openingCarryoverLocked)
+    setYearRolloverCompletedAt(settings.yearRolloverCompletedAt)
     setIsLoaded(true)
   }, [])
 
-  // カテゴリーの変更を監視（LocalStorageの変更を検知するため、定期的にチェック）
+  // カテゴリー・取引・集金設定の変更を監視（LocalStorageの変更を検知するため、定期的にチェック）
+  // 整合性チェック（v2.9 §6.5）に使う transactions / collectionSchedules もここで同期する
   useEffect(() => {
     if (!isLoaded) return
     const interval = setInterval(() => {
-      const loadedCategories = getCategories()
-      setCategories(loadedCategories)
-    }, 500) // 500msごとにチェック
+      setCategories(getCategories())
+      setTransactions(getTransactions())
+      setCollectionSchedules(getCollectionSchedules())
+    }, 500)
 
     return () => clearInterval(interval)
   }, [isLoaded])
@@ -121,10 +179,17 @@ export default function AccountTitlesPage() {
       return
     }
 
+    const trimmedName = newAccountTitle.name.trim()
+    // v2.9 §6.6 整合性チェック：科目名はグループを跨いでもグローバルに重複禁止
+    if (isDuplicateName(trimmedName, accountTitles.map((t) => t.name))) {
+      alert(MSG_ACCOUNT_TITLE_DUPLICATE)
+      return
+    }
+
     const newTitle: AccountTitle = {
       id: Date.now().toString(),
       group: newAccountTitle.group,
-      name: newAccountTitle.name.trim(),
+      name: trimmedName,
       categoryIds: newAccountTitle.group === "cash" ? [] : newAccountTitle.categoryIds,
       balance: newAccountTitle.balance ? parseFloat(newAccountTitle.balance) : null,
       order: accountTitles.filter((t) => t.group === newAccountTitle.group).length + 1,
@@ -159,25 +224,177 @@ export default function AccountTitlesPage() {
     })
   }
 
+  /**
+   * 指定の科目名を「自口座（counterparty）」または「科目（accountTitle）」として
+   * 使用している仕訳が1件以上あるかを判定する。
+   * - 収入・支出科目: 通常 `t.accountTitle === name`
+   * - 現金・預金科目: 出納帳上は `t.counterparty === name` として登場
+   * - 振替: `accountTitle` に対向口座名、`counterparty` に自口座名が入るため両方カバー
+   */
+  const hasTransactionForTitle = (titleName: string): boolean => {
+    if (!titleName) return false
+    return transactions.some(
+      (t) => t.accountTitle === titleName || t.counterparty === titleName
+    )
+  }
+
+  /**
+   * (カテゴリー × 科目) の組合せで使用されている仕訳が1件以上あるか判定する。
+   * カテゴリーは Transaction.category に「名前」が保存される前提で照合する。
+   * 現金・預金グループは categoryIds を持たないため、本関数の対象外。
+   */
+  const hasTransactionForTitleAndCategory = (
+    titleName: string,
+    categoryName: string
+  ): boolean => {
+    if (!titleName || !categoryName) return false
+    return transactions.some(
+      (t) => t.accountTitle === titleName && t.category === categoryName
+    )
+  }
+
+  /**
+   * 集金設定（CollectionSchedule）上の表示用カテゴリー名。
+   * 未設定時は集金取引生成ロジック（`syncCollectionTransactionsFromRecords` 等）と揃え「集金」を既定とする。
+   */
+  const effectiveScheduleCategoryName = (s: CollectionSchedule): string => {
+    const raw = s.categoryName?.trim()
+    return raw ? raw : "集金"
+  }
+
+  /**
+   * 集金設定上の表示用科目名（収入科目）。
+   * `accountTitleName` が空の場合は `name`（スケジュール名）をフォールバックし、さらに空なら「会費収入」。
+   */
+  const effectiveScheduleAccountTitleName = (s: CollectionSchedule): string => {
+    const fromField = s.accountTitleName?.trim()
+    if (fromField) return fromField
+    const fromName = s.name?.trim()
+    if (fromName) return fromName
+    return "会費収入"
+  }
+
+  /**
+   * (カテゴリー名 × 科目名) が集金設定のいずれか1件以上で使用されているか。
+   * 仕訳が0件でも、未来の集金予定に残っている場合は true となりカテゴリー解除をブロックする。
+   */
+  const hasCollectionScheduleForTitleAndCategory = (
+    titleName: string,
+    categoryName: string
+  ): boolean => {
+    if (!titleName || !categoryName) return false
+    return collectionSchedules.some((s) => {
+      const cat = effectiveScheduleCategoryName(s)
+      const acct = effectiveScheduleAccountTitleName(s)
+      return acct === titleName && cat === categoryName
+    })
+  }
+
+  /**
+   * 科目名が集金設定の収入科目として登録されているか（いずれかのスケジュールで一致すれば true）。
+   */
+  const hasCollectionScheduleForTitle = (titleName: string): boolean => {
+    if (!titleName) return false
+    return collectionSchedules.some((s) => effectiveScheduleAccountTitleName(s) === titleName)
+  }
+
+  /**
+   * 編集モード中にカテゴリーチェックボックスを切り替えるハンドラ。
+   * 「外す方向」のときに当該（カテゴリー × 科目）の仕訳が存在すれば、
+   * v2.9 §6.5 整合性チェック に従いアラート表示し変更を中止する。
+   */
+  const handleEditingCategoryToggle = (title: AccountTitle, category: Category) => {
+    const currentIds = editingData.categoryIds ?? title.categoryIds
+    const willUnlink = currentIds.includes(category.id)
+    if (willUnlink) {
+      if (hasTransactionForTitleAndCategory(title.name, category.name)) {
+        alert(MSG_CATEGORY_UNLINK_BLOCKED)
+        return
+      }
+      if (hasCollectionScheduleForTitleAndCategory(title.name, category.name)) {
+        alert(MSG_CATEGORY_UNLINK_BLOCKED_COLLECTION)
+        return
+      }
+    }
+    const next = willUnlink
+      ? currentIds.filter((id) => id !== category.id)
+      : [...currentIds, category.id]
+    setEditingData({ ...editingData, categoryIds: next })
+  }
+
   const handleSaveEdit = (id: string) => {
+    const target = accountTitles.find((t) => t.id === id)
+    if (!target) return
+
+    // v2.9 §6.6 整合性チェック：科目名の重複を保存直前に検証（自身の旧名は除外）
+    const nextName = (editingData.name ?? target.name).trim() || target.name
+    if (
+      isDuplicateName(
+        nextName,
+        accountTitles.map((t) => t.name),
+        target.name
+      )
+    ) {
+      alert(MSG_ACCOUNT_TITLE_DUPLICATE)
+      return
+    }
+
+    // 現金・預金はカテゴリーを常に空（共通）に固定
+    const nextCategoryIds =
+      target.group === "cash" ? [] : (editingData.categoryIds ?? target.categoryIds)
+
+    // 「外されたカテゴリーID」一覧を求め、当該組合せに仕訳が存在する場合は保存を中止
+    // （UI 側で外せないようガードしているが、二重防御として保存直前にも検証する）
+    if (target.group !== "cash") {
+      const removedIds = target.categoryIds.filter((id) => !nextCategoryIds.includes(id))
+      for (const removedId of removedIds) {
+        const cat = categories.find((c) => c.id === removedId)
+        if (!cat) continue
+        if (hasTransactionForTitleAndCategory(target.name, cat.name)) {
+          alert(MSG_CATEGORY_UNLINK_BLOCKED)
+          return
+        }
+        if (hasCollectionScheduleForTitleAndCategory(target.name, cat.name)) {
+          alert(MSG_CATEGORY_UNLINK_BLOCKED_COLLECTION)
+          return
+        }
+      }
+    }
+
     setAccountTitles(
       accountTitles.map((title) => {
         if (title.id !== id) return title
-        // 現金・預金はカテゴリーを常に空（共通）に固定
-        const categoryIds = title.group === "cash" ? [] : (editingData.categoryIds ?? title.categoryIds)
-        // 残高の更新（undefined の場合は既存値を維持）
         const balance = editingData.balance !== undefined ? editingData.balance : title.balance
         return {
           ...title,
-          name: editingData.name || title.name,
-          categoryIds,
+          name: nextName,
+          categoryIds: nextCategoryIds,
           balance,
         }
       })
     )
+    // v2.9 §6.7 名称変更の集金設定・仕訳への自動波及（名称が変わったときのみ）
+    let propagatedSchedules = 0
+    let propagatedTransactions = 0
+    if (target.name.trim() !== nextName) {
+      if (target.group === "income") {
+        const r = propagateMasterRename("income", target.name, nextName)
+        propagatedSchedules = r.schedules
+        propagatedTransactions = r.transactions
+      } else if (target.group === "cash") {
+        const r = propagateMasterRename("cash", target.name, nextName)
+        propagatedSchedules = r.schedules
+        propagatedTransactions = r.transactions
+      }
+    }
     setEditingId(null)
     setEditingData({})
-    showToast("更新完了")
+    const totalPropagated = propagatedSchedules + propagatedTransactions
+    showToast(
+      totalPropagated > 0
+        ? `更新完了（集金設定 ${propagatedSchedules} 件・仕訳 ${propagatedTransactions} 件に反映）`
+        : "更新完了"
+    )
   }
 
   const handleCancelEdit = () => {
@@ -187,8 +404,15 @@ export default function AccountTitlesPage() {
 
   const handleDelete = (id: string) => {
     const title = accountTitles.find((t) => t.id === id)
-    if (title?.isUsed) {
-      alert("この科目は既に使用されているため削除できません。")
+    if (!title) return
+    // v2.9 §6.5 整合性チェック: 仕訳が1件でも存在する科目は削除禁止
+    // （旧 isUsed フラグへの依存をやめ、実取引ベースで判定する）
+    if (hasTransactionForTitle(title.name)) {
+      alert(MSG_ACCOUNT_TITLE_DELETE_BLOCKED)
+      return
+    }
+    if (hasCollectionScheduleForTitle(title.name)) {
+      alert(MSG_ACCOUNT_TITLE_DELETE_BLOCKED_COLLECTION)
       return
     }
     if (confirm("この科目を削除してもよろしいですか？")) {
@@ -261,9 +485,48 @@ export default function AccountTitlesPage() {
       .join("、") || "-"
   }
 
+  const parseAmountInput = (raw: string): number | null => {
+    const normalized = raw.replace(/,/g, "").trim()
+    if (normalized === "" || normalized === "-") return null
+    const n = Number(normalized)
+    return Number.isFinite(n) ? Math.trunc(n) : null
+  }
+
+  const handleOpeningCarryoverChange = (raw: string) => {
+    const cleaned = raw.replace(/[^\d,-]/g, "")
+    const sign = cleaned.startsWith("-") ? "-" : ""
+    const digits = cleaned.replace(/-/g, "").replace(/,/g, "")
+    if (digits.length === 0) {
+      setOpeningCarryoverInput(sign === "-" ? "-" : "")
+      return
+    }
+    const formatted = Number(digits).toLocaleString()
+    setOpeningCarryoverInput(`${sign}${formatted}`)
+  }
+
+  const handleSaveOpeningCarryover = () => {
+    if (!isInitialYear({ yearRolloverCompletedAt })) {
+      alert("年度更新後のため、前期繰越金は編集できません。")
+      return
+    }
+    const amount = parseAmountInput(openingCarryoverInput)
+    if (amount === null) {
+      alert("前期繰越金を入力してください。")
+      return
+    }
+    saveSystemSettings({
+      openingCarryover: amount,
+      // 互換維持のため保存は継続。編集可否は isInitialYear 判定を優先する。
+      openingCarryoverLocked,
+      yearRolloverCompletedAt,
+    })
+    setOpeningCarryoverInput(amount.toLocaleString())
+    showToast("前期繰越金を保存しました")
+  }
+
   return (
-    <div className="px-6 py-8 bg-[#F5F5F0] min-h-screen">
-      <div className="max-w-6xl mx-auto">
+    <div className="px-6 py-8 bg-[#F5F5F0] min-h-screen w-full">
+      <div className="w-full max-w-none">
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2 text-[#374151]">科目設定</h2>
           <p className="text-sm text-[#6B7280]">勘定科目の登録・編集・削除</p>
@@ -279,10 +542,10 @@ export default function AccountTitlesPage() {
           </div>
         )}
 
-        {/* 新規追加エリア（縦並び・論理的な入力順） */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6 shadow-sm">
+        {/* 新規追加エリア（コンパクト・左寄せ／一覧とは幅を分離） */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm w-full max-w-2xl mr-auto mb-10">
           <h3 className="text-lg font-semibold mb-5 text-[#374151]">新規追加</h3>
-          <div className="space-y-5 max-w-md">
+          <div className="space-y-5 w-full">
             {/* 1. グループ */}
             <div>
               <label htmlFor="group" className="block text-sm font-medium text-[#374151] mb-1.5">
@@ -392,8 +655,8 @@ export default function AccountTitlesPage() {
           </div>
         </div>
 
-        {/* 追加済み科目一覧 */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        {/* 追加済み科目一覧（全幅維持） */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 w-full max-w-none">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-[#374151]">追加済み科目</h3>
             <span className="text-xs text-[#9CA3AF]">（単位：円）</span>
@@ -430,12 +693,16 @@ export default function AccountTitlesPage() {
             </div>
           </div>
 
-          {/* 一覧ヘッダー（グループ｜カテゴリー｜科目名｜残高） */}
-          <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_1.5fr_1fr] gap-4 px-3 py-2 mb-2 text-xs font-semibold text-[#6B7280] uppercase tracking-wide border-b border-gray-200">
-            <span className="text-center">グループ</span>
-            <span className="text-center">カテゴリー</span>
-            <span className="text-center">科目名</span>
-            <span className="text-center">残高</span>
+          {/* 一覧ヘッダー（科目名＋並び替え｜カテゴリー｜編集｜削除） */}
+          <div
+            className={`hidden sm:grid mb-2 text-xs font-semibold text-[#6B7280] border-b border-gray-200 pb-2 gap-x-2 gap-y-1 items-center ${ACCOUNT_TITLE_LIST_GRID}`}
+          >
+            <span className="min-w-0 pl-5 pr-4 text-left">
+              <span className="inline-block pl-7">科目名</span>
+            </span>
+            <span className="min-w-0 px-5 text-left">カテゴリー</span>
+            <span className="min-w-0 pl-2 pr-1 text-left">編集</span>
+            <span className="min-w-0 pl-1 pr-5 text-left">削除</span>
           </div>
 
           {/* グループごとのリスト */}
@@ -451,6 +718,9 @@ export default function AccountTitlesPage() {
                   {titles.map((title) => {
                     const isDragged = draggedTitleId === title.id
                     const isDragOver = dragOverTitleId === title.id && draggedTitleId !== title.id && draggedGroup === title.group
+                    // v2.9 §6.5: 削除ボタンの活性判定は実取引ベース（旧 isUsed フラグへの依存を廃止）
+                    const isInUse =
+                      hasTransactionForTitle(title.name) || hasCollectionScheduleForTitle(title.name)
                     return (
                       <div
                         key={title.id}
@@ -459,30 +729,42 @@ export default function AccountTitlesPage() {
                         onDragOver={(e) => handleDragOver(e, title.id, title.group)}
                         onDrop={(e) => handleDrop(e, title.id, title.group)}
                         onDragEnd={handleDragEnd}
-                        className={`flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50/80 transition-colors cursor-move ${
+                        className={`border border-gray-200 rounded-lg hover:bg-gray-50/80 transition-colors cursor-move ${
                           isDragged ? "opacity-50" : ""
-                        } ${
-                          isDragOver ? "border-[#77B8DA] bg-[#77B8DA]/10" : ""
-                        }`}
+                        } ${isDragOver ? "border-[#77B8DA] bg-[#77B8DA]/10" : ""}`}
                       >
-                        <GripVertical className="h-5 w-5 text-[#6B7280] flex-shrink-0" />
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_1fr_1.5fr_1fr] gap-3 sm:gap-4">
-                          {/* グループ */}
-                          <div>
-                            <span className="sm:hidden text-xs text-[#6B7280]">グループ</span>
-                            <span className="text-sm font-medium text-[#374151]">
-                              {groupLabels[title.group]}
-                            </span>
+                        <div
+                          className={`grid grid-cols-1 gap-3 p-3 sm:gap-x-2 sm:gap-y-2 sm:items-start ${ACCOUNT_TITLE_LIST_GRID}`}
+                        >
+                          {/* 科目名（左にドラッグハンドル） */}
+                          <div className="min-w-0 pl-5 pr-4 text-left flex gap-2 items-start">
+                            <GripVertical className="h-5 w-5 text-[#6B7280] flex-shrink-0 mt-0.5" aria-hidden />
+                            <div className="min-w-0 flex-1">
+                              <span className="sm:hidden text-xs text-[#6B7280] block mb-0.5">科目名</span>
+                              {editingId === title.id ? (
+                                <input
+                                  type="text"
+                                  value={editingData.name || title.name}
+                                  onChange={(e) =>
+                                    setEditingData({ ...editingData, name: e.target.value })
+                                  }
+                                  className="w-full max-w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent text-sm"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span className="text-base font-semibold text-[#374151] leading-snug break-words block">
+                                  {title.name}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          {/* カテゴリー */}
-                          <div>
-                            <span className="sm:hidden text-xs text-[#6B7280]">カテゴリー</span>
+                          {/* カテゴリー（9/18・中央やや右まで広く） */}
+                          <div className="min-w-0 px-5 text-left">
+                            <span className="sm:hidden text-xs text-[#6B7280] block mb-0.5">カテゴリー</span>
                             {editingId === title.id && title.group === "cash" ? (
-                              <span className="text-sm text-[#6B7280] italic">
-                                共通
-                              </span>
+                              <span className="text-sm text-[#6B7280]">共通</span>
                             ) : editingId === title.id ? (
-                              <div className="flex flex-wrap gap-2">
+                              <div className="flex flex-wrap gap-2 justify-start">
                                 {categories
                                   .sort((a, b) => a.order - b.order)
                                   .map((cat) => (
@@ -490,13 +772,7 @@ export default function AccountTitlesPage() {
                                       <input
                                         type="checkbox"
                                         checked={(editingData.categoryIds ?? []).includes(cat.id)}
-                                        onChange={() => {
-                                          const ids = editingData.categoryIds ?? []
-                                          const next = ids.includes(cat.id)
-                                            ? ids.filter((id) => id !== cat.id)
-                                            : [...ids, cat.id]
-                                          setEditingData({ ...editingData, categoryIds: next })
-                                        }}
+                                        onChange={() => handleEditingCategoryToggle(title, cat)}
                                         className="w-3.5 h-3.5 text-[#77B8DA] rounded"
                                       />
                                       <span className="text-xs">{cat.name}</span>
@@ -504,99 +780,88 @@ export default function AccountTitlesPage() {
                                   ))}
                               </div>
                             ) : (
-                              <span className="text-sm text-[#6B7280]">
-                                {getCategoryNames(title)}
+                              <span className="text-sm text-[#6B7280] break-words w-full max-w-full">
+                                {title.group === "cash" ? "共通" : getCategoryNames(title)}
                               </span>
                             )}
                           </div>
-                          {/* 科目名 */}
-                          <div>
-                            <span className="sm:hidden text-xs text-[#6B7280]">科目名</span>
+                          {/* 編集（カテゴリー直後・コンパクト） */}
+                          <div className="flex min-w-0 pl-2 pr-1 justify-start items-center w-full">
+                            <span className="sm:hidden text-xs text-[#6B7280] w-16 shrink-0">編集</span>
                             {editingId === title.id ? (
-                              <input
-                                type="text"
-                                value={editingData.name || title.name}
-                                onChange={(e) =>
-                                  setEditingData({ ...editingData, name: e.target.value })
-                                }
-                                className="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent text-sm"
-                                autoFocus
-                              />
+                              <Button
+                                type="button"
+                                onClick={() => handleSaveEdit(title.id)}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-full sm:w-auto min-w-[2.75rem] px-2"
+                              >
+                                保存
+                              </Button>
                             ) : (
-                              <span className="text-sm font-medium text-[#374151]">{title.name}</span>
+                              <Button
+                                type="button"
+                                onClick={() => handleStartEdit(title)}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 shrink-0"
+                                title="編集"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
                             )}
                           </div>
-                          {/* 残高 */}
-                          <div>
-                            <span className="sm:hidden text-xs text-[#6B7280]">残高</span>
+                          {/* 削除 */}
+                          <div className="flex min-w-0 pl-1 pr-5 justify-start items-center w-full">
+                            <span className="sm:hidden text-xs text-[#6B7280] w-16 shrink-0">削除</span>
                             {editingId === title.id ? (
-                              <input
-                                type="number"
-                                value={editingData.balance ?? ""}
-                                onChange={(e) => {
-                                  const value = e.target.value
-                                  setEditingData({
-                                    ...editingData,
-                                    balance: value === "" ? null : parseFloat(value),
-                                  })
-                                }}
-                                className="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent text-sm text-right tabular-nums"
-                                placeholder="0"
-                                step="1"
-                              />
-                            ) : title.balance !== null ? (
-                              <span className="text-sm font-semibold text-[#374151] text-right tabular-nums block">
-                                {title.balance.toLocaleString()}
-                              </span>
+                              <Button
+                                type="button"
+                                onClick={handleCancelEdit}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-full sm:w-auto min-w-[2.75rem] px-2"
+                              >
+                                キャンセル
+                              </Button>
                             ) : (
-                              <span className="text-sm text-[#6B7280] text-right block">-</span>
+                              <Button
+                                type="button"
+                                onClick={() => handleDelete(title.id)}
+                                variant="outline"
+                                size="sm"
+                                className={`h-8 w-8 p-0 shrink-0 ${
+                                  isInUse
+                                    ? "text-gray-400 cursor-not-allowed"
+                                    : "text-[#EF4444] hover:text-[#EF4444]"
+                                }`}
+                                disabled={isInUse}
+                                title={isInUse ? "仕訳または集金設定で使用中のため削除不可" : "削除"}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             )}
                           </div>
                         </div>
-                        {editingId === title.id ? (
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              onClick={() => handleSaveEdit(title.id)}
-                              variant="outline"
-                              size="sm"
-                            >
-                              保存
-                            </Button>
-                            <Button
-                              type="button"
-                              onClick={handleCancelEdit}
-                              variant="outline"
-                              size="sm"
-                            >
-                              キャンセル
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              onClick={() => handleStartEdit(title)}
-                              variant="outline"
-                              size="sm"
-                              className="h-8"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              onClick={() => handleDelete(title.id)}
-                              variant="outline"
-                              size="sm"
-                              className={`h-8 ${
-                                title.isUsed
-                                  ? "text-gray-400 cursor-not-allowed"
-                                  : "text-[#EF4444] hover:text-[#EF4444]"
-                              }`}
-                              disabled={title.isUsed}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                        {editingId === title.id && (
+                          <div className="px-3 pb-3 pt-3 border-t border-gray-100">
+                            <span className="text-xs font-medium text-[#6B7280] block mb-1.5">
+                              期首残高（円）
+                            </span>
+                            <input
+                              type="number"
+                              value={editingData.balance ?? ""}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                setEditingData({
+                                  ...editingData,
+                                  balance: value === "" ? null : parseFloat(value),
+                                })
+                              }}
+                              className="w-full max-w-xs px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent text-sm text-right tabular-nums"
+                              placeholder="0"
+                              step="1"
+                            />
                           </div>
                         )}
                       </div>
@@ -610,6 +875,54 @@ export default function AccountTitlesPage() {
           {filteredAccountTitles.length === 0 && (
             <p className="text-center py-8 text-[#6B7280]">科目がありません</p>
           )}
+        </div>
+
+        {/* 前期繰越金（初期設定） */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 mt-6 w-full max-w-2xl mr-auto">
+          <h3 className="text-lg font-semibold mb-2 text-[#374151]">前期繰越金の初期残高</h3>
+          <p className="text-sm text-[#6B7280] mb-4">
+            システム利用初年度の期首残高です。年度更新後は読み取り専用になります。
+          </p>
+          <div className="w-full space-y-3">
+            <div>
+              <label
+                htmlFor="openingCarryover"
+                className="block text-sm font-medium text-[#374151] mb-1.5"
+              >
+                前期繰越金（円）
+              </label>
+              <input
+                id="openingCarryover"
+                type="text"
+                inputMode="numeric"
+                value={openingCarryoverInput}
+                onChange={(e) => handleOpeningCarryoverChange(e.target.value)}
+                disabled={!isInitialYear({ yearRolloverCompletedAt })}
+                className="w-full pl-3 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent tabular-nums text-right disabled:bg-gray-100 disabled:text-[#6B7280]"
+                placeholder="例：1,000,000"
+              />
+            </div>
+            {isInitialYear({ yearRolloverCompletedAt }) ? (
+              <div className="pt-1">
+                <Button
+                  type="button"
+                  onClick={handleSaveOpeningCarryover}
+                  className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-6 py-2.5 rounded-lg"
+                >
+                  保存
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-amber-700">
+                年度更新後のため、前期繰越金はロックされています。
+              </p>
+            )}
+            {openingCarryoverLocked && isInitialYear({ yearRolloverCompletedAt }) && (
+              <p className="text-xs text-[#6B7280]">
+                保存済みです。初年度運用中は必要に応じて再編集できます。
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

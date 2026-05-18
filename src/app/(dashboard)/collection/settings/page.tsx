@@ -105,10 +105,23 @@ export default function CollectionSettingsPage() {
         const matchCat = cats.find((c) => c.name === target.categoryName)
         if (matchCat) setCategoryId(matchCat.id)
 
-        const matchAcct = accts.find((t) => t.name === target.accountTitleName)
+        const acctStored = (target.accountTitleName ?? "").trim()
+        const matchAcct = accts.find((t) => t.name.trim() === acctStored)
         if (matchAcct) setAccountTitleId(matchAcct.id)
 
-        const matchCp = accts.find((t) => t.group === "cash" && t.name === target.counterpartyName)
+        const cpStored = (target.counterpartyName ?? "").trim()
+        const cashList = accts.filter((t) => t.group === "cash")
+        let matchCp = cashList.find((t) => t.name.trim() === cpStored)
+        if (!matchCp && cpStored) {
+          const fuzzy = cashList.filter(
+            (t) =>
+              cpStored.startsWith(t.name.trim()) ||
+              t.name.trim().startsWith(cpStored) ||
+              cpStored.includes(t.name.trim()) ||
+              t.name.trim().includes(cpStored)
+          )
+          if (fuzzy.length === 1) matchCp = fuzzy[0]
+        }
         if (matchCp) setCounterpartyId(matchCp.id)
 
         let restoredIds: string[]
@@ -182,7 +195,7 @@ export default function CollectionSettingsPage() {
     setSelectedMemberIds((prev) => {
       const set = new Set(prev)
       ids.forEach((id) => set.add(id))
-      return [...set]
+      return Array.from(set)
     })
   }
   const deselectAllModalMembers = () => {
@@ -233,9 +246,35 @@ export default function CollectionSettingsPage() {
     const cpName = cashAccounts.find((t) => t.id === counterpartyId)?.name ?? "現金"
 
     if (editScheduleId) {
+      if (selectedMonths.length === 0) {
+        alert("集金月を1つ以上選択してください。")
+        return
+      }
+      if (selectedMonths.length > 1) {
+        alert("編集時の集金月は1つのみ選択できます。")
+        return
+      }
+
+      const nextTargetMonth = monthToYYYYMM(fiscalStartYear, selectedMonths[0])
+      const currentSchedule = getCollectionSchedules().find((s) => s.id === editScheduleId)
+
+      // 入金済みデータが紐づく場合でも月変更は許可する（要件）。
+      if (currentSchedule && currentSchedule.targetMonth !== nextTargetMonth) {
+        const paidCount = getCollectionRecords().filter(
+          (r) => r.scheduleId === editScheduleId && r.status !== "UNPAID"
+        ).length
+        if (paidCount > 0) {
+          const proceed = confirm(
+            `この設定には${paidCount}件の入金済みデータが紐づいています。\n集金月を変更して更新しますか？`
+          )
+          if (!proceed) return
+        }
+      }
+
       updateCollectionSchedule(editScheduleId, {
         name: name.trim(),
         amount: Number(amount),
+        targetMonth: nextTargetMonth,
         categoryName: catName,
         accountTitleName: acctName,
         counterpartyName: cpName,
@@ -311,7 +350,7 @@ export default function CollectionSettingsPage() {
 
       {/* 操作バー */}
       <div className="bg-white border-x border-gray-200 px-6 py-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-[#6B7280]">集金項目の作成・金額設定・対象部員の一括指定</p>
+        <p className="text-sm text-[#6B7280]">集金項目の作成・一人あたりの集金額設定・対象部員の一括指定</p>
         <span className="text-xs text-[#9CA3AF]">（単位：円）</span>
       </div>
 
@@ -401,17 +440,17 @@ export default function CollectionSettingsPage() {
                 </select>
               </div>
 
-              {/* 金額 */}
+              {/* 一人あたりの集金額 */}
               <div>
                 <label className="block text-sm font-medium text-[#374151] mb-1.5">
-                  金額（円） <span className="text-[#EF4444]">*</span>
+                  一人あたりの集金額（円） <span className="text-[#EF4444]">*</span>
                 </label>
                 <input
                   type="number"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="w-full pl-3 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D99529] focus:border-transparent text-right tabular-nums text-sm"
-                  placeholder="0"
+                  placeholder="例：3000"
                   min="1"
                   required
                 />

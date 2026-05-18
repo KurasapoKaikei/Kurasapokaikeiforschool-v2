@@ -65,22 +65,40 @@ model Organization {
   accountTitles   AccountTitle[]
   transactions    Transaction[]
   members         Member[]
+  parents         Parent[]
   collectionItems CollectionItem[]
   alerts          Alert[]
+  budgets         Budget[]
+  /// クラブ単位の拡張情報（担当者名簿など）。Organization と 1:1
+  club            Club?
 
   @@index([parentId])
   @@index([type])
+}
+
+/// クラブ（団体）プロファイル。DB上の「クラブ」エンティティは Organization に対応し、本モデルは 1:1 で紐づく
+model Club {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// 担当者氏名（最大5名を想定。空要素は保存しない）
+  staffNames     String[]     @default([])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================
 // 会計年度管理
 // ============================================
 
+/// 会計年度の業務ステータス（三者間連携・ロック判定に使用）
+/// 旧: OPEN/PENDING/PENDING_CLOSE/CLOSED は段階移行で DRAFT/SUBMITTED/APPROVED へ寄せる
 enum FiscalYearStatus {
-  OPEN           // 開期中（編集可能）
-  PENDING        // 決算処理中（アラート解消・証憑確認中）
-  PENDING_CLOSE  // 締め処理待ち（繰延処理完了、最終確認待ち）
-  CLOSED         // 決算確定済み
+  DRAFT       // 編集中（取引・予算の変更可）
+  SUBMITTED   // 提出済み（ロック: 取引・予算の更新・削除不可）
+  APPROVED    // 承認済み（ロック: 同上）
 }
 
 model FiscalYear {
@@ -90,7 +108,7 @@ model FiscalYear {
   year            Int               // 年度（例: 2025 = 2025年4月〜2026年3月）
   startDate       DateTime          // 期首日（例: 2025-04-01）
   endDate         DateTime          // 期末日（例: 2026-03-31）
-  status          FiscalYearStatus  @default(OPEN)
+  status          FiscalYearStatus  @default(DRAFT)
   
   // 決算処理関連
   closedAt        DateTime?         // 決算確定日時
@@ -104,6 +122,7 @@ model FiscalYear {
   // リレーション
   transactions    Transaction[]
   balanceRecords  BalanceRecord[]   // 残高確認記録
+  budget          Budget?
 
   @@unique([organizationId, year])
   @@index([organizationId])
@@ -269,6 +288,9 @@ model Transaction {
   // 取引ステータス
   status          TransactionStatus @default(NORMAL)
   
+  /// 入力担当者名（単式運用・誰が登録したか）。未設定時は null
+  recordedBy      String?
+  
   // ============================================
   // 承認フロー連携（for School版）
   // isAlert=true の場合、approvalStatus は BLOCKED になる
@@ -422,8 +444,25 @@ model BalanceRecord {
 }
 
 // ============================================
-// 部員・保護者管理
+// 保護者・部員管理
 // ============================================
+
+model Parent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String?
+  name           String?
+  phone          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  members Member[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([email])
+}
 
 model Member {
   id              String          @id @default(cuid())
@@ -439,8 +478,11 @@ model Member {
   // 保護者閲覧用トークン（仕様書6.3）
   parentViewToken String?         @unique // 一意のトークン（URL用）
   parentEmail     String?         // 保護者メールアドレス
-  parentPhone     String?         // 保護者電話番号
-  
+  parentPhone     String?         // 保護者電話番号（移行用。正は Parent とのリレーション）
+
+  parentId        String?
+  parent          Parent?         @relation(fields: [parentId], references: [id], onDelete: SetNull)
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -448,6 +490,7 @@ model Member {
   collectionItems CollectionItem[]
 
   @@index([organizationId])
+  @@index([parentId])
   @@index([studentId])
   @@index([grade])
   @@index([parentViewToken])
@@ -482,6 +525,11 @@ model CollectionItem {
   collectedAt     DateTime?         // 収納日時
   collectedAmount Decimal?          @db.Decimal(12, 2) // 実際の収納額
   description     String?
+
+  paymentExternalId String?         @unique // 外部決済プロバイダ側の ID
+  paymentProvider   String?         // 例: stripe, gmo 等（識別子）
+  paymentStatus     String?           // PSP の最終状態スナップショット
+  paymentUpdatedAt  DateTime?         // 決済状態を最後に反映した日時
   
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -524,4 +572,36 @@ model Notification {
   @@index([type])
   @@index([isRead])
   @@index([createdAt])
+}
+
+// ============================================
+// 予実管理（予算書）— カテゴリ×科目×年度の予算額
+// ============================================
+
+/// 会計年度に 1:1 で紐づく予算ブック。明細は BudgetLine。
+model Budget {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fiscalYearId   String       @unique
+  fiscalYear     FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  lines          BudgetLine[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model BudgetLine {
+  id             String   @id @default(cuid())
+  budgetId       String
+  budget         Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  categoryId     String
+  accountTitleId String
+  amount         Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([budgetId, categoryId, accountTitleId])
+  @@index([budgetId])
 }
