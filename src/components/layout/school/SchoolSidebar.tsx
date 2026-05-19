@@ -19,6 +19,7 @@ import {
   ChevronRight,
   FileText,
   LayoutDashboard,
+  Layers,
   List,
   ListOrdered,
   Plus,
@@ -60,6 +61,7 @@ const menuItems: MenuItem[] = [
     parentKey: "club",
     subItems: [
       { title: "クラブ一覧", href: SCHOOL_ROUTES.clubList },
+      { title: "グループ作成", href: SCHOOL_ROUTES.clubGroups },
       { title: "クラブ登録", href: SCHOOL_ROUTES.clubRegister },
     ],
   },
@@ -109,6 +111,7 @@ function subItemPathMatches(pathname: string, subHref: string): boolean {
 
 function getSubIcon(href: string): LucideIcon {
   if (href === SCHOOL_ROUTES.clubList) return List
+  if (href === SCHOOL_ROUTES.clubGroups) return Layers
   if (href === SCHOOL_ROUTES.clubRegister) return Plus
   if (href === SCHOOL_ROUTES.settingsCategory) return Tags
   if (href === SCHOOL_ROUTES.settingsAccountTitles) return ListOrdered

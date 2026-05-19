@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { ClubPasswordChangeSection } from "@/components/club/ClubPasswordChangeSection"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 
 export default function ClubSettingsPage() {
@@ -197,6 +198,8 @@ export default function ClubSettingsPage() {
               </div>
             </div>
           </div>
+
+          <ClubPasswordChangeSection />
 
           {/* セクション3：ログイン情報 */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">

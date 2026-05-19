@@ -2,6 +2,8 @@ import { SchoolContentPanel } from "@/components/layout/school/SchoolContentPane
 
 export default function SchoolGuidePage() {
   return (
-    <SchoolContentPanel title="📖 操作ガイド・マニュアル（5/27デモ用ヘルプページ）" />
+    <SchoolContentPanel title="操作ガイド">
+      <p>（5/27デモ用ヘルプページ）</p>
+    </SchoolContentPanel>
   )
 }

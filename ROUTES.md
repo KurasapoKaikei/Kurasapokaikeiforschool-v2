@@ -17,7 +17,9 @@ npm run dev
 | `/` | LP（学校・クラブ・部員への3ボタン） |
 | `/school` | 学校管理者ポータル（年度切替・サマリーカード） |
 | `/school/clubs` | クラブ一覧（クラブ管理の子） |
-| `/school/clubs/register` | クラブ登録 |
+| `/school/clubs/groups` | グループ作成 |
+| `/school/clubs/register` | クラブ登録（追加・メンテナンス） |
+| `/school/clubs/[clubId]/messages` | クラブ個別メッセージ |
 | `/school/messages` | お知らせ一覧 |
 | `/school/settings` | 設定（→ 共通カテゴリー設定へリダイレクト） |
 | `/school/settings/category` | 共通カテゴリー設定 |
@@ -43,12 +45,6 @@ npm run dev
 | `/club/guide` | 操作ガイド |
 
 **旧URL**（`/dashboard` 等）は `next.config.js` のリダイレクトで `/club/*` に転送されます。
-
-## 学校向け（試作）
-
-| URL | 説明 |
-|-----|------|
-| `/school/clubs` | クラブ一覧（試作） |
 
 ## 大学向け（試作）
 

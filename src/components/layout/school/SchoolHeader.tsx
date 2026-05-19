@@ -27,8 +27,12 @@ function resolveTitle(pathname: string): string {
   }
   if (isSchoolSettingsPath(pathname)) return SCHOOL_PAGE_TITLES.settings
   if (pathname.startsWith(SCHOOL_ROUTES.messages)) return SCHOOL_PAGE_TITLES.messages
+  if (/\/school\/clubs\/[^/]+\/messages/.test(pathname)) return "?????"
   if (pathname.startsWith(SCHOOL_ROUTES.clubRegister)) {
     return SCHOOL_PAGE_TITLES.clubRegister
+  }
+  if (pathname.startsWith(SCHOOL_ROUTES.clubGroups)) {
+    return SCHOOL_PAGE_TITLES.clubGroups
   }
   if (pathname === SCHOOL_ROUTES.clubList) return SCHOOL_PAGE_TITLES.clubList
   if (isSchoolClubPath(pathname)) return SCHOOL_PAGE_TITLES.clubs

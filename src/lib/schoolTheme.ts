@@ -7,6 +7,12 @@ export const SCHOOL_THEME = {
   iconMuted: "#6366f1",
 } as const
 
+/** 学校管理画面のブランドネイビー（グループ作成など） */
+export const SCHOOL_BRAND_NAVY = "#005088"
+
+/** クラブ画面のブランドピンク（学校ポータルからクラブへ遷移するボタン等） */
+export const CLUB_BRAND_PINK = "#E66A84"
+
 export const SCHOOL_DISPLAY_NAME = "東京都市大学"
 
 export const SCHOOL_FISCAL_PERIOD = "2026.8.1～2027.7.31"
@@ -42,6 +48,7 @@ export const SCHOOL_PAGE_TITLES = {
   home: "管理者ポータル",
   clubs: "クラブ管理",
   clubList: "クラブ一覧",
+  clubGroups: "グループ作成",
   clubRegister: "クラブ登録",
   messages: "お知らせ一覧",
   settings: "設定",
@@ -55,6 +62,7 @@ export const SCHOOL_PAGE_TITLES = {
 export const SCHOOL_ROUTES = {
   home: "/school",
   clubList: "/school/clubs",
+  clubGroups: "/school/clubs/groups",
   clubRegister: "/school/clubs/register",
   clubsBase: "/school/clubs",
   messages: "/school/messages",
@@ -66,6 +74,13 @@ export const SCHOOL_ROUTES = {
   contract: "/school/contract",
   guide: "/school/guide",
 } as const
+
+/** クラブ個別メッセージ（学校⇔クラブ） */
+export function schoolClubMessagesPath(clubId: string): string {
+  return `${SCHOOL_ROUTES.clubsBase}/${clubId}/messages`
+}
+
+export const CLUB_PORTAL_DASHBOARD = "/club/dashboard"
 
 export function isSchoolClubPath(pathname: string): boolean {
   return (
