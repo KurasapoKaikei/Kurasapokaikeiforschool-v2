@@ -20,7 +20,7 @@ export default function GuidePage() {
           <h3 className="text-lg font-semibold mb-3 text-[#374151]">各機能の説明</h3>
           <div className="space-y-4 text-sm text-[#374151]">
             <div>
-              <h4 className="font-semibold mb-1">マイページ</h4>
+              <h4 className="font-semibold mb-1">クラブポータル</h4>
               <p className="text-[#6B7280]">会計年度情報、残高、アラートを確認できます</p>
             </div>
             <div>

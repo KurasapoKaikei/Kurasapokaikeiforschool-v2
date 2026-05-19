@@ -15,7 +15,16 @@ npm run dev
 | URL | 説明 |
 |-----|------|
 | `/` | LP（学校・クラブ・部員への3ボタン） |
-| `/school` | 学校管理者ダッシュボード（デモ用プレースホルダ） |
+| `/school` | 学校管理者ポータル（年度切替・サマリーカード） |
+| `/school/clubs` | クラブ一覧（クラブ管理の子） |
+| `/school/clubs/register` | クラブ登録 |
+| `/school/messages` | お知らせ一覧 |
+| `/school/settings` | 設定（→ 共通カテゴリー設定へリダイレクト） |
+| `/school/settings/category` | 共通カテゴリー設定 |
+| `/school/settings/account-titles` | 共通科目設定 |
+| `/school/settings/staff` | 担当者設定 |
+| `/school/contract` | 契約状況 |
+| `/school/guide` | 操作ガイド |
 | `/club` | クラブ入り口 → `/club/dashboard` へリダイレクト |
 | `/member` | 部員・保護者マイページ（デモ用プレースホルダ） |
 
@@ -23,7 +32,7 @@ npm run dev
 
 | URL | ページ名 |
 |-----|---------|
-| `/club/dashboard` | マイページ |
+| `/club/dashboard` | クラブポータル |
 | `/club/accounting/register/new` | 入出金登録（新規） |
 | `/club/accounting/register/history` | 登録履歴 |
 | `/club/accounting/ledger/cash-bank` | 現金・預金出納帳 |

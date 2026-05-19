@@ -15,7 +15,7 @@ export default function DashboardGroupError({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#F5F5F0] px-6">
-      <h2 className="text-lg font-semibold text-[#374151]">マイページ周辺でエラーが発生しました</h2>
+      <h2 className="text-lg font-semibold text-[#374151]">クラブポータル周辺でエラーが発生しました</h2>
       <p className="text-sm text-[#6B7280] text-center max-w-md">
         再試行で復旧することがあります。続く場合はキャッシュ削除後にサーバーを再起動してください。
       </p>

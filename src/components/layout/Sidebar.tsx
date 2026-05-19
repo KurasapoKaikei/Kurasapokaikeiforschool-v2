@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { KurasapoBrandLogo } from "@/components/layout/KurasapoBrandLogo"
 import { clubPath } from "@/lib/routes"
 import {
   LayoutDashboard,
@@ -35,7 +36,7 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
-    title: "マイページ",
+    title: "クラブポータル",
     href: clubPath("/dashboard"),
     icon: LayoutDashboard,
     color: "dashboard",
@@ -184,8 +185,8 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-gray-200 bg-white">
       <div className="flex h-full flex-col">
         {/* ロゴ・ヘッダー */}
-        <div className="flex h-16 items-center border-b border-gray-200 px-6">
-          <h1 className="text-xl font-bold text-[#374151]">クラサポ会計</h1>
+        <div className="border-b border-gray-200 px-4 py-4">
+          <KurasapoBrandLogo />
         </div>
 
         {/* ナビゲーションメニュー */}

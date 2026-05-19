@@ -73,6 +73,12 @@ const config = {
           DEFAULT: "#1A237E",
           foreground: "#ffffff",
         },
+        /** 学校管理者画面（for school） */
+        school: {
+          navy: "#172554",
+          "navy-light": "#1e3a8a",
+          accent: "#312e81",
+        },
         alert: {
           DEFAULT: "#EF4444",
           foreground: "#ffffff",

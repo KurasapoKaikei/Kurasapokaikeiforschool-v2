@@ -11,7 +11,7 @@ interface HeaderProps {
 
 // パスとページタイトルのマッピング
 const pageTitleMap: Record<string, string> = {
-  "/dashboard": "マイページ",
+  "/dashboard": "クラブポータル",
   "/accounting/register": "入出金登録",
   "/accounting/input": "入出金登録",
   "/accounting/register/new": "入出金登録",
@@ -48,7 +48,7 @@ const pageTitleMap: Record<string, string> = {
 
 // パスとテーマカラーのマッピング（仕様書準拠）
 const pageColorMap: Record<string, string> = {
-  "/dashboard": "#E66A84", // マイページ（ピンク）
+  "/dashboard": "#E66A84", // クラブポータル（ピンク）
   "/accounting/register": "#A3BC68", // 入出金登録（黄緑）
   "/accounting/input": "#A3BC68",
   "/accounting/register/new": "#A3BC68", // 入出金登録（黄緑）
@@ -102,8 +102,8 @@ export function Header({ title }: HeaderProps) {
             : pathname.startsWith("/member")
               ? "部員・保護者マイページ"
               : isClubPath(pathname)
-                ? pageTitleMap[rel] || "マイページ"
-                : pageTitleMap[pathname] || "マイページ")
+                ? pageTitleMap[rel] || "クラブポータル"
+                : pageTitleMap[pathname] || "クラブポータル")
 
   const themeColor = pathname.startsWith(clubPath("/budget"))
     ? "#1A237E"
