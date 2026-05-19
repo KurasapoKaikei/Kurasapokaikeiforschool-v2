@@ -1,8 +1,9 @@
-# クラサポ会計 機能詳細仕様書 v2.9（2026年度運用 正本）
+# クラサポ会計 機能詳細仕様書 v2.10（2026年度運用 正本）
 
 - **対象システム**: クラサポ会計（Next.js / クライアントサイド LocalStorage 実装）
 - **対象会計年度**: **2026年度（2026/04/01 〜 2027/03/31）固定運用**
-- **本ドキュメントの位置づけ**: 開発者がこのファイル単体を読めば、現行実装の挙動（特に振替・集計・履歴・編集動線）を完全に把握できる正本仕様書。
+- **本ドキュメントの位置づけ**: 開発者がこのファイル単体を読めば、現行実装の挙動（振替・集計・履歴・編集動線、**管理者ポータル / クラブポータル**の UI）を完全に把握できる正本仕様書。
+- **v2.10 追記（2026-05）**: 学校 `/school` デモ UI（管理者ポータル・契約状況・設定子画面・共通ロゴ）およびクラブ「クラブポータル」表記を §0.2〜0.3・§2 に反映。
 - **過去の v2.8 / 2025年度仕様は本書では取り扱わない**（旧仕様は `docs/spec.md` を参照）。
 
 ---
@@ -14,8 +15,8 @@
 | 区分 | URL プレフィックス | 想定利用者 | 現状（2026-05 デモ） |
 | --- | --- | --- | --- |
 | **LP（入り口）** | `/` | 全員 | 学校・クラブ・部員への3ボタン |
-| **学校** | `/school` | 学校管理者（クラブ登録・決算承認） | プレースホルダ画面のみ |
-| **クラブ** | `/club` | クラブ会計担当（集金・入出金・部員管理） | **既存機能の正本**（旧 `/dashboard` 等） |
+| **学校** | `/school` | 学校管理者（クラブ登録・決算承認） | **管理者ポータル**（サイドメニュー・契約状況・設定子画面などデモ UI 実装済） |
+| **クラブ** | `/club` | クラブ会計担当（集金・入出金・部員管理） | **クラブポータル**（既存機能の正本・旧 `/dashboard` 等） |
 | **部員・保護者** | `/member` | 部員・保護者（請求確認・オンライン決済） | プレースホルダ画面のみ |
 
 - **技術**: Next.js 14 **App Router**。実体は `src/app/` 配下のディレクトリがそのまま URL になる（ルートグループ `(dashboard)` は廃止し、クラブは `src/app/club/` に集約）。
@@ -28,10 +29,13 @@
 src/app/
 ├── page.tsx                 # LP（/）
 ├── school/
-│   ├── page.tsx             # 学校トップ（デモ用プレースホルダ）
-│   └── clubs/               # クラブ一覧（試作・AppShell 付き）
-│       ├── layout.tsx
-│       └── page.tsx
+│   ├── layout.tsx           # SchoolAppShell（専用サイドバー＋ヘッダー）
+│   ├── page.tsx             # 管理者ポータル（年度切替・サマリーカード）
+│   ├── clubs/               # クラブ管理（子：一覧・登録）
+│   ├── messages/            # お知らせ一覧
+│   ├── settings/            # 設定（親→3子画面、/settings は category へリダイレクト）
+│   ├── contract/            # 契約状況
+│   └── guide/               # 操作ガイド
 ├── club/                    # クラブ担当者向け（正本）
 │   ├── layout.tsx           # AppShell（サイドバー＋ヘッダー）
 │   ├── page.tsx             # /club → /club/dashboard へリダイレクト
@@ -47,12 +51,106 @@ src/app/
 ├── (parent)/                # 旧保護者ルート（/parent・将来 /member に統合予定）
 ├── (university)/            # 大学向け試作（/university/*）
 └── api/
+
+public/
+└── kurasapo_logo_fix_RGB.png   # 学校・クラブ共通ブランドロゴ（静的配信）
 ```
+
+### 0.2 ポータル名称（UI 表記の正本）
+
+| 区分 | 正式名称 | 旧称（非推奨） | トップ URL | 実装参照 |
+| --- | --- | --- | --- | --- |
+| 学校 | **管理者ポータル** | マイページ / マイポータル | `/school` | `SCHOOL_PAGE_TITLES.home`（`src/lib/schoolTheme.ts`） |
+| クラブ | **クラブポータル** | マイページ | `/club/dashboard` | `Sidebar.tsx` 先頭メニュー / `Header.tsx` の `/dashboard` タイトル |
+
+### 0.3 学校管理者ポータル（`/school`）— 5/27デモ UI 仕様
+
+**シェル**: `SchoolAppShell`（`src/components/layout/school/`）。クラブ向け `AppShell` とは独立。テーマは濃いネイビー（`SCHOOL_THEME.navy` = `#172554`）。
+
+#### 0.3.1 ブランドロゴ（学校・クラブ共通）
+
+| 項目 | 仕様 |
+| --- | --- |
+| 画像ファイル | `public/kurasapo_logo_fix_RGB.png` |
+| コンポーネント | `KurasapoBrandLogo`（`src/components/layout/KurasapoBrandLogo.tsx`） |
+| 配置 | サイドバー最上部（`SchoolSidebar` / `Sidebar` の border-b 直下エリア） |
+| サイズ | `w-full max-w-[224px] h-auto object-contain`（サイドバー幅 `w-64` ＋ 左右 `px-4` 内で横幅いっぱい）。固定 `h-8` / `h-10` は使用しない |
+| 配置揃え | `flex w-full justify-center` で中央寄せ |
+| 学校用補助テキスト | **なし**（旧「for School」バッジは削除済み） |
+| クラブ用 | ロゴ単体のみ（上記と同一画像・同一コンポーネント） |
+
+#### 0.3.2 サイドメニュー（`SchoolSidebar.tsx`）
+
+順序・展開式親子は実装の `menuItems` と一致。
+
+| # | メニュー | パス | 備考 |
+| --- | --- | --- | --- |
+| 1 | 管理者ポータル | `/school` | トップ |
+| 2 | クラブ管理（親） | `/school/clubs` | 展開式 |
+| 2a | └ クラブ一覧 | `/school/clubs` | 子 |
+| 2b | └ クラブ登録 | `/school/clubs/register` | 子 |
+| 3 | お知らせ一覧 | `/school/messages` | 旧「メッセージBOX」表記は廃止 |
+| 4 | 設定（親） | `/school/settings` | 展開式。`/school/settings` 単体アクセス時は **共通カテゴリー設定** へリダイレクト |
+| 4a | └ 共通カテゴリー設定 | `/school/settings/category` | 子 |
+| 4b | └ 共通科目設定 | `/school/settings/account-titles` | 子 |
+| 4c | └ 担当者設定 | `/school/settings/staff` | 子 |
+| 5 | 契約状況 | `/school/contract` | §0.3.4 |
+| 6 | 操作ガイド | `/school/guide` | デモ用ヘルプ |
+
+ロゴ直下に「学校管理」ラベル（`text-xs`）を表示。
+
+#### 0.3.3 管理者ポータル・サマリーカード（`SchoolMypageView.tsx`）
+
+- 年度切替: `2024年度` / `2025年度` / `2026年度`（デモでは **2026年度** のみ4カード表示、他年度は「過去年度のデータはありません」）
+- 2×2 カード（左→右・上→下）:
+
+| カード | 遷移先 | 説明文（デモ） |
+| --- | --- | --- |
+| クラブ一覧 | `/school/clubs` | 登録クラブ数: 0個 等 |
+| 契約状況 | `/school/contract` | プラン・次回更新日 |
+| お知らせ一覧 | `/school/messages` | 未読件数 等 |
+| **操作ガイド** | `/school/guide` | 「操作ガイド・マニュアル」「（5/27デモ用ヘルプページへ一発で遷移できます）」 |
+
+> 旧デモの右下「設定」カードは **操作ガイド** カードに差し替え済み（`/school/settings/*` へのショートカットではない）。
+
+#### 0.3.4 契約状況画面（`/school/contract`）
+
+`SchoolContractView` — 3 ブロックのカード（左ボーダー 5px ネイビー）。
+
+1. **ご契約情報** — デモ固定値（`SCHOOL_CONTRACT_DEMO`）
+2. **学校情報** — 申込時情報（縦並びラベル＋値）
+3. **ログイン情報** — ID・メール・パスワード（変更リンクはデモ用見た目のみ）
+
+**ご契約情報行のレイアウト**（`ContractInfoRow`）:
+
+| 要素 | Tailwind / 挙動 |
+| --- | --- |
+| 行全体 | `flex items-baseline` |
+| 項目名 | `w-1/3 shrink-0 min-w-[11rem]` 左寄せ・幅約1/3固定 |
+| 内容 | `flex-1 whitespace-nowrap` 左寄せ。全行の**書き出し位置が縦一列**に揃う（おおよそ全体幅の 1/3 付近から開始） |
+| 長文 | **折り返さない**。プラン名等は右方向へ1行で延長（サイドバー外にはみ出す場合は親の `overflow-x-auto` で横スクロール可） |
+
+3等分 `grid-cols-3` は使用しない。
+
+#### 0.3.5 その他学校画面（デモプレースホルダ）
+
+| パス | 見出し例 |
+| --- | --- |
+| `/school/settings/category` | ⚙️ 学校共通カテゴリー設定 |
+| `/school/settings/account-titles` | ⚙️ 学校共通科目設定 |
+| `/school/settings/staff` | ⚙️ 学校管理者・担当者設定 |
+| `/school/clubs` | 🏢 東京都市大学 - 登録クラブ一覧 |
+| `/school/messages` | 📢 お知らせ一覧 |
+| `/school/guide` | 📖 操作ガイド・マニュアル |
+
+定数・ルート一覧は `src/lib/schoolTheme.ts` の `SCHOOL_ROUTES` / `SCHOOL_PAGE_TITLES` を正とする。URL 一覧はリポジトリ直下 `ROUTES.md` も参照。
 
 ---
 
 ## 目次
 
+- [0.2 ポータル名称](#02-ポータル名称ui-表記の正本)
+- [0.3 学校管理者ポータル](#03-学校管理者ポータルschool--527デモ-ui-仕様)
 - [1. システム概要（2026年度運用）](#1-システム概要2026年度運用)
 - [2. 画面構成とカラーシステム](#2-画面構成とカラーシステム)
 - [3. 会計ロジック（振替・集計・バリデーション）](#3-会計ロジック振替集計バリデーション)
@@ -123,13 +221,13 @@ Get-NetTCPConnection -LocalPort 3000 | ForEach-Object { Stop-Process -Id $_.Owni
 
 ## 2. 画面構成とカラーシステム
 
-### 2.1 サイドバー（`src/components/layout/Sidebar.tsx`）
+### 2.1 クラブ向けサイドバー（`src/components/layout/Sidebar.tsx`）
 
-メニュー定義（順序・色は実装の `menuItems` と一致）：
+先頭に **ブランドロゴ**（§0.3.1）を配置。メニュー定義（順序・色は実装の `menuItems` と一致）。パスは `clubPath()` により `/club` プレフィックス付き。
 
-| 親メニュー | パス | アイコン色 | サブメニュー |
+| 親メニュー | パス（相対） | アイコン色 | サブメニュー |
 | --- | --- | --- | --- |
-| マイページ | `/dashboard` | `#E66A84`（ピンク） | — |
+| **クラブポータル** | `/dashboard` → `/club/dashboard` | `#E66A84`（ピンク） | — |
 | 入出金登録 | `/accounting/input` | `#A3BC68`（黄緑） | 新規登録 `/accounting/register/new` / 登録履歴 `/accounting/register/history` |
 | **集計・帳簿** | `/accounting/ledger` | `#68A384`（青緑） | 収支集計表 `/accounting/summary` / 現金・預金出納帳 `/accounting/ledger/cash-bank` / 科目別台帳 `/accounting/ledger/subject` / 収支報告書 `/accounting/report` |
 | 集金管理 | `/collection` | `#D99529`（オレンジ） | 集金実績 / 集金予定一覧 / 集金設定 |
@@ -163,7 +261,13 @@ Get-NetTCPConnection -LocalPort 3000 | ForEach-Object { Stop-Process -Id $_.Owni
 | 集金 | 集金実績 / 予定 / 設定 | `/collection/{history,schedule,settings}` |
 | 部員 | 部員一覧 / 部員登録 / 個別 | `/members/{list,register,[id]}` |
 | 設定 | クラブ / 担当者 / カテゴリー / 科目 | `/settings/{club,staff,category,account-titles}` |
-| その他 | 操作ガイド | `/guide` |
+| その他 | 操作ガイド | `/club/guide` |
+
+> 上記パスは旧表記（`/dashboard` 等）を含む場合がある。正本は **`/club/*`**。`Header.tsx` の `pageTitleMap` キーは `clubRelativePath` 基準の相対パス。
+
+### 2.4 学校向け画面一覧（管理者ポータル）
+
+§0.3 を正とする。実装ファイルは `src/app/school/**` および `src/components/school/**`。
 
 ---
 
@@ -1239,7 +1343,7 @@ v2.9.11 で、集金入力テーブルの列を **9 列**に再構成し、不�
 | **1. 台帳明細** | **現金・預金出納帳**（`/accounting/ledger/cash-bank`） | `counterparty`（入金先口座）・日付・`amount`（符号そのまま）・`memo`。**複数科目の集金登録でも取引 1 件ずつすべて明細行として表示**（`transactionMatchesCashAccount`: `counterparty` 一致、または `collectionScheduleId` 経由で集金設定の入金先口座と一致）。同日複数行は `createdAt` 順で残高を連続計算。 |
 | | **科目別台帳**（`/accounting/ledger/subject`） | `accountTitle`（収入科目）・日付・`amount`・`memo` |
 | **2. 集計・残高** | **収支集計表**（`/accounting/summary` ほか） | `isTransferLeg(t) === false` かつ `type === "collection"` を収入源として科目・カテゴリー別に集計 |
-| | **マイページトップ**（`/dashboard`） | 現金預金残高に `amount` を加算（`collection` は `income` と同様に残高へ反映） |
+| | **クラブポータルトップ**（`/club/dashboard`） | 現金預金残高に `amount` を加算（`collection` は `income` と同様に残高へ反映） |
 | **3. 報告書** | **収支報告書**（`/accounting/report`） | 収支集計表と同じ `transactions` 集計を `incomeByCategory` 等へ反映 |
 
 > メモ: 画面メモ欄が空の場合、`resolveCollectionMemo` により `[N月分] 集金（部員氏名 - 科目名）` を `Transaction.memo` に保存（§6.8.7 E-5）。`CollectionRecord.paymentHistory` にも同一文字列を記録。
