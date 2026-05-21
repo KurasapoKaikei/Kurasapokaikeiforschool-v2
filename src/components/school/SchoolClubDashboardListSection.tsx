@@ -13,6 +13,7 @@ import {
   getClubSettlementStatus,
   type ClubSettlementStatus,
 } from "@/lib/schoolClubSettlement"
+import { clearCurrentClub } from "@/lib/clubLoginSession"
 import { setImpersonatedClub } from "@/lib/schoolClubSession"
 import {
   CLUB_BRAND_PINK,
@@ -47,6 +48,7 @@ export function SchoolClubDashboardListSection() {
   }, [sortedClubs, activeTab])
 
   const handlePortal = (club: { id: string; name: string }) => {
+    clearCurrentClub()
     setImpersonatedClub({ id: club.id, name: club.name })
     router.push(CLUB_PORTAL_DASHBOARD)
   }

@@ -1,8 +1,9 @@
-# クラサポ会計 機能詳細仕様書 v2.10（2026年度運用 正本）
+# クラサポ会計 機能詳細仕様書 v2.11（2026年度運用 正本）
 
 - **対象システム**: クラサポ会計（Next.js / クライアントサイド LocalStorage 実装）
 - **対象会計年度**: **2026年度（2026/04/01 〜 2027/03/31）固定運用**
 - **本ドキュメントの位置づけ**: 開発者がこのファイル単体を読めば、現行実装の挙動（振替・集計・履歴・編集動線、**管理者ポータル / クラブポータル**の UI）を完全に把握できる正本仕様書。
+- **v2.11 追記（2026-05）**: 統合ログインハブ（`/`）、学校・クラブログイン認証、クラブ動的データ出し分け、クラブヘッダー刷新を §0.4 に反映。ビジネス向け要約は `docs/system-specification-for-school.md` §7〜10。
 - **v2.10 追記（2026-05）**: 学校 `/school` デモ UI（管理者ポータル・契約状況・設定子画面・共通ロゴ）およびクラブ「クラブポータル」表記を §0.2〜0.3・§2 に反映。
 - **過去の v2.8 / 2025年度仕様は本書では取り扱わない**（旧仕様は `docs/spec.md` を参照）。
 
@@ -14,7 +15,7 @@
 
 | 区分 | URL プレフィックス | 想定利用者 | 現状（2026-05 デモ） |
 | --- | --- | --- | --- |
-| **LP（入り口）** | `/` | 全員 | 学校・クラブ・部員への3ボタン |
+| **LP（入り口）** | `/` | 全員 | **統合ログインハブ**（学校・クラブ・部員の3カード） |
 | **学校** | `/school` | 学校管理者（クラブ登録・決算承認） | **管理者ポータル**（サイドメニュー・契約状況・設定子画面などデモ UI 実装済） |
 | **クラブ** | `/club` | クラブ会計担当（集金・入出金・部員管理） | **クラブポータル**（既存機能の正本・旧 `/dashboard` 等） |
 | **部員・保護者** | `/member` | 部員・保護者（請求確認・オンライン決済） | プレースホルダ画面のみ |
@@ -61,7 +62,50 @@ public/
 | 区分 | 正式名称 | 旧称（非推奨） | トップ URL | 実装参照 |
 | --- | --- | --- | --- | --- |
 | 学校 | **管理者ポータル** | マイページ / マイポータル | `/school` | `SCHOOL_PAGE_TITLES.home`（`src/lib/schoolTheme.ts`） |
-| クラブ | **クラブポータル** | マイページ | `/club/dashboard` | `Sidebar.tsx` 先頭メニュー / `Header.tsx` の `/dashboard` タイトル |
+| クラブ | **クラブポータル** | マイページ | `/club/dashboard` | `Sidebar.tsx` 先頭メニュー / `ClubPortalHeader.tsx` |
+
+### 0.4 統合ログインハブ・認証・クラブヘッダー（2026-05 実装）
+
+#### 0.4.1 統合ログインハブ（`/`）
+
+- `LoginHubView`：学校（ネイビー `#005088`）→ `/school/login`、クラブ（ピンク `#E66A84`）→ インラインフォーム、部員（グレー）→ 準備中モーダル。
+
+#### 0.4.2 学校ログイン（`/school/login`）
+
+- デモ認証：`admin` / `admin` または空欄で成功 → `/school/clubs`。
+- `schoolLoginSession.ts`（`kurasaokaikei-school-admin-session`）。
+- `/school/login` は `SchoolLayoutGate` により `SchoolAppShell`（サイドバー）を表示しない。
+
+#### 0.4.3 クラブログイン・セッション
+
+| キー | 保存先 | 内容 |
+| --- | --- | --- |
+| `kurasaokaikei-school-clubs` | localStorage | 学校登録クラブ一覧（ID・password 等） |
+| `kurasaokaikei-current-club` | localStorage | クラブログイン後のセッション |
+| `kurasaokaikei-school-impersonate-club` | sessionStorage | 学校「クラブページへ」なりすまし |
+
+- 認証成功後は常に `/club/dashboard` へ遷移（URLにクラブIDを含めない）。
+- `ClubSessionProvider` + `clubPortalData.ts`：学校登録クラブで未使用データの場合は残高0・メッセージ空・決算「作成中」。セッションなしの直接アクセスは従来のグローバル `classapo_*` デモデータ。
+
+#### 0.4.4 クラブポータルヘッダー（`ClubPortalHeader.tsx`）
+
+- 旧ベージュ1行目を廃止。ピンク `#E66A84` 1本帯を `sticky top-0`。
+- 左：`[クラブ名] ポータル`（白）、右：会計期間 ＋ ログアウト（`logoutClubSession()` → `/`）。
+- `AppShellHeader` が `/club/*` で `ClubPortalHeader`、それ以外で `LegacyAppHeader` を切替。
+
+**主要ファイル**
+
+```
+src/components/auth/LoginHubView.tsx
+src/components/auth/SchoolLoginView.tsx
+src/components/auth/ClubLoginForm.tsx
+src/components/layout/ClubPortalHeader.tsx
+src/lib/clubLoginSession.ts
+src/lib/schoolLoginSession.ts
+src/lib/clubPortalData.ts
+src/lib/activeClubSession.ts
+src/contexts/ClubSessionContext.tsx
+```
 
 ### 0.3 学校管理者ポータル（`/school`）— 5/27デモ UI 仕様
 

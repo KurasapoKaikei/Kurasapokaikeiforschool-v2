@@ -94,7 +94,11 @@ kurasaokaikei/
 
 | 画面 | URL |
 |------|-----|
-| ホーム | http://localhost:3000/ |
+| 統合ログインハブ | http://localhost:3000/ |
+| 学校ログイン | http://localhost:3000/school/login |
+| クラブログイン | http://localhost:3000/club/login |
+| クラブポータル | http://localhost:3000/club/dashboard |
+| 学校・クラブ管理（仕様） | [docs/system-specification-for-school.md](./docs/system-specification-for-school.md) §7〜10 |
 | マイページ | http://localhost:3000/dashboard |
 | 入出金登録 | http://localhost:3000/accounting/register/new |
 | 登録履歴 | http://localhost:3000/accounting/register/history |
@@ -138,7 +142,10 @@ npm run routes
 
 | ドキュメント | 内容 |
 |-------------|------|
+| **[docs/system_spec.md](./docs/system_spec.md)** | 機能詳細仕様書（正本・v2.11、ログインハブ・動的認証含む） |
+| **[docs/system-specification-for-school.md](./docs/system-specification-for-school.md)** | 学校向け全体設計・クラブ管理・ログイン仕様 |
 | **[docs/spec.md](./docs/spec.md)** | 開発マスターガイド（詳細仕様書 / v2.8・最終更新: 2026.2.6） |
+| **[ROUTES.md](./ROUTES.md)** | URL一覧 |
 | **[docs/kansa.md](./docs/kansa.md)** | 監査レポート |
 | **[prisma/schema.prisma](./prisma/schema.prisma)** | データベース設計 |
 

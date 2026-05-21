@@ -61,6 +61,7 @@ export const SCHOOL_PAGE_TITLES = {
 
 export const SCHOOL_ROUTES = {
   home: "/school",
+  login: "/school/login",
   clubList: "/school/clubs",
   clubGroups: "/school/clubs/groups",
   clubRegister: "/school/clubs/register",

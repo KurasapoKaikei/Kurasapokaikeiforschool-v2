@@ -1,39 +1,49 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle } from "lucide-react"
-import { mockMessages } from "@/constants/mockData"
-import { getTransactions, getAccountTitles, getMembers, getCurrentOperator, type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
+import { useClubSession } from "@/contexts/ClubSessionContext"
+import {
+  getPortalAccountTitles,
+  getPortalMembers,
+  getPortalMessages,
+  getPortalTransactions,
+} from "@/lib/clubPortalData"
+import { getClubSettlementStatus } from "@/lib/schoolClubSettlement"
+import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
+import { getCurrentOperator, type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { activeClub, isEmptyPortal, refresh } = useClubSession()
   const [selectedYear, setSelectedYear] = useState("2026年度")
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [messages, setMessages] = useState(
+    () => getPortalMessages(activeClub)
+  )
 
   const [currentOperatorLabel, setCurrentOperatorLabel] = useState<string | null>(null)
 
-  // LocalStorageから取引・科目・部員データを読み込み
-  useEffect(() => {
-    setTransactions(getTransactions())
-    setAccountTitles(getAccountTitles())
-    setMembers(getMembers())
-    setCurrentOperatorLabel(getCurrentOperator())
-  }, [])
+  const loadPortalData = useCallback(() => {
+    setTransactions(getPortalTransactions(activeClub))
+    setAccountTitles(getPortalAccountTitles(activeClub))
+    setMembers(getPortalMembers(activeClub))
+    setMessages(getPortalMessages(activeClub))
+    setCurrentOperatorLabel(isEmptyPortal ? null : getCurrentOperator())
+    refresh()
+  }, [activeClub, isEmptyPortal, refresh])
 
-  // データの変更を監視（リアルタイム更新）
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTransactions(getTransactions())
-      setAccountTitles(getAccountTitles())
-      setMembers(getMembers())
-      setCurrentOperatorLabel(getCurrentOperator())
-    }, 500)
+    loadPortalData()
+  }, [loadPortalData])
 
+  useEffect(() => {
+    const interval = setInterval(loadPortalData, 500)
     return () => clearInterval(interval)
-  }, [])
+  }, [loadPortalData])
 
   // 現金・預金科目のみを取得
   const cashAccountTitles = useMemo(
@@ -165,8 +175,11 @@ export default function DashboardPage() {
     return `${year}/${month}/${day}`
   }
 
-  // メッセージの未読数を計算
-  const unreadMessageCount = mockMessages.filter((m) => m.isUnread).length
+  const settlementStatus = activeClub
+    ? getClubSettlementStatus(activeClub.id)
+    : null
+
+  const unreadMessageCount = messages.filter((m) => m.isUnread).length
 
   // 金額フォーマット（￥なし、カンマ区切り）
   const formatAmount = (n: number): string => n.toLocaleString()
@@ -213,6 +226,28 @@ export default function DashboardPage() {
       </div>
 
       <div className="px-6 py-4">
+        {activeClub ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#E66A84]/25 bg-white px-4 py-3 shadow-sm">
+            <div>
+              <p className="text-sm text-[#6B7280]">ログイン中のクラブ</p>
+              <p className="text-lg font-bold text-[#374151]">{activeClub.name}</p>
+              <p className="text-xs text-[#9CA3AF]">クラブID: {activeClub.id}</p>
+            </div>
+            {settlementStatus ? (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-xs text-[#6B7280]">決算ステータス</span>
+                <SchoolClubSettlementBadge status={settlementStatus} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isEmptyPortal ? (
+          <div className="mb-4 rounded-lg border border-dashed border-gray-300 bg-white/80 px-4 py-3 text-center text-sm text-[#6B7280]">
+            今期の決算データはまだ登録されていません。入出金や予算を登録すると、この画面に反映されます。
+          </div>
+        ) : null}
+
         {/* 一段目: 3カラム構成（同等幅） */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
           {/* 左ブロック: 現在の残高 */}
@@ -320,12 +355,18 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {isEmptyPortal && cashBalances.length === 0 ? (
+              <p className="mb-3 px-2 text-center text-sm text-[#9CA3AF]">
+                今期の決算データはまだ登録されていません
+              </p>
+            ) : null}
+
             {/* 実質残高（次期繰越金）- 会計上の最終値（最も強調） */}
             <div className="border-2 border-[#E66A84] border-double pt-2 mt-2 bg-[#FCE7F3] rounded-lg p-2.5">
               <div className="flex items-center justify-between mb-0.5">
                 <span className="text-base font-bold text-[#374151]">実質残高（次期繰越金）</span>
                 <span className="text-2xl font-bold text-[#E66A84] text-right min-w-[120px] tabular-nums">
-                  {formatAmount(carryOverAmount)}
+                  {isEmptyPortal ? "0" : formatAmount(carryOverAmount)}
                 </span>
               </div>
               <p className="text-xs text-[#6B7280] mt-0.5 mb-0.5">
@@ -343,22 +384,28 @@ export default function DashboardPage() {
               お知らせ
             </h2>
             <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
-              {mockMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className="flex items-start gap-3 px-2 py-2 hover:bg-gray-50 rounded transition-colors"
-                >
-                  <span className="text-xs text-[#6B7280] min-w-[70px]">{message.date}</span>
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className={`text-sm truncate ${message.isUnread ? "font-semibold text-[#374151]" : "text-[#6B7280]"}`}>
-                      {message.subject}
-                    </span>
-                    {message.isUnread && (
-                      <span className="w-2 h-2 bg-[#EF4444] rounded-full flex-shrink-0"></span>
-                    )}
+              {messages.length > 0 ? (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className="flex items-start gap-3 px-2 py-2 hover:bg-gray-50 rounded transition-colors"
+                  >
+                    <span className="text-xs text-[#6B7280] min-w-[70px]">{message.date}</span>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className={`text-sm truncate ${message.isUnread ? "font-semibold text-[#374151]" : "text-[#6B7280]"}`}>
+                        {message.subject}
+                      </span>
+                      {message.isUnread && (
+                        <span className="w-2 h-2 bg-[#EF4444] rounded-full flex-shrink-0"></span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="px-2 py-8 text-center text-sm text-[#6B7280]">
+                  学校管理者からのメッセージはありません
+                </p>
+              )}
             </div>
             {unreadMessageCount > 0 && (
               <div className="mt-3 pt-2 border-t border-gray-200 flex-shrink-0">
@@ -381,9 +428,14 @@ export default function DashboardPage() {
               </div>
               <div className="flex-1 flex flex-col justify-center">
                 <p className="text-xs text-[#6B7280] mb-3">監査警告件数</p>
-                <p className="text-xl font-bold text-[#FF0000]">{alertCount}件</p>
-                {alertCount > 0 && (
+                <p className="text-xl font-bold text-[#FF0000]">
+                  {isEmptyPortal ? "0" : alertCount}件
+                </p>
+                {!isEmptyPortal && alertCount > 0 && (
                   <p className="text-xs text-[#FF0000] mt-2 font-medium">至急確認が必要です</p>
+                )}
+                {isEmptyPortal && (
+                  <p className="text-xs text-[#9CA3AF] mt-2">未登録の取引はありません</p>
                 )}
               </div>
             </div>

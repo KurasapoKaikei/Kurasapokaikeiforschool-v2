@@ -1,6 +1,6 @@
 import { ReactNode } from "react"
-import { SchoolAppShell } from "@/components/layout/school/SchoolAppShell"
+import { SchoolLayoutGate } from "@/components/layout/school/SchoolLayoutGate"
 
 export default function SchoolLayout({ children }: { children: ReactNode }) {
-  return <SchoolAppShell>{children}</SchoolAppShell>
+  return <SchoolLayoutGate>{children}</SchoolLayoutGate>
 }

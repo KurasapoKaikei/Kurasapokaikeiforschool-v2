@@ -1,5 +1,7 @@
 /** 学校ポータル：クラブ決算提出ステータス（デモ用モック） */
 
+import { loadSchoolClubs } from "@/lib/schoolClubs"
+
 export type ClubSettlementStatus = "draft" | "auditing" | "approved"
 
 const STORAGE_KEY = "kurasaokaikei-school-club-settlement-status"
@@ -56,7 +58,11 @@ function mockStatusForClubId(clubId: string): ClubSettlementStatus {
   return options[sum % options.length]
 }
 
-/** 未設定クラブにデモ用ステータスを割り当てて返す */
+function isSchoolRegisteredClubId(clubId: string): boolean {
+  return loadSchoolClubs().some((c) => c.id === clubId)
+}
+
+/** 未設定クラブにステータスを割り当てて返す（学校登録クラブは「作成中」） */
 export function ensureClubSettlementStatuses(
   clubIds: string[]
 ): Record<string, ClubSettlementStatus> {
@@ -64,7 +70,7 @@ export function ensureClubSettlementStatuses(
   let changed = false
   for (const id of clubIds) {
     if (!current[id]) {
-      current[id] = mockStatusForClubId(id)
+      current[id] = isSchoolRegisteredClubId(id) ? "draft" : mockStatusForClubId(id)
       changed = true
     }
   }
@@ -76,5 +82,7 @@ export function getClubSettlementStatus(
   clubId: string
 ): ClubSettlementStatus {
   const map = loadAll()
-  return map[clubId] ?? mockStatusForClubId(clubId)
+  if (map[clubId]) return map[clubId]
+  if (isSchoolRegisteredClubId(clubId)) return "draft"
+  return mockStatusForClubId(clubId)
 }

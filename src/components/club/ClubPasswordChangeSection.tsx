@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { getCurrentClub } from "@/lib/clubLoginSession"
 import { getImpersonatedClub } from "@/lib/schoolClubSession"
 import {
   getClubById,
@@ -23,6 +24,11 @@ export function ClubPasswordChangeSection() {
     const impersonated = getImpersonatedClub()
     if (impersonated?.id) {
       setClubId(impersonated.id)
+      return
+    }
+    const loggedIn = getCurrentClub()
+    if (loggedIn?.id) {
+      setClubId(loggedIn.id)
       return
     }
     const clubs = loadSchoolClubs()
