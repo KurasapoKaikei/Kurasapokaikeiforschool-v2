@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |------|------|
 | 文書名 | 学校新規申込＆アカウント自動発行フロー 仕様書 |
-| 版 | 1.0（確定版） |
-| 最終更新 | 2026年5月 |
+| 版 | 1.1（確定版） |
+| 最終更新 | 2026年5月23日 |
 | 対象読者 | 開発者、導入支援、プロダクトオーナー |
 | 関連 URL | `/register/school`、`/register/verify`、`/school/login`、`/school/contract` ほか `/school/*` |
 | 実装形態（デモ） | ブラウザ `localStorage` / `sessionStorage`、クライアントサイドのみ |
@@ -186,6 +186,19 @@ flowchart TD
 
 **実装**: `SchoolLoginView`、`schoolLoginSession.ts`
 
+#### 4.1.1 パスワード入力 UI（ログイン・申込共通）
+
+| 要件 | 仕様 |
+|------|------|
+| 初期値 | パスワード欄は **常に空文字 `""`**。ダミーの黒丸は出さない |
+| 自動補完 | `autocomplete` は維持（学校ログイン: `current-password`、新規申込: `new-password`） |
+| 表示切替 | 右端に Lucide `Eye` / `EyeOff`。クリックで `type="password"` ⇔ `type="text"` |
+| 自動入力の見え方 | ログイン画面は `deferAutofillUntilFocus` でフォーカス前 `readOnly`（フォーカス後は通常入力） |
+
+**適用画面**: 学校ログイン（`SchoolLoginView`）、クラブログイン（`ClubLoginForm`）、新規申込 STEP 3（`SchoolRegisterForm`）
+
+**共通コンポーネント**: `src/components/ui/password-input.tsx`（`"use client"` 必須）
+
 ### 4.2 共通ヘッダーの学校名連動
 
 - 申込時の **学校名**・**会計期間** を動的表示
@@ -238,6 +251,9 @@ flowchart TD
 | フォーム・注釈 | `src/lib/registerFormUtils.ts` |
 | パスワード強度 | `src/lib/registerPasswordUtils.ts` |
 | ログイン | `src/lib/schoolLoginSession.ts` |
+| パスワード入力 UI | `src/components/ui/password-input.tsx` |
+| 学校ログイン画面 | `src/components/auth/SchoolLoginView.tsx` |
+| クラブログイン画面 | `src/components/auth/ClubLoginForm.tsx` |
 | ログイン中データ | `src/lib/currentSchool.ts` |
 | ヘッダー表示 | `src/lib/schoolHeaderDisplay.ts` |
 | 契約表示 | `src/lib/getSchoolContractDisplay.ts` |
@@ -264,10 +280,21 @@ flowchart TD
 4. ログイン直後のヘッダーに申込時の学校名が表示される
 5. 契約状況にプラン・サイクル・支払日・長文注釈が一致して表示される
 6. 別学校名で再申込・ログイン後、表示が新しい学校に切り替わる
+7. 学校・クラブログインおよび新規申込のパスワード欄が初期空欄で、目のアイコンで表示／非表示が切り替わる
 
 ---
 
-## 9. 関連ドキュメント
+## 9. トラブルシュート（開発時）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| トップ `/` が真っ白、`Error in shell` | 破損した `.next` キャッシュ（`Cannot find module './xxxx.js'` 等） | 全 `node` 停止 → `.next` 削除 → `npm run dev` を **1 プロセスのみ** 起動 |
+| `window is not defined` | SSR 時の `localStorage` 直参照 | `"use client"` + `useEffect` 内、または `typeof window === "undefined"` ガード（本プロジェクトの storage ユーティリティはガード済み） |
+| `/` と `/school/login` のループ | 本プロジェクトに `middleware.ts` は未配置。`SchoolLayoutGate` はログイン画面のみシェル除外 | 新規ミドルウェア追加時は `/` をリダイレクト対象に含めない |
+
+---
+
+## 10. 関連ドキュメント
 
 - [学校新規申込オンボーディング・フロー 仕様書](./school_onboarding_spec.md)（詳細版・同一フローの別名ドキュメント）
 - [クラサポ会計 for school システム全体設計](../system-specification-for-school.md)
