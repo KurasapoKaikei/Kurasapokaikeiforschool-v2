@@ -1,11 +1,62 @@
-# クラサポ会計 機能詳細仕様書 v2.11（2026年度運用 正本）
+# クラサポ会計 機能詳細仕様書 v2.12（2026年度運用 正本）
 
 - **対象システム**: クラサポ会計（Next.js / クライアントサイド LocalStorage 実装）
 - **対象会計年度**: **2026年度（2026/04/01 〜 2027/03/31）固定運用**
-- **本ドキュメントの位置づけ**: 開発者がこのファイル単体を読めば、現行実装の挙動（振替・集計・履歴・編集動線、**管理者ポータル / クラブポータル**の UI）を完全に把握できる正本仕様書。
-- **v2.11 追記（2026-05）**: 統合ログインハブ（`/`）、学校・クラブログイン認証、クラブ動的データ出し分け、クラブヘッダー刷新を §0.4 に反映。ビジネス向け要約は `docs/system-specification-for-school.md` §7〜10。
+- **本ドキュメントの位置づけ**: 開発者がこのファイル単体を読めば、現行実装の挙動（振替・集計・履歴・編集動線、**管理者ポータル / クラブポータル**、**学校・クラブ間メッセージBOX**）を完全に把握できる正本仕様書。
+- **v2.12 追記（2026-05）**: **§0.0 共通UIデザイン規約**、**§7 学校・クラブ間メッセージBOX機能**（下書き・確認画面・個別✉連動・確認済バッジ・クラブ受領確認）を統合。実装正本は `src/lib/portalMessages.ts` / `src/lib/portalDraftMessages.ts`。
+- **v2.11 追記（2026-05）**: 統合ログインハブ（`/`）、学校・クラブログイン認証、クラブ動的データ出し分け、クラブヘッダー刷新を §0.4 に反映。
 - **v2.10 追記（2026-05）**: 学校 `/school` デモ UI（管理者ポータル・契約状況・設定子画面・共通ロゴ）およびクラブ「クラブポータル」表記を §0.2〜0.3・§2 に反映。
 - **過去の v2.8 / 2025年度仕様は本書では取り扱わない**（旧仕様は `docs/spec.md` を参照）。
+
+---
+
+## 0.0 共通UIデザイン規約（ページタイトル・コンテンツ幅）
+
+本節は **集金管理 ＞ 集金実績**（`src/app/club/collection/history/page.tsx`）および **メッセージBOX** で共通する「ページタイトル（子帯）」と横幅の正本である。
+
+### 0.0.1 ページタイトル（子帯）— 集金実績と同一デザイン
+
+**使用コンポーネント**: `MessageBoxTitleBand`（`src/components/shared/MessageBoxTitleBand.tsx`）
+
+| 項目 | 仕様 |
+| --- | --- |
+| 外枠 | `rounded-t-lg border border-b-0 border-gray-200 px-6 py-4`、背景 **白** |
+| 左アクセント | `borderLeftWidth: 5`、`borderLeftColor` = 画面テーマ色 |
+| 見出し | `h2` — `text-xl font-semibold`、色はテーマ色（例: 集金 `#D99529`、メッセージBOX `#4A90E2`） |
+| 補足行 | 任意。`text-sm text-[#6B7280] mt-0.5` |
+| **使用しない** | テーマ色で画面幅いっぱいに敷く「色付き横長帯」＋白文字（旧デモ案は廃止） |
+
+**集金実績での参照例**（インライン実装と同等）:
+
+```tsx
+<div
+  className="rounded-t-lg border border-b-0 border-gray-200 px-6 py-4"
+  style={{ borderLeftWidth: 5, borderLeftColor: THEME_COLOR, backgroundColor: "white" }}
+>
+  <h2 className="text-xl font-semibold" style={{ color: THEME_COLOR }}>集金実績</h2>
+  <p className="text-sm text-[#6B7280] mt-0.5">{organizationName}　{fiscalPeriod}</p>
+</div>
+```
+
+### 0.0.2 コンテンツ幅・左右余白（ジャストフィット）
+
+| 画面区分 | 外側コンテナ | コンテンツ最大幅 | 配置 |
+| --- | --- | --- | --- |
+| クラブ会計・集金・帳簿等 | `px-6 py-8`（ページルート） | 画面フル幅（タイトル下の白パネルと連結） | 左寄せ |
+| 学校メッセージBOX | `SchoolAppShell` 内 | **`max-w-3xl`**（`SCHOOL_MESSAGE_PAGE_CONTENT_CLASS`） | **左寄せ**（`mx-0`） |
+| クラブメッセージBOX | `px-6 py-4 pb-8`（`ClubMessagesView`） | タイトル帯と同一ラッパー内でフル幅 | 左寄せ。タイトル左端と一覧パネル左端を縦ラインで一致 |
+
+**原則**: タイトル（子帯）を包むコンテナと、その直下のメインコンテンツ（テーブル・2カラム一覧等）は **同一の水平パディング・最大幅** を共有し、左右に「心地よい空白」を確保する。
+
+### 0.0.3 学校メッセージ一覧テーブル（ヘッダー・グリッド）
+
+| 項目 | 値 |
+| --- | --- |
+| 見出し列 | `日付` ｜ `時間` ｜ `送信先` ｜ `件名`（見出し文字のみ `text-center`） |
+| 個別クラブ履歴のみ追加列 | `ステータス` |
+| グリッド（4列） | `grid-cols-[6.5rem_3.5rem_8.5rem_minmax(0,1fr)]` |
+| グリッド（5列・個別のみ） | `grid-cols-[6.5rem_3.5rem_8.5rem_minmax(0,1fr)_5.5rem]` |
+| ヘッダー背景 | `#EFF6FF`、`sticky top-0` |
 
 ---
 
@@ -33,7 +84,9 @@ src/app/
 │   ├── layout.tsx           # SchoolAppShell（専用サイドバー＋ヘッダー）
 │   ├── page.tsx             # 管理者ポータル（年度切替・サマリーカード）
 │   ├── clubs/               # クラブ管理（子：一覧・登録）
-│   ├── messages/            # お知らせ一覧
+│   ├── messages/            # メッセージBOX（一覧・下書き・作成）
+│   │   └── drafts/          # 下書き一覧
+│   ├── clubs/[clubId]/messages/  # クラブ個別送信履歴（✉）
 │   ├── settings/            # 設定（親→3子画面、/settings は category へリダイレクト）
 │   ├── contract/            # 契約状況
 │   └── guide/               # 操作ガイド
@@ -133,7 +186,9 @@ src/contexts/ClubSessionContext.tsx
 | 2 | クラブ管理（親） | `/school/clubs` | 展開式 |
 | 2a | └ クラブ一覧 | `/school/clubs` | 子 |
 | 2b | └ クラブ登録 | `/school/clubs/register` | 子 |
-| 3 | お知らせ一覧 | `/school/messages` | 旧「メッセージBOX」表記は廃止 |
+| 3 | **メッセージBOX**（親） | `/school/messages` | 展開式 |
+| 3a | └ メッセージ一覧 | `/school/messages` | 子 |
+| 3b | └ 下書き | `/school/messages/drafts` | 子 |
 | 4 | 設定（親） | `/school/settings` | 展開式。`/school/settings` 単体アクセス時は **共通カテゴリー設定** へリダイレクト |
 | 4a | └ 共通カテゴリー設定 | `/school/settings/category` | 子 |
 | 4b | └ 共通科目設定 | `/school/settings/account-titles` | 子 |
@@ -152,7 +207,7 @@ src/contexts/ClubSessionContext.tsx
 | --- | --- | --- |
 | クラブ一覧 | `/school/clubs` | 登録クラブ数: 0個 等 |
 | 契約状況 | `/school/contract` | プラン・次回更新日 |
-| お知らせ一覧 | `/school/messages` | 未読件数 等 |
+| メッセージBOX | `/school/messages` | メッセージ一覧へ |
 | **操作ガイド** | `/school/guide` | 「操作ガイド・マニュアル」「（5/27デモ用ヘルプページへ一発で遷移できます）」 |
 
 > 旧デモの右下「設定」カードは **操作ガイド** カードに差し替え済み（`/school/settings/*` へのショートカットではない）。
@@ -184,7 +239,9 @@ src/contexts/ClubSessionContext.tsx
 | `/school/settings/account-titles` | ⚙️ 学校共通科目設定 |
 | `/school/settings/staff` | ⚙️ 学校管理者・担当者設定 |
 | `/school/clubs` | 🏢 東京都市大学 - 登録クラブ一覧 |
-| `/school/messages` | 📢 お知らせ一覧 |
+| `/school/messages` | メッセージBOX（メッセージ一覧） |
+| `/school/messages/drafts` | メッセージBOX（下書き） |
+| `/school/clubs/{clubId}/messages` | クラブ個別メッセージ履歴 |
 | `/school/guide` | 📖 操作ガイド・マニュアル |
 
 定数・ルート一覧は `src/lib/schoolTheme.ts` の `SCHOOL_ROUTES` / `SCHOOL_PAGE_TITLES` を正とする。URL 一覧はリポジトリ直下 `ROUTES.md` も参照。
@@ -193,6 +250,7 @@ src/contexts/ClubSessionContext.tsx
 
 ## 目次
 
+- [0.0 共通UIデザイン規約](#00-共通uiデザイン規約ページタイトルコンテンツ幅)
 - [0.2 ポータル名称](#02-ポータル名称ui-表記の正本)
 - [0.3 学校管理者ポータル](#03-学校管理者ポータルschool--527デモ-ui-仕様)
 - [1. システム概要（2026年度運用）](#1-システム概要2026年度運用)
@@ -201,6 +259,7 @@ src/contexts/ClubSessionContext.tsx
 - [4. データベース / LocalStorage 構造](#4-データベース--localstorage-構造)
 - [5. 登録履歴・出納帳の表示仕様](#5-登録履歴出納帳の表示仕様)
 - [6. 編集・キャンセル動線](#6-編集キャンセル動線)
+- [7. 学校・クラブ間 メッセージBOX機能](#7-学校クラブ間-メッセージbox機能)
 - [付録 A. ユーティリティ関数一覧](#付録-a-ユーティリティ関数一覧)
 - [付録 B. 用語集](#付録-b-用語集)
 
@@ -468,6 +527,60 @@ const cashAccountNameSet = useMemo(
 | `CSV_IMPORT_BATCHES` | `classapo_csv_import_batches` | CSV取込履歴 |
 | `CLUB_PROFILE` | `classapo_club_profile` | 担当者名簿（最大5名） |
 | `CURRENT_OPERATOR` | `classapo_current_operator` | 現在作業者（任意） |
+| （メッセージBOX）`school_to_club_messages` | `school_to_club_messages` | 学校→クラブ送信済みメッセージ（正本。旧 `portal_messages` から初回移行） |
+| （メッセージBOX）`school_draft_messages` | `school_draft_messages` | 学校ポータル下書き配列 |
+
+**メッセージBOX カスタムイベント**: `kurasaokaikei-portal-messages-changed` / `kurasaokaikei-portal-drafts-changed`（同一タブ UI 更新。`storage` イベントも併用）
+
+### 4.1.1 メッセージBOX 型定義（正本: `src/lib/portalMessages.ts` / `portalDraftMessages.ts`）
+
+```typescript
+export const SCHOOL_TO_CLUB_MESSAGES_KEY = "school_to_club_messages"
+export const SCHOOL_DRAFT_MESSAGES_KEY = "school_draft_messages"
+export const ALL_CLUBS_TARGET_ID = "all"
+
+export type PortalMessageKind = "general" | "settlement_deadline"
+export type PortalMessageAudience = "club" | "staff"
+export type PortalMessageSender = "school" | "audit" | "system"
+
+export type PortalMessage = {
+  id: string
+  subject: string
+  body: string
+  sentAt: string              // ISO 8601（読み込み時 createdAt も正規化）
+  targetClubId: string        // "all" = 全クラブ、個別クラブ ID、担当者 "staff-all" 等
+  targetClubName: string
+  readByClubIds: string[]     // クラブごとの既読（単一 status フィールドは使用しない）
+  confirmedByClubIds: string[] // クラブごとの受領確認（「確認しました」押下）
+  kind: PortalMessageKind
+  sender?: PortalMessageSender
+  audience?: PortalMessageAudience  // 未指定は club（既存互換）
+}
+
+export type SchoolMessageDraft = {
+  id: string
+  updatedAt: string
+  audience: PortalMessageAudience
+  targetId: string
+  targetName: string
+  subject: string
+  body: string
+}
+
+export type ClubPortalMessageView = {
+  id: string
+  subject: string
+  body: string
+  date: string              // YYYY/MM/DD
+  time: string              // HH:mm
+  isRead: boolean           // readByClubIds に当該 clubId が含まれるか
+  isConfirmed: boolean      // confirmedByClubIds に当該 clubId が含まれるか
+  sender: PortalMessageSender
+  senderLabel: string       // 学校 / 監査 / クラサポ
+}
+```
+
+**受領確認の実装**: クラブ詳細の「メッセージを確認しました」押下で `markPortalMessageConfirmed(messageId, clubId)` が `confirmedByClubIds` にクラブ ID を追加。学校個別履歴の「確認済」バッジはこの配列を参照（`status: 'confirmed'` の単一フィールドは**未使用**）。
 
 ### 4.2 `Transaction` 型（正本）
 
@@ -1457,6 +1570,378 @@ v2.9.12 で、**rowSpan の対象を再定義**した。
 
 ---
 
+## 7. 学校・クラブ間 メッセージBOX機能
+
+> **統合版 v2.12**: 本節は単体仕様書を統合仕様書へ取り込んだ正本。データ型は §4.1.1、UI共通規約は §0.0。
+
+### 7.. 全体概要・基本方針
+
+- **目的**: 学校管理者（および監査、システム）から、各部活動（クラブ）への連絡・通達を円滑に行うためのメッセージインフラ。
+- **通信方向**: 学校からクラブへの【完全な一方通行連絡】（クラブ側からの返信は不可、受領確認のみ）。
+- **データ永続化**: サーバー不要でモック動作するよう、ブラウザの `localStorage` を活用。例外処理（`try-catch`）を徹底し、データ空時のクラッシュを完全防止。
+- **変更通知**: 送信・既読・受領確認・下書き保存時にカスタムイベント `kurasaokaikei-portal-messages-changed` および `kurasaokaikei-portal-drafts-changed`（下書き）を発火し、同一タブ内の UI を更新。`storage` イベントも併用。
+
+### 1.1 localStorage キー一覧
+
+| キー | 用途 | 正本 |
+|------|------|------|
+| `school_to_club_messages` | 送信済みメッセージ（学校・クラブ双方が参照） | ○ |
+| `portal_messages` | 旧キー（初回読み込み時に `school_to_club_messages` へ一度だけ移行） | レガシー |
+| `school_draft_messages` | 学校ポータルの下書き配列 | ○ |
+
+### 1.2 主要実装ファイル
+
+| 領域 | ファイル |
+|------|----------|
+| メッセージ本体 | `src/lib/portalMessages.ts` |
+| 下書き | `src/lib/portalDraftMessages.ts` |
+| 学校・一覧/作成 | `src/components/school/SchoolMessagesView.tsx` |
+| 学校・下書き一覧 | `src/components/school/SchoolDraftsView.tsx` |
+| 学校・クラブ宛作成 | `src/components/school/SchoolClubComposeForm.tsx` |
+| 学校・担当者宛作成 | `src/components/school/SchoolStaffComposeForm.tsx` |
+| 学校・個別クラブ履歴 | `src/components/school/SchoolClubMessageView.tsx` |
+| 学校・履歴テーブル UI | `src/components/school/SchoolMessageHistoryUi.tsx` |
+| ページタイトル（子帯） | `src/components/shared/MessageBoxTitleBand.tsx` |
+| クラブ・メッセージBOX | `src/components/club/ClubMessagesView.tsx` |
+| クラブ・一覧行 | `src/components/club/ClubMessageListItem.tsx` |
+| クラブ・詳細＋確認 | `src/components/club/ClubMessageDetailPanel.tsx` |
+| クラブ・送信元バッジ | `src/components/club/ClubMessageSenderBadge.tsx` |
+| 学校サイドメニュー | `src/components/layout/school/SchoolSidebar.tsx` |
+
+---
+
+### 7.. データモデル
+
+### 2.1 PortalMessage（送信済み・正本）
+
+```typescript
+type PortalMessage = {
+  id: string
+  subject: string
+  body: string
+  sentAt: string              // ISO 8601
+  targetClubId: string        // "all" = 全クラブ、個別クラブID、担当者は "staff-all" 等
+  targetClubName: string
+  readByClubIds: string[]     // クラブごとの既読
+  confirmedByClubIds: string[] // クラブごとの「メッセージを確認しました」
+  kind: "general" | "settlement_deadline"
+  sender?: "school" | "audit" | "system"
+  audience?: "club" | "staff"  // 未指定は club（既存互換）
+}
+```
+
+### 2.2 SchoolMessageDraft（下書き）
+
+```typescript
+type SchoolMessageDraft = {
+  id: string
+  updatedAt: string           // ISO 8601（一覧の日時表示に使用）
+  audience: "club" | "staff"
+  targetId: string
+  targetName: string
+  subject: string
+  body: string
+}
+```
+
+### 2.3 クラブ向け表示モデル（ClubPortalMessageView）
+
+一覧・詳細・ダッシュボードプレビュー共通。`PortalMessage` からクラブ ID 単位で変換。
+
+- `date`: `YYYY/MM/DD`（例: `2026/05/25`）
+- `time`: `HH:mm`（例: `22:30`）
+- `isRead`: `readByClubIds` に当該クラブ ID が含まれるか
+- `isConfirmed`: `confirmedByClubIds` に当該クラブ ID が含まれるか
+- `sender` / `senderLabel`: 送信元バッジ用
+
+### 2.4 送信元（クラブ表示）
+
+| sender 値 | バッジ表示 | 配色（デモ） |
+|-----------|------------|----------------|
+| `school` | 学校 | 青背景・白文字 `#2563EB` |
+| `audit` | 監査 | オレンジ背景・白文字 `#EA580C`（送信ロジックは将来、`sendAuditPortalMessage` スタブあり） |
+| `system` | クラサポ | 緑背景・白文字 `#059669` |
+
+---
+
+### 7.. 管理者（学校ポータル）側の仕様
+
+### A. サイドメニューの階層化（親子関係）
+
+- 「メッセージBOX」を親メニューとし、クリックするとアコーディオン形式で以下の2つの子メニューが展開する。
+  1. **「メッセージ一覧」** → `/school/messages`（送信履歴の確認および新規作成の入り口）
+  2. **「下書き」** → `/school/messages/drafts`（下書き保存されたメッセージの再編集・管理画面）
+
+- 親メニューはページ遷移せず展開のみ（クラブ管理・設定と同様の UI パターン）。
+
+### B. メッセージ新規作成＆確認フロー
+
+#### B-1. タブ構成（メッセージ一覧画面）
+
+- **クラブ宛て** タブ: クラブ向け送信履歴＋「クラブへ新規作成」
+- **管理担当者宛て** タブ: 担当者向け送信履歴（デモ）＋「管理担当者へ新規作成」
+
+#### B-2. 入力フォーム
+
+- 件名のプレースホルダーに「例：」を明記。
+  - クラブ宛て例：**「例：2026年度収支報告書提出期限のお知らせ」**
+  - 管理担当者宛て例：**「例：2026年度決算の監査依頼」**
+- 送信先・件名・本文は必須（クラブ宛て）。管理担当者宛ては件名・本文必須。
+
+#### B-3. 作成画面のボタン（入力ステップ）
+
+- 直接「送信」は行わない。
+- **「確認画面へ」**（メインのアクション色 `#4A90E2`）と **「下書き保存」**（アウトライン）の2つのボタンを**左寄せ**（タイト幅 `max-w-3xl`）で配置。
+- **「キャンセル」**: 一覧へ戻る（入力内容は破棄せず一覧に戻る操作；一覧から再度作成を開いた場合は新規）。
+
+#### B-4. 確認画面（ワンクッション）
+
+- 「確認画面へ」押下後、入力内容（送信先・件名・本文）を**編集不可のプレビュー**で表示。
+- 最下部に次の3ボタンを左寄せで配置:
+  1. **「送信」**: 正式送信。`school_to_club_messages` に保存。編集中の下書き ID がある場合は下書きを削除。
+  2. **「下書き保存」**: 現在内容を `school_draft_messages` に保存（新規または上書き）。
+  3. **「キャンセル」**: 入力画面（フォーム）に戻る。**入力内容は保持**。
+- 確認画面の戻るリンク表記: 「入力画面に戻る」。
+
+#### B-5. 個別クラブからの作成（✉ 動線）
+
+- クラブ管理 ＞ クラブ一覧の ✉ から作成画面に進んだ場合:
+  - **送信先は最初からそのクラブ名で固定**（読み取り専用表示、変更不可）。
+  - 上記と同様に「確認画面へ」「下書き保存」フローを利用。
+  - 「一覧に戻る」「履歴一覧に戻る」は個別履歴画面へ。画面最上部「クラブ一覧に戻る」で `/school/clubs` へ。
+
+### C. 送信履歴一覧（メッセージ一覧 / 下書き）
+
+#### C-1. ページタイトル（子帯）
+
+- **「集金管理 ＞ 集金実績」**のページタイトルと完全に統一:
+  - 白背景、`rounded-t-lg`、`border`、左 **5px** アクセント（学校メッセージBOX は `#4A90E2`）
+  - 見出し `text-xl font-semibold`、テーマ色の文字色
+  - 補足文 `text-sm text-[#6B7280] mt-0.5`（任意）
+- 背景色の横長「色帯」は**使用しない**。
+
+#### C-2. レイアウト幅
+
+- コンテンツは **`max-w-3xl`・左寄せ**（`mx-0 w-full max-w-3xl`）。
+- 学校ヘッダー（紺色帯）は AppShell 共通のまま。その下のページ本体が上記幅。
+
+#### C-3. テーブル（メッセージ一覧・下書き一覧共通）
+
+- **見出し（ヘッダー行）**: `日付` ｜ `時間` ｜ `送信先` ｜ `件名`
+  - 見出しの文字**のみ中央寄せ**（`text-center`）
+  - ヘッダー背景: `#EFF6FF`、sticky
+- **グリッド列幅（共通）**: `grid-cols-[6.5rem_3.5rem_8.5rem_minmax(0,1fr)]`
+- **データ行**:
+  - 日付 `YYYY/MM/DD`、時間 `HH:mm`、送信先、件名
+  - 縦軸のラインが揃う配置。データは**左寄せ**
+  - 送信先表示（クラブ宛て）: `全クラブ宛て` / `個別：{クラブ名}`
+  - 件名・送信先が長い場合は `truncate` + `title` で全文ツールチップ
+  - **行全体クリック**で詳細画面へ（下書き一覧はクリックで `/school/messages?draft={id}` へ遷移し再編集）
+
+#### C-4. 詳細画面（送信済み）
+
+- 一覧から行選択で同一画面内に詳細パネル表示（タブ維持）。
+- 日時（結合表示）、件名、送信先、本文（`pre`・改行保持）。
+- 「一覧に戻る」で一覧へ。
+
+#### C-5. 下書き一覧
+
+- ルート: `/school/messages/drafts`
+- テーブル形式はメッセージ一覧と同一（ステータス列なし）。
+- 空時文言: **「下書きはありません」**
+- 行クリック → メッセージ一覧の作成画面を、下書き内容・タブ（club/staff）で開く。
+
+### D. クラブ管理 ＞ クラブ一覧（個別対応動線）
+
+#### D-1. 遷移
+
+- 各クラブ行の **✉（メールマーク）** → `/school/clubs/{clubId}/messages`
+
+#### D-2. 個別メッセージ履歴画面
+
+- **フィルタ**: `loadSchoolClubMessagesForClub(clubId)`  
+  - 送信先が **「すべて（全クラブ）」=`all`** または **当該クラブ ID** のメッセージのみ
+  - クラブ宛て（`audience !== "staff"`）のみ
+- 右上 **「クラブへ新規作成」**: 宛先固定の作成フローへ。
+- 「クラブ一覧に戻る」→ `/school/clubs`
+
+#### D-3. ステータス列（個別画面のみ）
+
+- 全体メッセージBOX（メッセージ一覧タブ）には**ステータス列を表示しない**。
+- 個別画面のみ、列を追加: `日付` ｜ `時間` ｜ `送信先` ｜ `件名` ｜ **`ステータス`**
+  - グリッド: `grid-cols-[6.5rem_3.5rem_8.5rem_minmax(0,1fr)_5.5rem]`
+- **確認済**: クラブが「メッセージを確認しました」を押した場合、緑系バッジ **「確認済」**（`#D1FAE5` / `#047857`）
+- **未確認**: グレー文字 **「未確認」**
+- 判定: 当該 `clubId` の `confirmedByClubIds` に含まれるか
+
+#### D-4. 戻り先
+
+- 個別履歴・作成・詳細の「クラブ一覧に戻る」は **クラブ一覧**（`/school/clubs`）へ。
+
+---
+
+### 7.. クラブポータル側の仕様
+
+### A. 画面レイアウト
+
+- **「← クラブポータルへ」の戻るリンクは完全に削除**（サイドメニュー・ダッシュボードから遷移する前提）。
+- **集金実績と同様の左右余白**: ページ本体を `px-6 py-4 pb-8` のコンテナでラップ。
+- タイトル（子帯）と一覧ブロックを**同一コンテナ幅**にし、タイトル直下に白パネル（左 5px アクセント `#4A90E2`、`rounded-b-lg`）で一覧＋詳細を接続。左右の縦ラインを一致させる。
+
+### B. ページタイトル（子帯）
+
+- 管理者側と同じ **集金実績型**（白背景・左 5px・テーマ色見出し）。
+- タイトル文言: **「メッセージBOX」**
+- 補足例: `{クラブ名}（{クラブId}）宛て`
+- 上部に `ClubPortalYearBar`（年度・作業者）はメッセージBOX専用ページでも表示。
+
+### C. メッセージ受信一覧（1行の配列・並び順）
+
+データは左から以下の順番で1行ずつ表示（`ClubMessageListItem`）:
+
+1. **【未読の赤丸】** — 未読時のみ `●`（赤 `#EF4444`）。既読時は表示なし（プレースホルダーなし）。
+2. **【バッジ】** — 送信元（学校 / 監査 / クラサポ）。上記 §2.4 の配色。
+3. **【日付】** — `YYYY/MM/DD`
+4. **【時間】** — `HH:mm`
+5. **【件名】** — 未読は太字、既読は通常色。長い場合は `truncate`。
+
+- 行クリックで右ペイン（`lg` 以上）または選択状態で詳細表示。
+- 選択時に未読なら `markPortalMessageRead` で既読化。
+
+### D. 画面構成（`/club/messages`）
+
+- **2カラム**（`lg:grid-cols-2`）:
+  - 左: `ClubMessageInboxList`（一覧）
+  - 右: `ClubMessageDetailPanel`（詳細）または「左の一覧からメッセージを選択してください」
+- モバイルは1カラム縦積み、一覧最小高さ `320px`。
+
+### E. メッセージ詳細＆受領確認
+
+- 詳細に件名・本文・送信元バッジ・日時を表示。
+- 下部に **「メッセージを確認しました」** ボタン（ピンク `#E66A84`、クラブブランド）。
+- 押下後: `markPortalMessageConfirmed(messageId, clubId)` — 既読も同時付与。`confirmedByClubIds` にクラブ ID を追加。
+- 確認後: グレー非活性表示 **「確認済」**（ボタンは非表示）。
+- **返信機能はなし**（一方通行）。
+
+### F. ダッシュボード連動（`/club/dashboard`）
+
+- 中央カード「メッセージBOX」: 左アクセント `#4A90E2`、コンパクト一覧（`variant="compact"`）。
+- 右上 **「一覧はこちら ➔」** → `/club/messages`
+- データ源はメッセージBOX専用ページと**同一**（`getPortalMessages` / `school_to_club_messages`）。
+- 未読件数サマリー表示あり（コンパクト時）。
+
+### G. 受信対象のフィルタ（クラブ側）
+
+- `getMessagesForClub(clubId)`:
+  - `targetClubId === "all"` **または** `targetClubId === clubId`
+  - `audience` が `staff` のメッセージは**除外**
+
+---
+
+### 7.. 日時・表示フォーマット
+
+| 用途 | 関数 | 形式 |
+|------|------|------|
+| 一覧・日付列 | `formatPortalMessageDate` | `YYYY/MM/DD` |
+| 一覧・時間列 | `formatPortalMessageTime` | `HH:mm` |
+| 詳細ヘッダー等 | `formatPortalMessageDateTime` | `YYYY/MM/DD HH:mm` |
+
+---
+
+### 7.. API・関数（デモ・クライアント）
+
+### 6.1 読み込み・保存
+
+- `loadPortalMessages()` — try-catch、配列以外は空配列
+- `savePortalMessages(messages)` — try-catch、失敗時は保存スキップ
+- `loadSchoolClubOutboundMessages()` / `loadSchoolStaffOutboundMessages()`
+- `loadSchoolClubMessagesForClub(clubId)`
+- `loadSchoolDraftMessages()` / `saveSchoolDraft()` / `deleteSchoolDraft()` / `getSchoolDraftById()`
+
+### 6.2 送信
+
+- `sendPortalMessage(input)` — クラブ宛てまたは汎用
+- `sendStaffPortalMessage(input)` — `audience: "staff"`
+- `sendSystemPortalMessage(input)` — `sender: "system"`
+- `sendAuditPortalMessage(input)` — `sender: "audit"`（スタブ）
+- `sendSettlementDeadlineNotice()` — 全クラブ宛て決算期限通知（システム種別）
+
+### 6.3 クラブ操作
+
+- `markPortalMessageRead(messageId, clubId)`
+- `markPortalMessageConfirmed(messageId, clubId)`
+- `getMessagesForClub(clubId)` / `getClubPortalMessageViews(clubId)`
+
+---
+
+### 7.. UI 定数・テーマ
+
+| 名称 | 値 | 用途 |
+|------|-----|------|
+| 学校メッセージBOXアクセント | `#4A90E2` | タイトル左線、テーブル、ボタン |
+| 学校コンテンツ最大幅 | `max-w-3xl` | 一覧・作成・下書き |
+| クラブメッセージBOXアクセント | `#4A90E2` | 子帯・パネル左線（ダッシュボードカードと統一） |
+| クラブページ余白 | `px-6 py-4 pb-8` | 集金実績と同型 |
+| 空一覧（学校） | `メッセージがありません` | |
+| 空一覧（クラブ） | `メッセージはまだありません` | |
+
+---
+
+### 7.. エラー防止・互換
+
+- 全 `localStorage` 読み書きを try-catch で保護。
+- 旧 `portal_messages` キーは初回に `school_to_club_messages` へ移行。
+- 保存データの `subject` / `title`、`sentAt` / `createdAt` の両方を読み込み時に正規化。
+- `sender` 文字列（`学校` / `監査` / `クラサポ` / `クラサポ会計`）を enum に正規化。
+- レガシーデモクラブ受信: `LEGACY_INBOX_CLUB_ID = "legacy-demo"`（`clubPortalData.ts`）。
+
+---
+
+### 7.. 画面遷移図（概要）
+
+```mermaid
+flowchart TB
+  subgraph school [学校ポータル]
+    SM[メッセージ一覧 /school/messages]
+    SD[下書き /school/messages/drafts]
+    SC[作成・確認フロー]
+    CL[クラブ一覧 /school/clubs]
+    IND[個別履歴 /school/clubs/id/messages]
+    SM --> SC
+    SD -->|?draft=id| SC
+    CL -->|✉| IND
+    IND --> SC
+  end
+  subgraph club [クラブポータル]
+    CD[ダッシュボード]
+    CM[メッセージBOX /club/messages]
+    CD -->|一覧はこちら| CM
+  end
+  LS[(localStorage school_to_club_messages)]
+  LD[(localStorage school_draft_messages)]
+  SC --> LS
+  IND --> LS
+  CM --> LS
+  SC --> LD
+  SD --> LD
+```
+
+---
+
+### 7.. 完了条件チェックリスト（受け入れ）
+
+- [ ] 学校サイドメニューでメッセージBOX配下に「メッセージ一覧」「下書き」が表示される
+- [ ] 作成は「確認画面へ」→ 確認画面で「送信」「下書き保存」「キャンセル」が動作する
+- [ ] メッセージ一覧の表が日付｜時間｜送信先｜件名で、見出しのみ中央寄せ
+- [ ] クラブ一覧の ✉ から個別履歴・宛先固定作成・確認済ステータスが動作する
+- [ ] クラブ `/club/messages` に戻るリンクがなく、タイトル幅と一覧幅が揃っている
+- [ ] クラブ一覧行の並び: ● → バッジ → 日付 → 時間 → 件名
+- [ ] クラブ詳細で「メッセージを確認しました」→ 学校個別画面に確認済が反映される
+- [ ] localStorage 破損・空でも画面が落ちない
+
+
+---
+
 ## 付録 A. ユーティリティ関数一覧
 
 | ファイル | 関数 / 定数 | 用途 |
@@ -1499,6 +1984,7 @@ v2.9.12 で、**rowSpan の対象を再定義**した。
 
 | 版 | 日付 | 主な変更 |
 | --- | --- | --- |
+| v2.12 | 2026-05-25 | §0.0 共通UIデザイン規約（集金実績型タイトル子帯・ジャストフィット幅）を追加。§7 学校・クラブ間メッセージBOX（下書き・確認画面・個別✉・確認済バッジ・クラブ受領確認）を統合。§4.1 に `school_to_club_messages` / `school_draft_messages` と型定義を追記。`MESSAGE_BOX_SPEC.md` を本書へ統合し単体ファイルを廃止。 |
 | v2.9 | 2026-05-10 | 初版。2026年度完全固定運用を正本化。振替1行集約、`isTransferLeg`、登録履歴の比率合計24・2段表示、現金預金口座の集計除外、サイドバー「集計・帳簿」、振替編集動線統一とキャンセルボタンを反映。 |
 | v2.9.37 | 2026-05-16 | §1.5 を追加。`formatDateDisplay`（`dateDisplay.ts`）で登録履歴・集金タブ等の取引日表示を `YYYY/MM/DD` に統一。 |
 | v2.9.36 | 2026-05-16 | §6.8.7 E-5 を更新。通常モードの入金日表示を `formatDateDisplay` により `YYYY/MM/DD` に統一（ハイフン区切り廃止）。 |
