@@ -11,7 +11,7 @@ type ClubMessageListItemProps = {
   as?: "div" | "button"
 }
 
-/** 未読赤丸 → 送信元バッジ → 件名（＋日付） */
+/** 未読● → 送信元バッジ → 日付 → 時間 → 件名 */
 export function ClubMessageListItem({
   message,
   variant = "default",
@@ -21,6 +21,8 @@ export function ClubMessageListItem({
 }: ClubMessageListItemProps) {
   const isCompact = variant === "compact"
   const interactive = as === "button" && onClick
+  const textSize = isCompact ? "text-xs" : "text-sm"
+  const metaSize = isCompact ? "text-[10px]" : "text-xs"
 
   const rowClass = [
     "flex w-full min-w-0 items-center gap-2 text-left",
@@ -35,31 +37,34 @@ export function ClubMessageListItem({
     <>
       {!message.isRead ? (
         <span
-          className="h-2 w-2 shrink-0 rounded-full bg-[#EF4444]"
-          aria-hidden
-        />
-      ) : (
-        <span className="h-2 w-2 shrink-0" aria-hidden />
-      )}
+          className="w-3 shrink-0 text-center text-sm leading-none text-[#EF4444]"
+          aria-label="未読"
+        >
+          ●
+        </span>
+      ) : null}
       <ClubMessageSenderBadge
         sender={message.sender}
         label={message.senderLabel}
       />
       <span
-        className={`min-w-0 flex-1 truncate text-sm ${
+        className={`shrink-0 tabular-nums text-[#9CA3AF] ${metaSize}`}
+      >
+        {message.date}
+      </span>
+      <span
+        className={`shrink-0 tabular-nums text-[#9CA3AF] ${metaSize}`}
+      >
+        {message.time}
+      </span>
+      <span
+        className={`min-w-0 flex-1 truncate ${textSize} ${
           !message.isRead
             ? "font-semibold text-[#374151]"
             : "text-[#6B7280]"
         }`}
       >
         {message.subject}
-      </span>
-      <span
-        className={`shrink-0 text-[#9CA3AF] tabular-nums ${
-          isCompact ? "text-[10px]" : "text-xs"
-        }`}
-      >
-        {message.date}
       </span>
     </>
   )

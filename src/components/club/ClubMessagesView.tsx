@@ -2,17 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { ClubMessageDetailPanel } from "@/components/club/ClubMessageDetailPanel"
+import {
+  CLUB_MESSAGE_BOX_BAND_COLOR,
+  MessageBoxTitleBand,
+} from "@/components/shared/MessageBoxTitleBand"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
-import { ClubMessageSenderBadge } from "@/components/club/ClubMessageSenderBadge"
 import { ClubPortalYearBar } from "@/components/club/ClubPortalYearBar"
 import { useClubSession } from "@/contexts/ClubSessionContext"
-import { getPortalMessages } from "@/lib/clubPortalData"
+import { getPortalMessages, LEGACY_INBOX_CLUB_ID } from "@/lib/clubPortalData"
 import {
   markPortalMessageRead,
   PORTAL_MESSAGES_CHANGED_EVENT,
   type ClubPortalMessageView,
 } from "@/lib/portalMessages"
-import { clubPath } from "@/lib/routes"
+/** 集金実績などクラブ画面と同じ左右余白・幅 */
+const CLUB_PAGE_CONTENT_CLASS = "px-6 py-4 pb-8"
 
 /** クラブ：メッセージBOX（ダッシュボードと同一データ） */
 export function ClubMessagesView() {
@@ -21,7 +26,8 @@ export function ClubMessagesView() {
   const [messages, setMessages] = useState<ClubPortalMessageView[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const clubId = activeClub?.id ?? ""
+  const clubId =
+    activeClub?.id ?? (isLegacyGlobalPortal ? LEGACY_INBOX_CLUB_ID : "")
 
   const refresh = useCallback(() => {
     setMessages(getPortalMessages(activeClub))
@@ -81,58 +87,43 @@ export function ClubMessagesView() {
         onYearChange={setSelectedYear}
       />
 
-      <div className="border-b border-gray-200 bg-white px-6 py-3">
-        <Link
-          href={clubPath("/dashboard")}
-          className="text-sm text-[#6B7280] hover:text-[#E66A84] hover:underline"
+      <div className={`flex min-h-0 flex-1 flex-col ${CLUB_PAGE_CONTENT_CLASS}`}>
+        <MessageBoxTitleBand
+          accentColor={CLUB_MESSAGE_BOX_BAND_COLOR}
+          description={`${clubLabel}（${clubIdLabel}）宛て`}
+          className="!px-0 !pt-0"
+        />
+
+        <div
+          className="grid min-h-[320px] flex-1 grid-cols-1 overflow-hidden rounded-b-lg border border-t-0 border-gray-200 bg-white lg:min-h-0 lg:grid-cols-2"
+          style={{
+            borderLeftWidth: 5,
+            borderLeftColor: CLUB_MESSAGE_BOX_BAND_COLOR,
+          }}
         >
-          ← クラブポータルへ
-        </Link>
-        <h1 className="mt-2 text-xl font-bold text-[#374151]">メッセージBOX</h1>
-        <p className="text-sm text-[#6B7280]">
-          {clubLabel}（{clubIdLabel}）宛て
-        </p>
-      </div>
+          <div className="flex min-h-0 flex-col border-gray-200 lg:border-r">
+            <ClubMessageInboxList
+              messages={messages}
+              variant="default"
+              selectedId={selectedId}
+              onSelect={handleSelect}
+              className="min-h-[320px] lg:min-h-0"
+            />
+          </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
-        <div className="flex min-h-0 flex-col border-r border-gray-200 bg-white">
-          <ClubMessageInboxList
-            messages={messages}
-            variant="default"
-            selectedId={selectedId}
-            onSelect={handleSelect}
-            className="min-h-[320px] lg:min-h-0"
-          />
-        </div>
-
-        <div className="flex min-h-0 flex-col bg-[#F5F5F0] p-6">
-          {selected ? (
-            <article className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                {!selected.isRead ? (
-                  <span
-                    className="h-2 w-2 rounded-full bg-[#EF4444]"
-                    aria-label="未読"
-                  />
-                ) : null}
-                <ClubMessageSenderBadge
-                  sender={selected.sender}
-                  label={selected.senderLabel}
-                />
-                <span className="text-xs text-[#9CA3AF]">{selected.date}</span>
-              </div>
-              <h2 className="text-lg font-semibold text-[#374151]">
-                {selected.subject}
-              </h2>
-              <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#374151]">
-                {selected.body}
-              </pre>
-            </article>
-          ) : messages.length > 0 ? (
-            <p className="py-12 text-center text-sm text-[#6B7280]">
-              左の一覧からメッセージを選択してください
-            </p>
-          ) : null}
+          <div className="flex min-h-0 flex-col bg-[#F5F5F0] p-6">
+            {selected ? (
+              <ClubMessageDetailPanel
+                message={selected}
+                clubId={clubId}
+                onConfirmed={refresh}
+              />
+            ) : messages.length > 0 ? (
+              <p className="py-12 text-center text-sm text-[#6B7280]">
+                左の一覧からメッセージを選択してください
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

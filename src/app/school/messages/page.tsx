@@ -1,6 +1,11 @@
+import { Suspense } from "react"
 import { SchoolMessagesView } from "@/components/school/SchoolMessagesView"
 
-/** メッセージ作成・送信（学校管理者） */
+/** メッセージBOX一覧・作成（学校管理者） */
 export default function SchoolMessagesPage() {
-  return <SchoolMessagesView />
+  return (
+    <Suspense fallback={<div className="min-h-[12rem] bg-[#F5F5F0]" aria-busy />}>
+      <SchoolMessagesView />
+    </Suspense>
+  )
 }

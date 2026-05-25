@@ -36,7 +36,7 @@ export function ClubAppShell({ children }: { children: ReactNode }) {
             {children}
             {readOnlyMain ? (
               <div
-                className="pointer-events-auto absolute inset-0 z-10 cursor-not-allowed bg-transparent"
+                className="absolute inset-0 z-10 cursor-not-allowed bg-transparent pointer-events-auto"
                 aria-hidden
                 title="管理者閲覧モードのため、この領域の操作は制限されています"
               />

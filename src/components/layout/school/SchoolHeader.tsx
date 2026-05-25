@@ -14,6 +14,8 @@ import {
 
   isSchoolClubPath,
 
+  isSchoolMessagesPath,
+
   isSchoolSettingsPath,
 
   SCHOOL_PAGE_TITLES,
@@ -56,7 +58,13 @@ function resolveTitle(pathname: string): string {
 
   if (isSchoolSettingsPath(pathname)) return SCHOOL_PAGE_TITLES.settings
 
-  if (pathname.startsWith(SCHOOL_ROUTES.messages)) return SCHOOL_PAGE_TITLES.messages
+  if (pathname === SCHOOL_ROUTES.messagesDrafts) {
+    return SCHOOL_PAGE_TITLES.messagesDrafts
+  }
+
+  if (pathname === SCHOOL_ROUTES.messages) return SCHOOL_PAGE_TITLES.messagesList
+
+  if (isSchoolMessagesPath(pathname)) return SCHOOL_PAGE_TITLES.messages
 
   if (/\/school\/clubs\/[^/]+\/messages/.test(pathname)) return "メッセージ"
 

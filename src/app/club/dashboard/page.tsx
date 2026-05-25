@@ -39,11 +39,6 @@ export default function DashboardPage() {
   }, [loadPortalData])
 
   useEffect(() => {
-    const interval = setInterval(loadPortalData, 500)
-    return () => clearInterval(interval)
-  }, [loadPortalData])
-
-  useEffect(() => {
     const onRefresh = () => loadPortalData()
     window.addEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onRefresh)
     window.addEventListener("storage", onRefresh)

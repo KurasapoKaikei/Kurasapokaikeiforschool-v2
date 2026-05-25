@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   isSchoolClubPath,
+  isSchoolMessagesPath,
   isSchoolSettingsPath,
   SCHOOL_PAGE_TITLES,
   SCHOOL_ROUTES,
@@ -13,15 +14,16 @@ import {
 } from "@/lib/schoolTheme"
 import { KurasapoBrandLogo } from "@/components/layout/KurasapoBrandLogo"
 import {
-  Bell,
   BookOpen,
   ChevronDown,
   ChevronRight,
+  FileEdit,
   FileText,
-  LayoutDashboard,
   Layers,
+  LayoutDashboard,
   List,
   ListOrdered,
+  Mail,
   Plus,
   Settings,
   Tags,
@@ -41,35 +43,46 @@ interface MenuItem {
   icon: LucideIcon
   match?: (path: string) => boolean
   subItems?: SubMenuItem[]
-  parentKey?: "club" | "settings"
+  parentKey?: "club" | "settings" | "messages"
 }
 
 const CLUB_PARENT_KEY = SCHOOL_ROUTES.clubsBase
 const SETTINGS_PARENT_KEY = SCHOOL_ROUTES.settingsBase
+const MESSAGES_PARENT_KEY = SCHOOL_ROUTES.messages
 
 const menuItems: MenuItem[] = [
   {
-    title: SCHOOL_PAGE_TITLES.home,
+    title: "ポータルトップ",
     href: SCHOOL_ROUTES.home,
     icon: LayoutDashboard,
     match: (path) => path === SCHOOL_ROUTES.home,
   },
   {
-    title: "クラブ管理",
+    title: SCHOOL_PAGE_TITLES.messages,
+    href: MESSAGES_PARENT_KEY,
+    icon: Mail,
+    parentKey: "messages",
+    subItems: [
+      { title: SCHOOL_PAGE_TITLES.messagesList, href: SCHOOL_ROUTES.messages },
+      { title: SCHOOL_PAGE_TITLES.messagesDrafts, href: SCHOOL_ROUTES.messagesDrafts },
+    ],
+  },
+  {
+    title: SCHOOL_PAGE_TITLES.clubs,
     href: CLUB_PARENT_KEY,
     icon: Users,
     parentKey: "club",
     subItems: [
-      { title: "クラブ一覧", href: SCHOOL_ROUTES.clubList },
-      { title: "グループ作成", href: SCHOOL_ROUTES.clubGroups },
-      { title: "クラブ登録", href: SCHOOL_ROUTES.clubRegister },
+      { title: SCHOOL_PAGE_TITLES.clubList, href: SCHOOL_ROUTES.clubList },
+      { title: SCHOOL_PAGE_TITLES.clubGroups, href: SCHOOL_ROUTES.clubGroups },
+      { title: SCHOOL_PAGE_TITLES.clubRegister, href: SCHOOL_ROUTES.clubRegister },
     ],
   },
   {
-    title: SCHOOL_PAGE_TITLES.messages,
-    href: SCHOOL_ROUTES.messages,
-    icon: Bell,
-    match: (path) => path.startsWith(SCHOOL_ROUTES.messages),
+    title: SCHOOL_PAGE_TITLES.contract,
+    href: SCHOOL_ROUTES.contract,
+    icon: FileText,
+    match: (path) => path.startsWith(SCHOOL_ROUTES.contract),
   },
   {
     title: SCHOOL_PAGE_TITLES.settings,
@@ -77,19 +90,16 @@ const menuItems: MenuItem[] = [
     icon: Settings,
     parentKey: "settings",
     subItems: [
-      { title: "共通カテゴリー設定", href: SCHOOL_ROUTES.settingsCategory },
-      { title: "共通科目設定", href: SCHOOL_ROUTES.settingsAccountTitles },
-      { title: "担当者設定", href: SCHOOL_ROUTES.settingsStaff },
+      { title: SCHOOL_PAGE_TITLES.settingsCategory, href: SCHOOL_ROUTES.settingsCategory },
+      {
+        title: SCHOOL_PAGE_TITLES.settingsAccountTitles,
+        href: SCHOOL_ROUTES.settingsAccountTitles,
+      },
+      { title: SCHOOL_PAGE_TITLES.settingsStaff, href: SCHOOL_ROUTES.settingsStaff },
     ],
   },
   {
-    title: "契約状況",
-    href: SCHOOL_ROUTES.contract,
-    icon: FileText,
-    match: (path) => path.startsWith(SCHOOL_ROUTES.contract),
-  },
-  {
-    title: "操作ガイド",
+    title: SCHOOL_PAGE_TITLES.guide,
     href: SCHOOL_ROUTES.guide,
     icon: BookOpen,
     match: (path) => path.startsWith(SCHOOL_ROUTES.guide),
@@ -97,6 +107,15 @@ const menuItems: MenuItem[] = [
 ]
 
 function subItemPathMatches(pathname: string, subHref: string): boolean {
+  if (subHref === SCHOOL_ROUTES.messages) {
+    return pathname === SCHOOL_ROUTES.messages
+  }
+  if (subHref === SCHOOL_ROUTES.messagesDrafts) {
+    return (
+      pathname === SCHOOL_ROUTES.messagesDrafts ||
+      pathname.startsWith(`${SCHOOL_ROUTES.messagesDrafts}/`)
+    )
+  }
   if (subHref === SCHOOL_ROUTES.clubList) {
     return pathname === SCHOOL_ROUTES.clubList
   }
@@ -110,6 +129,8 @@ function subItemPathMatches(pathname: string, subHref: string): boolean {
 }
 
 function getSubIcon(href: string): LucideIcon {
+  if (href === SCHOOL_ROUTES.messages) return Mail
+  if (href === SCHOOL_ROUTES.messagesDrafts) return FileEdit
   if (href === SCHOOL_ROUTES.clubList) return List
   if (href === SCHOOL_ROUTES.clubGroups) return Layers
   if (href === SCHOOL_ROUTES.clubRegister) return Plus
@@ -122,6 +143,7 @@ function getSubIcon(href: string): LucideIcon {
 function isParentActive(item: MenuItem, pathname: string): boolean {
   if (item.parentKey === "club") return isSchoolClubPath(pathname)
   if (item.parentKey === "settings") return isSchoolSettingsPath(pathname)
+  if (item.parentKey === "messages") return isSchoolMessagesPath(pathname)
   return false
 }
 
@@ -129,6 +151,7 @@ function initialExpanded(pathname: string): string[] {
   const keys: string[] = []
   if (isSchoolClubPath(pathname)) keys.push(CLUB_PARENT_KEY)
   if (isSchoolSettingsPath(pathname)) keys.push(SETTINGS_PARENT_KEY)
+  if (isSchoolMessagesPath(pathname)) keys.push(MESSAGES_PARENT_KEY)
   return keys
 }
 
@@ -143,6 +166,7 @@ export function SchoolSidebar() {
       const next = new Set(prev)
       if (isSchoolClubPath(pathname)) next.add(CLUB_PARENT_KEY)
       if (isSchoolSettingsPath(pathname)) next.add(SETTINGS_PARENT_KEY)
+      if (isSchoolMessagesPath(pathname)) next.add(MESSAGES_PARENT_KEY)
       return Array.from(next)
     })
   }, [pathname])
@@ -161,10 +185,18 @@ export function SchoolSidebar() {
   const isSubItemActive = (sub: SubMenuItem) => subItemPathMatches(pathname, sub.href)
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-gray-200 bg-white">
+    <aside
+      className="fixed left-0 top-0 z-[100] isolate h-screen w-64 border-r border-gray-200 bg-white pointer-events-auto"
+      aria-label="管理者ポータル メニュー"
+    >
       <div className="flex h-full flex-col">
         <div className="border-b border-gray-200 px-4 py-4">
-          <KurasapoBrandLogo />
+          <Link
+            href={SCHOOL_ROUTES.home}
+            className="block rounded-md outline-offset-2 hover:opacity-90"
+          >
+            <KurasapoBrandLogo />
+          </Link>
         </div>
         <p className="px-5 py-2 text-xs font-medium text-indigo-700/80">学校管理</p>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
@@ -197,13 +229,14 @@ export function SchoolSidebar() {
                           color: isActive ? SCHOOL_THEME.navy : SCHOOL_THEME.iconMuted,
                           strokeWidth: 2.5,
                         }}
+                        aria-hidden
                       />
                       <span>{item.title}</span>
                     </div>
                     {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+                      <ChevronDown className="h-4 w-4 text-[#6B7280]" aria-hidden />
                     ) : (
-                      <ChevronRight className="h-4 w-4 text-[#6B7280]" />
+                      <ChevronRight className="h-4 w-4 text-[#6B7280]" aria-hidden />
                     )}
                   </button>
                 ) : (
@@ -225,6 +258,7 @@ export function SchoolSidebar() {
                         color: isActive ? SCHOOL_THEME.navy : SCHOOL_THEME.iconMuted,
                         strokeWidth: 2.5,
                       }}
+                      aria-hidden
                     />
                     <span>{item.title}</span>
                   </Link>
@@ -253,6 +287,7 @@ export function SchoolSidebar() {
                               color: subIsActive ? SCHOOL_THEME.navy : "#94a3b8",
                               strokeWidth: 2.5,
                             }}
+                            aria-hidden
                           />
                           <span>{subItem.title}</span>
                         </Link>

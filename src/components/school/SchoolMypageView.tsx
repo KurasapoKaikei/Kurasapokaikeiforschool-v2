@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { cn } from "@/lib/utils"
 import {
   SCHOOL_FISCAL_YEARS,
@@ -10,7 +11,14 @@ import {
   SCHOOL_THEME,
   type SchoolFiscalYearLabel,
 } from "@/lib/schoolTheme"
-import { BookOpen, Building2, FileText, MessageSquare, Users } from "lucide-react"
+import {
+  BookOpen,
+  Building2,
+  FileText,
+  Mail,
+  Plus,
+  Users,
+} from "lucide-react"
 
 const CURRENT_YEAR: SchoolFiscalYearLabel = "2026年度"
 
@@ -19,55 +27,61 @@ type SummaryCard = {
   icon: typeof Users
   href: string
   accent: string
-  lines: string[]
+  lines?: string[]
+  /** クラブ一覧カードなど：ラベル＋強調数字 */
+  metric?: { label: string; value: number | null }
 }
 
-const summaryCards: SummaryCard[] = [
-  {
-    title: "クラブ一覧",
-    icon: Users,
-    href: SCHOOL_ROUTES.clubList,
-    accent: SCHOOL_THEME.navy,
-    lines: [
-      "登録クラブ数: 0個",
-      "（ここからクラブの新規登録やID発行ができます）",
-    ],
-  },
-  {
-    title: "契約状況",
-    icon: FileText,
-    href: SCHOOL_ROUTES.contract,
-    accent: "#1e40af",
-    lines: [
-      "現在のプラン: クラサポ会計 for school スタンダードプラン",
-      "次回更新日: 2027.7.31",
-    ],
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.messages,
-    icon: MessageSquare,
-    href: SCHOOL_ROUTES.messages,
-    accent: "#2563eb",
-    lines: [
-      "未読のお知らせ: 0件",
-      "（学校全体・各クラブへの通知を一覧で管理）",
-    ],
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.guide,
-    icon: BookOpen,
-    href: SCHOOL_ROUTES.guide,
-    accent: SCHOOL_THEME.navyLight,
-    lines: [
-      "操作ガイド・マニュアル",
-      "（5/27デモ用ヘルプページへ一発で遷移できます）",
-    ],
-  },
-]
-
 export function SchoolMypageView() {
+  const { clubs, isLoaded } = useSchoolClubs()
   const [selectedYear, setSelectedYear] = useState<SchoolFiscalYearLabel>(CURRENT_YEAR)
   const isCurrentYear = selectedYear === CURRENT_YEAR
+
+  const registeredClubCount = clubs.length
+
+  const summaryCards: SummaryCard[] = useMemo(
+    () => [
+      {
+        title: SCHOOL_PAGE_TITLES.clubList,
+        icon: Users,
+        href: SCHOOL_ROUTES.clubList,
+        accent: SCHOOL_THEME.navy,
+        metric: {
+          label: "登録クラブ数",
+          value: isLoaded ? registeredClubCount : null,
+        },
+      },
+      {
+        title: SCHOOL_PAGE_TITLES.clubRegister,
+        icon: Plus,
+        href: SCHOOL_ROUTES.clubRegister,
+        accent: SCHOOL_THEME.navyLight,
+      },
+      {
+        title: SCHOOL_PAGE_TITLES.messages,
+        icon: Mail,
+        href: SCHOOL_ROUTES.messages,
+        accent: "#2563eb",
+      },
+      {
+        title: SCHOOL_PAGE_TITLES.contract,
+        icon: FileText,
+        href: SCHOOL_ROUTES.contract,
+        accent: "#1e40af",
+        lines: [
+          "現在のプラン: クラサポ会計 for school スタンダードプラン",
+          "次回更新日: 2027.7.31",
+        ],
+      },
+      {
+        title: SCHOOL_PAGE_TITLES.guide,
+        icon: BookOpen,
+        href: SCHOOL_ROUTES.guide,
+        accent: SCHOOL_THEME.navyLight,
+      },
+    ],
+    [isLoaded, registeredClubCount]
+  )
 
   return (
     <div className="min-h-full bg-[#F5F5F0]">
@@ -102,7 +116,7 @@ export function SchoolMypageView() {
             <p className="mt-1 text-xs text-[#6B7280]">{selectedYear}の表示はデモでは未対応です</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {summaryCards.map((card) => {
               const Icon = card.icon
               return (
@@ -121,13 +135,31 @@ export function SchoolMypageView() {
                       {card.title}
                     </h3>
                   </div>
-                  <ul className="mt-auto space-y-2">
-                    {card.lines.map((line) => (
-                      <li key={line} className="text-sm text-[#6B7280] leading-relaxed">
-                        {line}
-                      </li>
-                    ))}
-                  </ul>
+                  {card.metric ? (
+                    <div className="mt-auto pt-1">
+                      <p className="text-xs font-medium tracking-wide text-[#6B7280]">
+                        {card.metric.label}
+                      </p>
+                      <p
+                        className="mt-1 text-4xl font-bold leading-none tabular-nums tracking-tight md:text-5xl"
+                        style={{ color: card.accent }}
+                        aria-live="polite"
+                      >
+                        {card.metric.value === null ? "—" : card.metric.value}
+                      </p>
+                    </div>
+                  ) : card.lines && card.lines.length > 0 ? (
+                    <ul className="mt-auto space-y-2">
+                      {card.lines.map((line) => (
+                        <li
+                          key={line}
+                          className="text-sm text-[#6B7280] leading-relaxed"
+                        >
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </Link>
               )
             })}

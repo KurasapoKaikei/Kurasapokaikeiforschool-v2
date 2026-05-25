@@ -1,25 +1,59 @@
 /** 学校⇔クラブ メッセージBOX（5/27デモ・localStorage） */
 
-const STORAGE_KEY = "portal_messages"
+/** 学校→クラブメッセージの正本キー（学校・クラブ双方で同一） */
+export const SCHOOL_TO_CLUB_MESSAGES_KEY = "school_to_club_messages"
+
+const LEGACY_STORAGE_KEY = "portal_messages"
 
 export const PORTAL_MESSAGES_CHANGED_EVENT = "kurasaokaikei-portal-messages-changed"
 
 export type PortalMessageKind = "general" | "settlement_deadline"
 
+/** 学校ポータル送信先区分（一覧タブ・履歴フィルタ用） */
+export type PortalMessageAudience = "club" | "staff"
+
 /** 送信元（クラブポータル表示用） */
-export type PortalMessageSender = "school" | "system"
+export type PortalMessageSender = "school" | "audit" | "system"
+
+/** クラブポータルバッジ表示ラベル */
+export const CLUB_SENDER_LABELS: Record<PortalMessageSender, string> = {
+  school: "学校",
+  audit: "監査",
+  system: "クラサポ",
+}
+
+export function getClubSenderLabel(sender: PortalMessageSender): string {
+  return CLUB_SENDER_LABELS[sender]
+}
 
 export type PortalMessage = {
   id: string
+  /** 件名（保存時は subject、読み込み時 title も受け付け） */
   subject: string
   body: string
   sentAt: string
-  /** 個別クラブID、または全クラブ向けは `all` */
+  /** 個別クラブID、全クラブ `all`、担当者 `staff-all` 等 */
   targetClubId: string
   targetClubName: string
+  /** クラブごとの既読（clubId 一覧） */
   readByClubIds: string[]
+  /** クラブごとの受領確認（clubId 一覧） */
+  confirmedByClubIds: string[]
   kind: PortalMessageKind
   sender?: PortalMessageSender
+  /** 未指定はクラブ宛て（既存データ互換） */
+  audience?: PortalMessageAudience
+}
+
+/** 連携仕様向けの表示用型（内部は PortalMessage に正規化） */
+export type SchoolToClubMessage = {
+  id: string
+  title: string
+  body: string
+  sender: "学校" | "監査" | "クラサポ" | "クラサポ会計"
+  targetClubId: string
+  createdAt: string
+  isRead: boolean
 }
 
 /** クラブ向け一覧・詳細の表示モデル（ダッシュボード／メッセージBOX共通） */
@@ -27,8 +61,13 @@ export type ClubPortalMessageView = {
   id: string
   subject: string
   body: string
+  /** 一覧用（例: 2026/05/25） */
   date: string
+  /** 一覧用（例: 22:30） */
+  time: string
   isRead: boolean
+  /** 当該クラブが「メッセージを確認しました」を押したか */
+  isConfirmed: boolean
   sender: PortalMessageSender
   senderLabel: string
 }
@@ -36,7 +75,13 @@ export type ClubPortalMessageView = {
 export const CLUB_MESSAGE_EMPTY_TEXT = "メッセージはまだありません"
 
 function resolveSender(m: PortalMessage): PortalMessageSender {
-  if (m.sender === "school" || m.sender === "system") return m.sender
+  if (
+    m.sender === "school" ||
+    m.sender === "audit" ||
+    m.sender === "system"
+  ) {
+    return m.sender
+  }
   return "school"
 }
 
@@ -50,9 +95,11 @@ export function toClubPortalMessageView(
     subject: m.subject,
     body: m.body,
     date: formatPortalMessageDate(m.sentAt),
-    isRead: m.readByClubIds.includes(clubId),
+    time: formatPortalMessageTime(m.sentAt),
+    isRead: isMessageReadByClub(m, clubId),
+    isConfirmed: isMessageConfirmedByClub(m, clubId),
     sender,
-    senderLabel: sender === "school" ? "学校" : "クラサポ会計",
+    senderLabel: getClubSenderLabel(sender),
   }
 }
 
@@ -65,31 +112,102 @@ function dispatchChanged(): void {
   window.dispatchEvent(new Event(PORTAL_MESSAGES_CHANGED_EVENT))
 }
 
+/** 旧キー portal_messages → school_to_club_messages へ一度だけ移行 */
+function migrateLegacyStorageKey(): void {
+  if (typeof window === "undefined") return
+  try {
+    if (localStorage.getItem(SCHOOL_TO_CLUB_MESSAGES_KEY)) return
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if (legacy) {
+      localStorage.setItem(SCHOOL_TO_CLUB_MESSAGES_KEY, legacy)
+    }
+  } catch {
+    // localStorage 不可・破損時は移行をスキップ
+  }
+}
+
+type RawStoredMessage = Partial<PortalMessage> & {
+  title?: string
+  createdAt?: string
+  isRead?: boolean
+  sender?: PortalMessageSender | "学校" | "監査" | "クラサポ" | "クラサポ会計"
+}
+
+function normalizeSender(
+  raw: RawStoredMessage
+): PortalMessageSender | undefined {
+  if (raw.sender === "audit" || raw.sender === "監査") return "audit"
+  if (
+    raw.sender === "system" ||
+    raw.sender === "クラサポ" ||
+    raw.sender === "クラサポ会計"
+  ) {
+    return "system"
+  }
+  if (raw.sender === "school" || raw.sender === "学校") return "school"
+  return undefined
+}
+
+function normalizeRawMessage(raw: unknown): PortalMessage | null {
+  if (!raw || typeof raw !== "object") return null
+  const item = raw as RawStoredMessage
+
+  const id = typeof item.id === "string" ? item.id : ""
+  const subject =
+    typeof item.subject === "string"
+      ? item.subject
+      : typeof item.title === "string"
+        ? item.title
+        : ""
+  const body = typeof item.body === "string" ? item.body : ""
+  if (!id || !subject || !body) return null
+
+  const sentAt =
+    typeof item.sentAt === "string"
+      ? item.sentAt
+      : typeof item.createdAt === "string"
+        ? item.createdAt
+        : new Date().toISOString()
+
+  const readByClubIds = Array.isArray(item.readByClubIds)
+    ? item.readByClubIds.filter((clubId): clubId is string => typeof clubId === "string")
+    : []
+
+  const confirmedByClubIds = Array.isArray(item.confirmedByClubIds)
+    ? item.confirmedByClubIds.filter(
+        (clubId): clubId is string => typeof clubId === "string"
+      )
+    : []
+
+  return {
+    id,
+    subject,
+    body,
+    sentAt,
+    targetClubId:
+      typeof item.targetClubId === "string" ? item.targetClubId : "all",
+    targetClubName:
+      typeof item.targetClubName === "string" ? item.targetClubName : "全クラブ",
+    readByClubIds,
+    confirmedByClubIds,
+    kind:
+      item.kind === "settlement_deadline" ? "settlement_deadline" : "general",
+    sender: normalizeSender(item),
+    audience: item.audience === "staff" ? "staff" : "club",
+  }
+}
+
 export function loadPortalMessages(): PortalMessage[] {
   if (typeof window === "undefined") return []
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    migrateLegacyStorageKey()
+    const raw = localStorage.getItem(SCHOOL_TO_CLUB_MESSAGES_KEY)
     if (!raw) return []
-    const parsed = JSON.parse(raw) as PortalMessage[]
+    const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
     return parsed
-      .filter(
-        (m) =>
-          m &&
-          typeof m.id === "string" &&
-          typeof m.subject === "string" &&
-          typeof m.body === "string"
-      )
-      .map((m) => ({
-        ...m,
-        sentAt: m.sentAt ?? new Date().toISOString(),
-        targetClubId: m.targetClubId ?? "all",
-        targetClubName: m.targetClubName ?? "全クラブ",
-        readByClubIds: Array.isArray(m.readByClubIds) ? m.readByClubIds : [],
-        kind: m.kind === "settlement_deadline" ? "settlement_deadline" : "general",
-        sender:
-          m.sender === "system" || m.sender === "school" ? m.sender : undefined,
-      }))
+      .map(normalizeRawMessage)
+      .filter((m): m is PortalMessage => m != null)
       .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
   } catch {
     return []
@@ -98,8 +216,41 @@ export function loadPortalMessages(): PortalMessage[] {
 
 function savePortalMessages(messages: PortalMessage[]): void {
   if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
-  dispatchChanged()
+  try {
+    localStorage.setItem(SCHOOL_TO_CLUB_MESSAGES_KEY, JSON.stringify(messages))
+    dispatchChanged()
+  } catch {
+    // localStorage 不可・容量超過時は保存をスキップ（UI は継続）
+  }
+}
+
+/** クラブID向けの既読（isRead） */
+export function isMessageReadByClub(m: PortalMessage, clubId: string): boolean {
+  const ids = Array.isArray(m.readByClubIds) ? m.readByClubIds : []
+  return ids.includes(clubId)
+}
+
+/** クラブID向けの受領確認 */
+export function isMessageConfirmedByClub(m: PortalMessage, clubId: string): boolean {
+  if (!clubId) return false
+  const ids = Array.isArray(m.confirmedByClubIds) ? m.confirmedByClubIds : []
+  return ids.includes(clubId)
+}
+
+export function toSchoolToClubMessage(
+  m: PortalMessage,
+  clubId: string
+): SchoolToClubMessage {
+  const sender = resolveSender(m)
+  return {
+    id: m.id,
+    title: m.subject,
+    body: m.body,
+    sender: getClubSenderLabel(sender),
+    targetClubId: m.targetClubId,
+    createdAt: m.sentAt,
+    isRead: isMessageReadByClub(m, clubId),
+  }
 }
 
 function newMessageId(): string {
@@ -113,6 +264,42 @@ export type SendPortalMessageInput = {
   targetClubName: string
   kind?: PortalMessageKind
   sender?: PortalMessageSender
+  audience?: PortalMessageAudience
+}
+
+export function isClubAudienceMessage(m: PortalMessage): boolean {
+  return m.audience !== "staff"
+}
+
+export function isStaffAudienceMessage(m: PortalMessage): boolean {
+  return m.audience === "staff"
+}
+
+export const ALL_CLUBS_TARGET_ID = "all"
+
+export function isAllClubsTarget(targetClubId: string): boolean {
+  return targetClubId === ALL_CLUBS_TARGET_ID
+}
+
+/** 学校→クラブ送信履歴の送信先表示（全クラブ / 個別） */
+export function formatSchoolClubOutboundTargetLabel(m: PortalMessage): string {
+  if (isAllClubsTarget(m.targetClubId)) return "全クラブ宛て"
+  return `個別：${m.targetClubName}`
+}
+
+export function loadSchoolClubOutboundMessages(): PortalMessage[] {
+  return loadPortalMessages().filter(isClubAudienceMessage)
+}
+
+/** クラブ一覧の✉から：全クラブ宛＋当該クラブ個別宛の送信履歴のみ */
+export function loadSchoolClubMessagesForClub(clubId: string): PortalMessage[] {
+  return loadSchoolClubOutboundMessages().filter(
+    (m) => isAllClubsTarget(m.targetClubId) || m.targetClubId === clubId
+  )
+}
+
+export function loadSchoolStaffOutboundMessages(): PortalMessage[] {
+  return loadPortalMessages().filter(isStaffAudienceMessage)
 }
 
 export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage {
@@ -124,22 +311,45 @@ export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage 
     targetClubId: input.targetClubId,
     targetClubName: input.targetClubName,
     readByClubIds: [],
+    confirmedByClubIds: [],
     kind: input.kind ?? "general",
     sender: input.sender ?? "school",
+    audience: input.audience ?? "club",
   }
   const next = [message, ...loadPortalMessages()]
   savePortalMessages(next)
   return message
 }
 
-/** クラブ向け受信メッセージ（全体宛て + 個別宛て） */
+/** クラブ向け受信メッセージ（全体宛て + 個別宛て・担当者宛ては除外） */
 export function getMessagesForClub(clubId: string): PortalMessage[] {
   return loadPortalMessages().filter(
-    (m) => m.targetClubId === "all" || m.targetClubId === clubId
+    (m) =>
+      isClubAudienceMessage(m) &&
+      (m.targetClubId === "all" || m.targetClubId === clubId)
   )
 }
 
+const STAFF_ALL_TARGET = "staff-all"
+
+/** 管理担当者宛てメッセージ送信（デモ） */
+export function sendStaffPortalMessage(input: {
+  subject: string
+  body: string
+  targetStaffId?: string
+  targetStaffName?: string
+}): PortalMessage {
+  return sendPortalMessage({
+    subject: input.subject,
+    body: input.body,
+    targetClubId: input.targetStaffId ?? STAFF_ALL_TARGET,
+    targetClubName: input.targetStaffName ?? "管理担当者全員",
+    audience: "staff",
+  })
+}
+
 export function markPortalMessageRead(messageId: string, clubId: string): void {
+  if (!clubId) return
   const messages = loadPortalMessages()
   const idx = messages.findIndex((m) => m.id === messageId)
   if (idx === -1) return
@@ -152,13 +362,60 @@ export function markPortalMessageRead(messageId: string, clubId: string): void {
   savePortalMessages(messages)
 }
 
+/** クラブが「メッセージを確認しました」を押したとき（既読も同時に付与） */
+export function markPortalMessageConfirmed(
+  messageId: string,
+  clubId: string
+): void {
+  if (!clubId) return
+  const messages = loadPortalMessages()
+  const idx = messages.findIndex((m) => m.id === messageId)
+  if (idx === -1) return
+  const target = messages[idx]!
+  const prevRead = Array.isArray(target.readByClubIds) ? target.readByClubIds : []
+  const prevConfirmed = Array.isArray(target.confirmedByClubIds)
+    ? target.confirmedByClubIds
+    : []
+  const readByClubIds = prevRead.includes(clubId) ? prevRead : [...prevRead, clubId]
+  if (prevConfirmed.includes(clubId)) {
+    if (readByClubIds.length === prevRead.length) return
+    messages[idx] = { ...target, readByClubIds, confirmedByClubIds: prevConfirmed }
+    savePortalMessages(messages)
+    return
+  }
+  messages[idx] = {
+    ...target,
+    readByClubIds,
+    confirmedByClubIds: [...prevConfirmed, clubId],
+  }
+  savePortalMessages(messages)
+}
+
+/** 一覧の日付列（例: 2026/05/25） */
 export function formatPortalMessageDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, "0")
   const day = String(d.getDate()).padStart(2, "0")
-  return `${y}.${m}.${day}`
+  return `${y}/${m}/${day}`
+}
+
+/** 一覧の時間列（例: 22:30） */
+export function formatPortalMessageTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  const h = String(d.getHours()).padStart(2, "0")
+  const min = String(d.getMinutes()).padStart(2, "0")
+  return `${h}:${min}`
+}
+
+/** 詳細画面など（例: 2026/05/25 22:15） */
+export function formatPortalMessageDateTime(iso: string): string {
+  const date = formatPortalMessageDate(iso)
+  const time = formatPortalMessageTime(iso)
+  if (!time) return date
+  return `${date} ${time}`
 }
 
 /** 全クラブへ決算提出期限通知（メッセージBOXへ自動投稿） */
@@ -182,9 +439,16 @@ export function sendSettlementDeadlineNotice(): PortalMessage {
   })
 }
 
-/** クラサポ会計（システム）からの通知用（将来の自動配信） */
+/** クラサポ（システム）からの通知用（将来の自動配信） */
 export function sendSystemPortalMessage(
   input: Omit<SendPortalMessageInput, "sender">
 ): PortalMessage {
   return sendPortalMessage({ ...input, sender: "system" })
+}
+
+/** 監査からの送信（表示用・送信ロジックは後続実装） */
+export function sendAuditPortalMessage(
+  input: Omit<SendPortalMessageInput, "sender">
+): PortalMessage {
+  return sendPortalMessage({ ...input, sender: "audit" })
 }

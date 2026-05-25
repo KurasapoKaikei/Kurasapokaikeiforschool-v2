@@ -6,6 +6,9 @@
 
 import {
   getClubPortalMessageViews,
+  isClubAudienceMessage,
+  loadPortalMessages,
+  toClubPortalMessageView,
   type ClubPortalMessageView,
 } from "@/lib/portalMessages"
 import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeClubSession"
@@ -99,12 +102,24 @@ export function getPortalMembers(active: ActiveClubSession | null): Member[] {
   return readStorageJson(scopedKey(BASE_KEYS.MEMBERS, active!.id), [])
 }
 
-/** クラブポータル：メッセージBOX（portal_messages 正本・ダッシュボードと専用ページで共通） */
+export const LEGACY_INBOX_CLUB_ID = "legacy-demo"
+
+/** クラブポータル：メッセージBOX（school_to_club_messages 正本・活動データとは独立） */
 export function getPortalMessages(
   active: ActiveClubSession | null
 ): ClubPortalMessageView[] {
-  if (isEmptyPortalForClub(active) || !active?.id) return []
-  return getClubPortalMessageViews(active.id)
+  try {
+    if (isLegacyGlobalPortal(active)) {
+      return loadPortalMessages()
+        .filter(isClubAudienceMessage)
+        .filter((m) => m.targetClubId === "all")
+        .map((m) => toClubPortalMessageView(m, LEGACY_INBOX_CLUB_ID))
+    }
+    if (!active?.id) return []
+    return getClubPortalMessageViews(active.id)
+  } catch {
+    return []
+  }
 }
 
 export function getActivePortalState() {

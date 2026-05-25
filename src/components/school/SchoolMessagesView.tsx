@@ -1,30 +1,200 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
+import { cn } from "@/lib/utils"
 import {
-  formatPortalMessageDate,
-  loadPortalMessages,
+  MessageBoxTitleBand,
+  SCHOOL_MESSAGE_BOX_BAND_COLOR,
+} from "@/components/shared/MessageBoxTitleBand"
+import {
+  SchoolClubComposeForm,
+  type SchoolClubComposeInitial,
+} from "@/components/school/SchoolClubComposeForm"
+import {
+  SchoolStaffComposeForm,
+  type SchoolStaffComposeInitial,
+} from "@/components/school/SchoolStaffComposeForm"
+import { getSchoolDraftById } from "@/lib/portalDraftMessages"
+import { SCHOOL_ROUTES } from "@/lib/schoolTheme"
+import {
+  SCHOOL_MESSAGE_BOX_ACCENT,
+  SCHOOL_MESSAGE_LIST_EMPTY_TEXT,
+  SCHOOL_MESSAGE_PAGE_CONTENT_CLASS,
+  SchoolMessageDetailPanel,
+  SchoolMessageHistoryList,
+} from "@/components/school/SchoolMessageHistoryUi"
+import {
+  formatSchoolClubOutboundTargetLabel,
+  loadSchoolClubOutboundMessages,
+  loadSchoolStaffOutboundMessages,
   PORTAL_MESSAGES_CHANGED_EVENT,
-  sendPortalMessage,
   type PortalMessage,
 } from "@/lib/portalMessages"
-import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
+export { SCHOOL_MESSAGE_LIST_EMPTY_TEXT } from "@/components/school/SchoolMessageHistoryUi"
 
-const ALL_TARGET = "all"
+const MESSAGE_BOX_ACCENT = SCHOOL_MESSAGE_BOX_ACCENT
+const MESSAGE_PAGE_CONTENT_CLASS = SCHOOL_MESSAGE_PAGE_CONTENT_CLASS
 
-/** 学校：メッセージ作成・送信 */
+type MessageTab = "club" | "staff"
+type ComposeMode = MessageTab | null
+
+type SchoolMessageListViewProps = {
+  activeTab: MessageTab
+  onTabChange: (tab: MessageTab) => void
+  clubHistory: PortalMessage[]
+  staffHistory: PortalMessage[]
+  listNotice: string | null
+  createButtonLabel: string
+  onCreate: () => void
+  selectedDetailId: string | null
+  onSelectDetail: (id: string) => void
+  onBackFromDetail: () => void
+}
+
+/** 学校：送信済みメッセージ一覧（タブ切替） */
+function SchoolMessageListView({
+  activeTab,
+  onTabChange,
+  clubHistory,
+  staffHistory,
+  listNotice,
+  createButtonLabel,
+  onCreate,
+  selectedDetailId,
+  onSelectDetail,
+  onBackFromDetail,
+}: SchoolMessageListViewProps) {
+  const displayedHistory = activeTab === "club" ? clubHistory : staffHistory
+  const listTitle = activeTab === "club" ? "クラブ宛て送信履歴" : "管理担当者宛て送信履歴"
+  const selectedMessage =
+    selectedDetailId != null
+      ? displayedHistory.find((m) => m.id === selectedDetailId) ?? null
+      : null
+
+  if (selectedMessage) {
+    return (
+      <SchoolMessageDetailPanel message={selectedMessage} onBack={onBackFromDetail} />
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-gray-200 bg-white px-6">
+        <div className={cn(MESSAGE_PAGE_CONTENT_CLASS, "flex gap-1")} role="tablist" aria-label="メッセージ送信先">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "club"}
+            onClick={() => onTabChange("club")}
+            className={cn(
+              "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+              activeTab === "club"
+                ? "border-[#4A90E2] text-[#4A90E2]"
+                : "border-transparent text-[#6B7280] hover:text-[#374151]"
+            )}
+          >
+            クラブ宛て
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "staff"}
+            onClick={() => onTabChange("staff")}
+            className={cn(
+              "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+              activeTab === "staff"
+                ? "border-[#4A90E2] text-[#4A90E2]"
+                : "border-transparent text-[#6B7280] hover:text-[#374151]"
+            )}
+          >
+            管理担当者宛て
+          </button>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
+        <div className={MESSAGE_PAGE_CONTENT_CLASS}>
+          <div className="mb-4 flex shrink-0 flex-wrap items-center justify-start gap-2">
+            <Button
+              type="button"
+              onClick={onCreate}
+              className="h-auto min-h-10 max-w-full shrink-0 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium leading-snug text-white shadow-sm hover:opacity-90"
+              style={{ backgroundColor: MESSAGE_BOX_ACCENT }}
+            >
+              {createButtonLabel}
+            </Button>
+          </div>
+
+          {listNotice ? (
+            <p
+              className="mb-4 rounded-md border border-[#6EE7B7] bg-[#D1FAE5]/50 px-4 py-2.5 text-sm text-[#065F46]"
+              role="status"
+            >
+              {listNotice}
+            </p>
+          ) : null}
+
+          <div
+            className="flex min-h-[320px] w-full flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] bg-white shadow-sm"
+            style={{ borderLeftColor: MESSAGE_BOX_ACCENT }}
+          >
+            <div
+              className="shrink-0 border-b-2 px-4 py-2"
+              style={{ borderColor: MESSAGE_BOX_ACCENT }}
+            >
+              <h2 className="text-base font-semibold" style={{ color: MESSAGE_BOX_ACCENT }}>
+                {listTitle}
+              </h2>
+            </div>
+            <SchoolMessageHistoryList
+              history={displayedHistory}
+              onSelect={onSelectDetail}
+              formatTargetLabel={
+                activeTab === "staff"
+                  ? (m) => m.targetClubName
+                  : formatSchoolClubOutboundTargetLabel
+              }
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function clearComposeQuery(router: ReturnType<typeof useRouter>) {
+  router.replace(SCHOOL_ROUTES.messages)
+}
+
+/** 学校：メッセージBOX（一覧タブ → 作成） */
 export function SchoolMessagesView() {
-  const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
-  const [targetClubId, setTargetClubId] = useState(ALL_TARGET)
-  const [subject, setSubject] = useState("")
-  const [body, setBody] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [sentNotice, setSentNotice] = useState<string | null>(null)
-  const [history, setHistory] = useState<PortalMessage[]>([])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState<MessageTab>("club")
+  const [composeMode, setComposeMode] = useState<ComposeMode>(null)
+  const [listNotice, setListNotice] = useState<string | null>(null)
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null)
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
+  const [clubComposeInitial, setClubComposeInitial] = useState<
+    SchoolClubComposeInitial | undefined
+  >(undefined)
+  const [staffComposeInitial, setStaffComposeInitial] = useState<
+    SchoolStaffComposeInitial | undefined
+  >(undefined)
+  const [clubHistory, setClubHistory] = useState<PortalMessage[]>([])
+  const [staffHistory, setStaffHistory] = useState<PortalMessage[]>([])
 
-  const refreshHistory = () => setHistory(loadPortalMessages())
+  const refreshHistory = useCallback(() => {
+    try {
+      setClubHistory(loadSchoolClubOutboundMessages())
+      setStaffHistory(loadSchoolStaffOutboundMessages())
+    } catch {
+      setClubHistory([])
+      setStaffHistory([])
+    }
+  }, [])
 
   useEffect(() => {
     refreshHistory()
@@ -35,171 +205,106 @@ export function SchoolMessagesView() {
       window.removeEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onChange)
       window.removeEventListener("storage", onChange)
     }
-  }, [])
+  }, [refreshHistory])
 
-  const targetLabel = useMemo(() => {
-    if (targetClubId === ALL_TARGET) return "全クラブ"
-    return sortedClubs.find((c) => c.id === targetClubId)?.name ?? targetClubId
-  }, [targetClubId, sortedClubs])
+  useEffect(() => {
+    const draftId = searchParams.get("draft")
+    if (!draftId) return
+    const draft = getSchoolDraftById(draftId)
+    if (!draft) return
+    setEditingDraftId(draft.id)
+    setListNotice(null)
+    setSelectedDetailId(null)
+    if (draft.audience === "staff") {
+      setActiveTab("staff")
+      setComposeMode("staff")
+      setStaffComposeInitial({
+        targetStaffId: draft.targetId,
+        subject: draft.subject,
+        body: draft.body,
+      })
+    } else {
+      setActiveTab("club")
+      setComposeMode("club")
+      setClubComposeInitial({
+        targetClubId: draft.targetId,
+        subject: draft.subject,
+        body: draft.body,
+      })
+    }
+  }, [searchParams])
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setSentNotice(null)
-    const trimmedSubject = subject.trim()
-    const trimmedBody = body.trim()
-    if (!trimmedSubject) {
-      setError("件名を入力してください。")
-      return
-    }
-    if (!trimmedBody) {
-      setError("本文を入力してください。")
-      return
-    }
-    if (targetClubId !== ALL_TARGET && !sortedClubs.some((c) => c.id === targetClubId)) {
-      setError("送信先クラブを選択してください。")
-      return
-    }
+  const exitCompose = () => {
+    setComposeMode(null)
+    setListNotice(null)
+    setEditingDraftId(null)
+    setClubComposeInitial(undefined)
+    setStaffComposeInitial(undefined)
+    if (searchParams.get("draft")) clearComposeQuery(router)
+  }
 
-    sendPortalMessage({
-      subject: trimmedSubject,
-      body: trimmedBody,
-      targetClubId,
-      targetClubName: targetLabel,
-    })
-    setSubject("")
-    setBody("")
-    setSentNotice(`「${targetLabel}」宛てにメッセージを送信しました。`)
+  const createButtonLabel =
+    activeTab === "club" ? "クラブへ新規作成" : "管理担当者へ新規作成"
+
+  const handleSent = () => {
     refreshHistory()
+    setListNotice("メッセージを送信しました。一覧に反映されています。")
+    exitCompose()
   }
 
   return (
-    <div className="min-h-full bg-[#F5F5F0] px-6 py-8">
-      <div className="mx-auto max-w-3xl">
-        <h2 className="text-xl font-semibold text-[#374151]">メッセージBOX</h2>
-        <p className="mt-1 text-sm text-[#6B7280]">
-          クラブポータルへお知らせを配信します（localStorage: portal_messages）
-        </p>
+    <div className="flex min-h-full flex-col bg-[#F5F5F0]">
+      <MessageBoxTitleBand
+        accentColor={SCHOOL_MESSAGE_BOX_BAND_COLOR}
+        description={
+          composeMode == null
+            ? "クラブ・管理担当者へお知らせを配信します"
+            : undefined
+        }
+      />
 
-        <form
-          onSubmit={handleSend}
-          noValidate
-          className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
-        >
-          <h3 className="mb-4 text-lg font-semibold text-[#374151]">新規送信</h3>
-
-          <div className="space-y-5">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-[#374151]">
-                送信先クラブ
-              </label>
-              {!clubsLoaded ? (
-                <p className="text-sm text-[#9CA3AF]">読み込み中...</p>
-              ) : (
-                <select
-                  value={targetClubId}
-                  onChange={(e) => setTargetClubId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
-                >
-                  <option value={ALL_TARGET}>すべて（全クラブ）</option>
-                  {sortedClubs.map((club) => (
-                    <option key={club.id} value={club.id}>
-                      {club.name}（{club.id}）
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="msgSubject"
-                className="mb-1.5 block text-sm font-medium text-[#374151]"
-              >
-                件名
-              </label>
-              <input
-                id="msgSubject"
-                type="text"
-                value={subject}
-                onChange={(e) => {
-                  setSubject(e.target.value)
-                  setError(null)
-                }}
-                placeholder="例：決算提出期限のお知らせ"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="msgBody"
-                className="mb-1.5 block text-sm font-medium text-[#374151]"
-              >
-                本文
-              </label>
-              <textarea
-                id="msgBody"
-                value={body}
-                onChange={(e) => {
-                  setBody(e.target.value)
-                  setError(null)
-                }}
-                rows={6}
-                placeholder="クラブ担当者への連絡内容を入力"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
-              />
-            </div>
-
-            {error ? (
-              <p className="text-sm text-[#EF4444]" role="alert">
-                {error}
-              </p>
-            ) : null}
-            {sentNotice ? (
-              <p className="text-sm text-[#059669]" role="status">
-                {sentNotice}
-              </p>
-            ) : null}
-
-            <Button
-              type="submit"
-              disabled={!clubsLoaded}
-              className="rounded-lg px-6 text-white hover:opacity-90"
-              style={{ backgroundColor: SCHOOL_BRAND_NAVY }}
-            >
-              送信
-            </Button>
-          </div>
-        </form>
-
-        <section className="mt-8 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="mb-4 text-lg font-semibold text-[#374151]">送信履歴</h3>
-          {history.length === 0 ? (
-            <p className="text-sm text-[#6B7280]">まだメッセージはありません。</p>
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {history.map((m) => (
-                <li key={m.id} className="py-3 first:pt-0">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="font-medium text-[#374151]">{m.subject}</p>
-                    <span className="text-xs text-[#9CA3AF]">
-                      {formatPortalMessageDate(m.sentAt)}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-[#6B7280]">
-                    宛先: {m.targetClubName}
-                    {m.kind === "settlement_deadline" ? "（決算期限通知）" : ""}
-                  </p>
-                  <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-sm text-[#6B7280]">
-                    {m.body}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+      {composeMode === "club" ? (
+        <SchoolClubComposeForm
+          key={editingDraftId ?? "club-new"}
+          initialValues={clubComposeInitial}
+          editingDraftId={editingDraftId}
+          onBack={exitCompose}
+          onSent={handleSent}
+        />
+      ) : composeMode === "staff" ? (
+        <SchoolStaffComposeForm
+          key={editingDraftId ?? "staff-new"}
+          initialValues={staffComposeInitial}
+          editingDraftId={editingDraftId}
+          onBack={exitCompose}
+          onSent={handleSent}
+        />
+      ) : (
+        <SchoolMessageListView
+          activeTab={activeTab}
+          onTabChange={(tab) => {
+            setActiveTab(tab)
+            setListNotice(null)
+            setSelectedDetailId(null)
+          }}
+          clubHistory={clubHistory}
+          staffHistory={staffHistory}
+          listNotice={listNotice}
+          createButtonLabel={createButtonLabel}
+          selectedDetailId={selectedDetailId}
+          onSelectDetail={setSelectedDetailId}
+          onBackFromDetail={() => setSelectedDetailId(null)}
+          onCreate={() => {
+            setListNotice(null)
+            setSelectedDetailId(null)
+            setEditingDraftId(null)
+            setClubComposeInitial(undefined)
+            setStaffComposeInitial(undefined)
+            if (searchParams.get("draft")) clearComposeQuery(router)
+            setComposeMode(activeTab)
+          }}
+        />
+      )}
     </div>
   )
 }

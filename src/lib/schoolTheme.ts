@@ -51,6 +51,8 @@ export const SCHOOL_PAGE_TITLES = {
   clubGroups: "グループ作成",
   clubRegister: "クラブ登録",
   messages: "メッセージBOX",
+  messagesList: "メッセージ一覧",
+  messagesDrafts: "下書き",
   settings: "設定",
   settingsCategory: "共通カテゴリー設定",
   settingsAccountTitles: "共通科目設定",
@@ -67,6 +69,7 @@ export const SCHOOL_ROUTES = {
   clubRegister: "/school/clubs/register",
   clubsBase: "/school/clubs",
   messages: "/school/messages",
+  messagesDrafts: "/school/messages/drafts",
   /** 共通カテゴリー設定（設定のデフォルト子画面） */
   settingsCategory: "/school/settings/category",
   settingsAccountTitles: "/school/settings/account-titles",
@@ -87,6 +90,13 @@ export function isSchoolClubPath(pathname: string): boolean {
   return (
     pathname === SCHOOL_ROUTES.clubList ||
     pathname.startsWith(`${SCHOOL_ROUTES.clubsBase}/`)
+  )
+}
+
+export function isSchoolMessagesPath(pathname: string): boolean {
+  return (
+    pathname === SCHOOL_ROUTES.messages ||
+    pathname.startsWith(`${SCHOOL_ROUTES.messages}/`)
   )
 }
 

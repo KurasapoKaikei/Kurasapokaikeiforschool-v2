@@ -46,10 +46,24 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
   const [clubs, setClubs] = useState<SchoolClub[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
 
-  useEffect(() => {
+  const reloadFromStorage = useCallback(() => {
     setClubs(loadSchoolClubs())
     setIsLoaded(true)
   }, [])
+
+  useEffect(() => {
+    reloadFromStorage()
+  }, [reloadFromStorage])
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === "kurasaokaikei-school-clubs") {
+        reloadFromStorage()
+      }
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [reloadFromStorage])
 
   useEffect(() => {
     if (!isLoaded) return
