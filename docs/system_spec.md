@@ -1574,14 +1574,14 @@ v2.9.12 で、**rowSpan の対象を再定義**した。
 
 > **統合版 v2.12**: 本節は単体仕様書を統合仕様書へ取り込んだ正本。データ型は §4.1.1、UI共通規約は §0.0。
 
-### 7.. 全体概要・基本方針
+### 7.1. 全体概要・基本方針
 
 - **目的**: 学校管理者（および監査、システム）から、各部活動（クラブ）への連絡・通達を円滑に行うためのメッセージインフラ。
 - **通信方向**: 学校からクラブへの【完全な一方通行連絡】（クラブ側からの返信は不可、受領確認のみ）。
 - **データ永続化**: サーバー不要でモック動作するよう、ブラウザの `localStorage` を活用。例外処理（`try-catch`）を徹底し、データ空時のクラッシュを完全防止。
 - **変更通知**: 送信・既読・受領確認・下書き保存時にカスタムイベント `kurasaokaikei-portal-messages-changed` および `kurasaokaikei-portal-drafts-changed`（下書き）を発火し、同一タブ内の UI を更新。`storage` イベントも併用。
 
-### 1.1 localStorage キー一覧
+#### 7.1.1 localStorage キー一覧
 
 | キー | 用途 | 正本 |
 |------|------|------|
@@ -1589,7 +1589,7 @@ v2.9.12 で、**rowSpan の対象を再定義**した。
 | `portal_messages` | 旧キー（初回読み込み時に `school_to_club_messages` へ一度だけ移行） | レガシー |
 | `school_draft_messages` | 学校ポータルの下書き配列 | ○ |
 
-### 1.2 主要実装ファイル
+#### 7.1.2 主要実装ファイル
 
 | 領域 | ファイル |
 |------|----------|
@@ -1610,9 +1610,9 @@ v2.9.12 で、**rowSpan の対象を再定義**した。
 
 ---
 
-### 7.. データモデル
+### 7.2. データモデル
 
-### 2.1 PortalMessage（送信済み・正本）
+#### 7.2.1 PortalMessage（送信済み・正本）
 
 ```typescript
 type PortalMessage = {
@@ -1630,7 +1630,7 @@ type PortalMessage = {
 }
 ```
 
-### 2.2 SchoolMessageDraft（下書き）
+#### 7.2.2 SchoolMessageDraft（下書き）
 
 ```typescript
 type SchoolMessageDraft = {
@@ -1644,7 +1644,7 @@ type SchoolMessageDraft = {
 }
 ```
 
-### 2.3 クラブ向け表示モデル（ClubPortalMessageView）
+#### 7.2.3 クラブ向け表示モデル（ClubPortalMessageView）
 
 一覧・詳細・ダッシュボードプレビュー共通。`PortalMessage` からクラブ ID 単位で変換。
 
@@ -1654,7 +1654,7 @@ type SchoolMessageDraft = {
 - `isConfirmed`: `confirmedByClubIds` に当該クラブ ID が含まれるか
 - `sender` / `senderLabel`: 送信元バッジ用
 
-### 2.4 送信元（クラブ表示）
+#### 7.2.4 送信元（クラブ表示）
 
 | sender 値 | バッジ表示 | 配色（デモ） |
 |-----------|------------|----------------|
@@ -1664,7 +1664,7 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. 管理者（学校ポータル）側の仕様
+### 7.3. 管理者（学校ポータル）側の仕様
 
 ### A. サイドメニューの階層化（親子関係）
 
@@ -1780,7 +1780,7 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. クラブポータル側の仕様
+### 7.4. クラブポータル側の仕様
 
 ### A. 画面レイアウト
 
@@ -1800,7 +1800,7 @@ type SchoolMessageDraft = {
 データは左から以下の順番で1行ずつ表示（`ClubMessageListItem`）:
 
 1. **【未読の赤丸】** — 未読時のみ `●`（赤 `#EF4444`）。既読時は表示なし（プレースホルダーなし）。
-2. **【バッジ】** — 送信元（学校 / 監査 / クラサポ）。上記 §2.4 の配色。
+2. **【バッジ】** — 送信元（学校 / 監査 / クラサポ）。上記 §7.2.4 の配色。
 3. **【日付】** — `YYYY/MM/DD`
 4. **【時間】** — `HH:mm`
 5. **【件名】** — 未読は太字、既読は通常色。長い場合は `truncate`。
@@ -1838,7 +1838,7 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. 日時・表示フォーマット
+### 7.5. 日時・表示フォーマット
 
 | 用途 | 関数 | 形式 |
 |------|------|------|
@@ -1848,9 +1848,9 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. API・関数（デモ・クライアント）
+### 7.6. API・関数（デモ・クライアント）
 
-### 6.1 読み込み・保存
+#### 7.6.1 読み込み・保存
 
 - `loadPortalMessages()` — try-catch、配列以外は空配列
 - `savePortalMessages(messages)` — try-catch、失敗時は保存スキップ
@@ -1858,7 +1858,7 @@ type SchoolMessageDraft = {
 - `loadSchoolClubMessagesForClub(clubId)`
 - `loadSchoolDraftMessages()` / `saveSchoolDraft()` / `deleteSchoolDraft()` / `getSchoolDraftById()`
 
-### 6.2 送信
+#### 7.6.2 送信
 
 - `sendPortalMessage(input)` — クラブ宛てまたは汎用
 - `sendStaffPortalMessage(input)` — `audience: "staff"`
@@ -1866,7 +1866,7 @@ type SchoolMessageDraft = {
 - `sendAuditPortalMessage(input)` — `sender: "audit"`（スタブ）
 - `sendSettlementDeadlineNotice()` — 全クラブ宛て決算期限通知（システム種別）
 
-### 6.3 クラブ操作
+#### 7.6.3 クラブ操作
 
 - `markPortalMessageRead(messageId, clubId)`
 - `markPortalMessageConfirmed(messageId, clubId)`
@@ -1874,7 +1874,7 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. UI 定数・テーマ
+### 7.7. UI 定数・テーマ
 
 | 名称 | 値 | 用途 |
 |------|-----|------|
@@ -1887,7 +1887,7 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. エラー防止・互換
+### 7.8. エラー防止・互換
 
 - 全 `localStorage` 読み書きを try-catch で保護。
 - 旧 `portal_messages` キーは初回に `school_to_club_messages` へ移行。
@@ -1897,7 +1897,7 @@ type SchoolMessageDraft = {
 
 ---
 
-### 7.. 画面遷移図（概要）
+### 7.9. 画面遷移図（概要）
 
 ```mermaid
 flowchart TB
@@ -1928,7 +1928,7 @@ flowchart TB
 
 ---
 
-### 7.. 完了条件チェックリスト（受け入れ）
+### 7.10. 完了条件チェックリスト（受け入れ）
 
 - [ ] 学校サイドメニューでメッセージBOX配下に「メッセージ一覧」「下書き」が表示される
 - [ ] 作成は「確認画面へ」→ 確認画面で「送信」「下書き保存」「キャンセル」が動作する
