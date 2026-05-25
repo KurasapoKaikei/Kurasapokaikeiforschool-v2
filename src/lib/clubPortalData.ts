@@ -4,8 +4,10 @@
  * - セッションなし → 従来のグローバルデモデータ（ラグビー部など）
  */
 
-import type { Message } from "@/constants/mockData"
-import { mockMessages } from "@/constants/mockData"
+import {
+  getClubPortalMessageViews,
+  type ClubPortalMessageView,
+} from "@/lib/portalMessages"
 import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeClubSession"
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 import type { AccountTitle, Member, Transaction } from "@/utils/localStorage"
@@ -97,14 +99,12 @@ export function getPortalMembers(active: ActiveClubSession | null): Member[] {
   return readStorageJson(scopedKey(BASE_KEYS.MEMBERS, active!.id), [])
 }
 
+/** クラブポータル：メッセージBOX（portal_messages 正本・ダッシュボードと専用ページで共通） */
 export function getPortalMessages(
   active: ActiveClubSession | null
-): Message[] {
-  if (isEmptyPortalForClub(active)) return []
-  if (isLegacyGlobalPortal(active)) return mockMessages
-  const key = `kurasaokaikei-club-messages-${active!.id}`
-  const stored = readStorageJson<Message[]>(key, [])
-  return stored.length > 0 ? stored : []
+): ClubPortalMessageView[] {
+  if (isEmptyPortalForClub(active) || !active?.id) return []
+  return getClubPortalMessageViews(active.id)
 }
 
 export function getActivePortalState() {

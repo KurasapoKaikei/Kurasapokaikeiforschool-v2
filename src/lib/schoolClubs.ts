@@ -54,6 +54,23 @@ function normalizeClubOrders(clubs: SchoolClub[]): SchoolClub[] {
 
 const STORAGE_KEY = "kurasaokaikei-school-clubs"
 
+/** クラブ登録フォーム：重複時の表示文言 */
+export const DUPLICATE_CLUB_NAME_ERROR =
+  "※このクラブ名は既に登録されています。"
+
+/** 同一学校内でクラブ名が既に使われているか（前後空白を除いた完全一致） */
+export function isDuplicateClubName(
+  name: string,
+  clubs: SchoolClub[],
+  excludeClubId?: string
+): boolean {
+  const trimmed = name.trim()
+  if (!trimmed) return false
+  return clubs.some(
+    (c) => c.id !== excludeClubId && c.name.trim() === trimmed
+  )
+}
+
 export function loadSchoolClubs(): SchoolClub[] {
   if (typeof window === "undefined") return []
   try {

@@ -1,5 +1,6 @@
 /** クラブログインセッション（トップページ認証後） */
 
+import { notifyClubPortalSessionChanged } from "@/lib/clubPortalSessionEvents"
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 import { clearImpersonatedClub } from "@/lib/schoolClubSession"
 
@@ -38,6 +39,7 @@ export function getCurrentClub(): CurrentClubSession | null {
 export function clearCurrentClub(): void {
   if (typeof window === "undefined") return
   localStorage.removeItem(STORAGE_KEY)
+  notifyClubPortalSessionChanged()
 }
 
 /** クラブID・パスワードを照合し、成功時はセッション情報を返す */
@@ -63,4 +65,5 @@ export function authenticateClub(
 export function establishClubLogin(session: CurrentClubSession): void {
   clearImpersonatedClub()
   setCurrentClub(session)
+  notifyClubPortalSessionChanged()
 }

@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { PasswordInput } from "@/components/ui/password-input"
 import {
   authenticateClub,
   establishClubLogin,
@@ -19,7 +19,6 @@ export function ClubLoginForm({
   onBack,
   backLabel = "ログイン選択に戻る",
 }: ClubLoginFormProps) {
-  const router = useRouter()
   const [clubId, setClubId] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -38,7 +37,7 @@ export function ClubLoginForm({
     }
 
     establishClubLogin(session)
-    router.push(CLUB_PORTAL_DASHBOARD)
+    window.location.assign(CLUB_PORTAL_DASHBOARD)
   }
 
   return (
@@ -73,6 +72,7 @@ export function ClubLoginForm({
           </label>
           <input
             id="clubId"
+            name="clubId"
             type="text"
             value={clubId}
             onChange={(e) => {
@@ -92,17 +92,17 @@ export function ClubLoginForm({
           >
             パスワード
           </label>
-          <input
+          <PasswordInput
             id="clubPassword"
-            type="password"
             value={password}
-            onChange={(e) => {
-              setPassword(e.target.value)
+            onChange={(v) => {
+              setPassword(v)
               setError(null)
             }}
             placeholder="パスワードを入力"
             autoComplete="current-password"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#E66A84]/40"
+            deferAutofillUntilFocus
+            inputClassName="focus:ring-[#E66A84]/40"
           />
         </div>
 

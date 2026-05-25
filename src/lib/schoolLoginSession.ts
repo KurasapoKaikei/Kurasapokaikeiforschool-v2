@@ -1,5 +1,8 @@
 /** 学校管理者ログイン（デモ用） */
 
+import { clearCurrentSchool, persistCurrentSchool } from "@/lib/currentSchool"
+import { getActiveRegistrationByCredentials } from "@/lib/schoolRegistration"
+
 const STORAGE_KEY = "kurasaokaikei-school-admin-session"
 
 export type SchoolAdminSession = {
@@ -7,12 +10,14 @@ export type SchoolAdminSession = {
   loggedInAt: string
 }
 
-/** admin/admin、または ID・PW とも空欄で成功 */
+/** admin/admin、空欄、または本登録済み学校ID＋管理者パスワードで成功 */
 export function authenticateSchool(loginId: string, password: string): boolean {
   const id = loginId.trim()
-  const pw = password.trim()
-  if (!id && !pw) return true
-  return id === "admin" && pw === "admin"
+  const pw = password
+  if (!id && !pw.trim()) return true
+  if (id === "admin" && pw === "admin") return true
+  if (getActiveRegistrationByCredentials(id, pw)) return true
+  return false
 }
 
 export function establishSchoolLogin(loginId: string): void {
@@ -22,6 +27,7 @@ export function establishSchoolLogin(loginId: string): void {
     loggedInAt: new Date().toISOString(),
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
+  persistCurrentSchool(loginId)
 }
 
 export function getSchoolAdminSession(): SchoolAdminSession | null {
@@ -39,4 +45,5 @@ export function getSchoolAdminSession(): SchoolAdminSession | null {
 export function clearSchoolAdminSession(): void {
   if (typeof window === "undefined") return
   localStorage.removeItem(STORAGE_KEY)
+  clearCurrentSchool()
 }

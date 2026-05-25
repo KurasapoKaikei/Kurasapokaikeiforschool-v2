@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { PasswordInput } from "@/components/ui/password-input"
 import {
   authenticateSchool,
   establishSchoolLogin,
@@ -12,7 +12,6 @@ import { SCHOOL_BRAND_NAVY, SCHOOL_ROUTES } from "@/lib/schoolTheme"
 
 /** 学校管理者ログイン画面 */
 export function SchoolLoginView() {
-  const router = useRouter()
   const [loginId, setLoginId] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +26,7 @@ export function SchoolLoginView() {
     }
 
     establishSchoolLogin(loginId)
-    router.push(SCHOOL_ROUTES.clubList)
+    window.location.assign(SCHOOL_ROUTES.home)
   }
 
   return (
@@ -61,6 +60,7 @@ export function SchoolLoginView() {
               </label>
               <input
                 id="schoolLoginId"
+                name="schoolLoginId"
                 type="text"
                 value={loginId}
                 onChange={(e) => {
@@ -80,17 +80,17 @@ export function SchoolLoginView() {
               >
                 パスワード
               </label>
-              <input
+              <PasswordInput
                 id="schoolPassword"
-                type="password"
                 value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value)
+                onChange={(v) => {
+                  setPassword(v)
                   setError(null)
                 }}
                 placeholder="パスワードを入力"
                 autoComplete="current-password"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#005088]/30"
+                deferAutofillUntilFocus
+                inputClassName="focus:ring-[#005088]/30"
               />
             </div>
 

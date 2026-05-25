@@ -15,6 +15,8 @@ npm run dev
 | URL | 説明 |
 |-----|------|
 | `/` | **統合ログインハブ**（学校・クラブ・部員の3カード） |
+| `/register/school` | 学校向け新規申込（5ステップ・仮申込 → メール認証） |
+| `/register/verify?id=SCH-xxxxx` | メール認証・本登録・自動ログイン |
 | `/school/login` | 学校管理者ログイン（デモ: `admin` / 空欄可）→ `/school/clubs` |
 | `/club/login` | クラブログイン（ID・PW。ハブからはインライン表示も可） |
 | `/school` | 学校管理者ポータル（年度切替・サマリーカード） |
@@ -37,6 +39,8 @@ npm run dev
 | URL | ページ名 |
 |-----|---------|
 | `/club/dashboard` | クラブポータル |
+| `/club/settlement` | 決算（提出ステータス・学校へ提出） |
+| `/club/messages` | メッセージBOX（受信箱） |
 | `/club/accounting/register/new` | 入出金登録（新規） |
 | `/club/accounting/register/history` | 登録履歴 |
 | `/club/accounting/ledger/cash-bank` | 現金・預金出納帳 |

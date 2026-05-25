@@ -1,10 +1,18 @@
-/** 学校ポータル：クラブ決算提出ステータス（デモ用モック） */
+/** 学校ポータル：クラブ決算提出ステータス（5/27デモ・localStorage） */
 
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 
-export type ClubSettlementStatus = "draft" | "auditing" | "approved"
+export type ClubSettlementStatus =
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "rejected"
 
-const STORAGE_KEY = "kurasaokaikei-school-club-settlement-status"
+const STATUS_STORAGE_KEY = "kurasaokaikei-school-club-settlement-status"
+const REJECT_REASON_KEY = "kurasaokaikei-school-club-settlement-reject-reason"
+const ROLLOVER_STORAGE_KEY = "kurasaokaikei-school-fiscal-rollover-2026"
+
+export const SETTLEMENT_CHANGED_EVENT = "kurasaokaikei-school-settlement-changed"
 
 export const CLUB_SETTLEMENT_STATUS_META: Record<
   ClubSettlementStatus,
@@ -14,26 +22,42 @@ export const CLUB_SETTLEMENT_STATUS_META: Record<
     label: "作成中",
     className: "bg-gray-100 text-gray-700 border border-gray-300",
   },
-  auditing: {
-    label: "監査中",
-    className: "bg-[#FEF3C7] text-[#92400E] border border-[#F59E0B]",
+  submitted: {
+    label: "提出済",
+    className: "bg-[#DBEAFE] text-[#1E40AF] border border-[#93C5FD]",
   },
   approved: {
     label: "承認済",
     className: "bg-[#D1FAE5] text-[#065F46] border border-[#6EE7B7]",
   },
+  rejected: {
+    label: "差戻し",
+    className: "bg-[#FEE2E2] text-[#991B1B] border border-[#FCA5A5]",
+  },
+}
+
+function dispatchChanged(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event(SETTLEMENT_CHANGED_EVENT))
 }
 
 function normalizeStatus(raw: string): ClubSettlementStatus {
-  if (raw === "submitted") return "auditing"
-  if (raw === "draft" || raw === "auditing" || raw === "approved") return raw
+  if (raw === "auditing") return "submitted"
+  if (
+    raw === "draft" ||
+    raw === "submitted" ||
+    raw === "approved" ||
+    raw === "rejected"
+  ) {
+    return raw
+  }
   return "draft"
 }
 
 function loadAll(): Record<string, ClubSettlementStatus> {
   if (typeof window === "undefined") return {}
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STATUS_STORAGE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, string>
     if (!parsed || typeof parsed !== "object") return {}
@@ -49,20 +73,41 @@ function loadAll(): Record<string, ClubSettlementStatus> {
 
 function saveAll(map: Record<string, ClubSettlementStatus>): void {
   if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map))
+  localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(map))
+  dispatchChanged()
+}
+
+function loadRejectReasons(): Record<string, string> {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(REJECT_REASON_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+function saveRejectReasons(map: Record<string, string>): void {
+  if (typeof window === "undefined") return
+  localStorage.setItem(REJECT_REASON_KEY, JSON.stringify(map))
+  dispatchChanged()
 }
 
 function mockStatusForClubId(clubId: string): ClubSettlementStatus {
-  const options: ClubSettlementStatus[] = ["draft", "auditing", "approved"]
+  const options: ClubSettlementStatus[] = [
+    "draft",
+    "submitted",
+    "approved",
+  ]
   const sum = clubId.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  return options[sum % options.length]
+  return options[sum % options.length]!
 }
 
 function isSchoolRegisteredClubId(clubId: string): boolean {
   return loadSchoolClubs().some((c) => c.id === clubId)
 }
 
-/** 未設定クラブにステータスを割り当てて返す（学校登録クラブは「作成中」） */
 export function ensureClubSettlementStatuses(
   clubIds: string[]
 ): Record<string, ClubSettlementStatus> {
@@ -72,17 +117,125 @@ export function ensureClubSettlementStatuses(
     if (!current[id]) {
       current[id] = isSchoolRegisteredClubId(id) ? "draft" : mockStatusForClubId(id)
       changed = true
+    } else {
+      const normalized = normalizeStatus(current[id]!)
+      if (normalized !== current[id]) {
+        current[id] = normalized
+        changed = true
+      }
     }
   }
   if (changed) saveAll(current)
   return current
 }
 
-export function getClubSettlementStatus(
-  clubId: string
-): ClubSettlementStatus {
+export function getClubSettlementStatus(clubId: string): ClubSettlementStatus {
   const map = loadAll()
-  if (map[clubId]) return map[clubId]
+  if (map[clubId]) return map[clubId]!
   if (isSchoolRegisteredClubId(clubId)) return "draft"
   return mockStatusForClubId(clubId)
+}
+
+export function setClubSettlementStatus(
+  clubId: string,
+  status: ClubSettlementStatus
+): void {
+  const map = loadAll()
+  map[clubId] = status
+  saveAll(map)
+  if (status !== "rejected") {
+    const reasons = loadRejectReasons()
+    if (reasons[clubId]) {
+      delete reasons[clubId]
+      saveRejectReasons(reasons)
+    }
+  }
+}
+
+export function getSettlementRejectReason(clubId: string): string | null {
+  return loadRejectReasons()[clubId] ?? null
+}
+
+/** クラブ：作成中・差戻しのみ提出可能 */
+export function submitClubSettlement(clubId: string): boolean {
+  const current = getClubSettlementStatus(clubId)
+  if (current !== "draft" && current !== "rejected") return false
+  setClubSettlementStatus(clubId, "submitted")
+  return true
+}
+
+export function approveClubSettlement(clubId: string): boolean {
+  if (getClubSettlementStatus(clubId) !== "submitted") return false
+  setClubSettlementStatus(clubId, "approved")
+  return true
+}
+
+export function rejectClubSettlement(clubId: string, reason: string): boolean {
+  if (getClubSettlementStatus(clubId) !== "submitted") return false
+  const trimmed = reason.trim()
+  if (!trimmed) return false
+  setClubSettlementStatus(clubId, "rejected")
+  const reasons = loadRejectReasons()
+  reasons[clubId] = trimmed
+  saveRejectReasons(reasons)
+  return true
+}
+
+export function canSubmitSettlement(clubId: string): boolean {
+  const s = getClubSettlementStatus(clubId)
+  return s === "draft" || s === "rejected"
+}
+
+export type FiscalRolloverCheck = {
+  canExecute: boolean
+  reason: string
+  pendingCount: number
+  totalClubs: number
+}
+
+export function checkFiscalRollover(clubIds: string[]): FiscalRolloverCheck {
+  if (clubIds.length === 0) {
+    return {
+      canExecute: false,
+      reason: "登録クラブがありません。クラブ登録後に実行できます。",
+      pendingCount: 0,
+      totalClubs: 0,
+    }
+  }
+  ensureClubSettlementStatuses(clubIds)
+  const pending = clubIds.filter((id) => getClubSettlementStatus(id) !== "approved")
+  if (pending.length > 0) {
+    return {
+      canExecute: false,
+      reason: `未承認のクラブが ${pending.length} 件あります。すべて「承認済」になるまで年度繰越はできません。`,
+      pendingCount: pending.length,
+      totalClubs: clubIds.length,
+    }
+  }
+  return {
+    canExecute: true,
+    reason: "",
+    pendingCount: 0,
+    totalClubs: clubIds.length,
+  }
+}
+
+export function isFiscalRolloverCompleted(): boolean {
+  if (typeof window === "undefined") return false
+  return localStorage.getItem(ROLLOVER_STORAGE_KEY) === "done"
+}
+
+export function executeFiscalRollover(clubIds: string[]): boolean {
+  const check = checkFiscalRollover(clubIds)
+  if (!check.canExecute) return false
+  if (typeof window === "undefined") return false
+  localStorage.setItem(ROLLOVER_STORAGE_KEY, "done")
+  dispatchChanged()
+  return true
+}
+
+export function resetFiscalRolloverDemo(): void {
+  if (typeof window === "undefined") return
+  localStorage.removeItem(ROLLOVER_STORAGE_KEY)
+  dispatchChanged()
 }

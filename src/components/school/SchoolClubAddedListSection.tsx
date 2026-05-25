@@ -188,7 +188,7 @@ export function SchoolClubAddedListSection({
           </div>
 
           <div className="space-y-2">
-            {filteredClubs.map((club) => {
+            {filteredClubs.map((club, index) => {
               const isDragged = draggedId === club.id
               const isDragOver = dragOverId === club.id && draggedId !== club.id
               const isEditing = editingId === club.id
@@ -214,7 +214,7 @@ export function SchoolClubAddedListSection({
                         aria-hidden
                       />
                       <span className="text-sm font-medium tabular-nums text-[#374151]">
-                        {club.order}
+                        {index + 1}
                       </span>
                     </div>
 

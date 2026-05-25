@@ -6,6 +6,9 @@ import { getImpersonatedClub } from "@/lib/schoolClubSession"
 export type ActiveClubSession = CurrentClubSession
 
 export function resolveActiveClubSession(): ActiveClubSession | null {
+  const loggedIn = getCurrentClub()
+  if (loggedIn) return loggedIn
+
   const impersonated = getImpersonatedClub()
   if (impersonated) {
     return {
@@ -14,5 +17,5 @@ export function resolveActiveClubSession(): ActiveClubSession | null {
       groupNames: [],
     }
   }
-  return getCurrentClub()
+  return null
 }

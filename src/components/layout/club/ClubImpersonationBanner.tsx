@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { X } from "lucide-react"
+import { isSchoolImpersonatingClub } from "@/lib/clubPortalAccess"
+import { CLUB_PORTAL_SESSION_CHANGED_EVENT } from "@/lib/clubPortalSessionEvents"
 import {
   clearImpersonatedClub,
   getImpersonatedClub,
@@ -10,12 +12,21 @@ import {
 } from "@/lib/schoolClubSession"
 import { SCHOOL_ROUTES } from "@/lib/schoolTheme"
 
-/** 学校管理者がクラブポータルを閲覧中のバナー */
+/** 学校管理者がクラブポータルを閲覧中のバナー（通常のクラブログイン時は非表示） */
 export function ClubImpersonationBanner() {
   const [club, setClub] = useState<ImpersonatedClub | null>(null)
 
   useEffect(() => {
-    setClub(getImpersonatedClub())
+    const refresh = () => {
+      setClub(isSchoolImpersonatingClub() ? getImpersonatedClub() : null)
+    }
+    refresh()
+    window.addEventListener(CLUB_PORTAL_SESSION_CHANGED_EVENT, refresh)
+    window.addEventListener("storage", refresh)
+    return () => {
+      window.removeEventListener(CLUB_PORTAL_SESSION_CHANGED_EVENT, refresh)
+      window.removeEventListener("storage", refresh)
+    }
   }, [])
 
   if (!club) return null

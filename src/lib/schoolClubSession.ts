@@ -1,5 +1,7 @@
 /** 学校管理者によるクラブポータルなりすまし（デモ用） */
 
+import { notifyClubPortalSessionChanged } from "@/lib/clubPortalSessionEvents"
+
 export type ImpersonatedClub = {
   id: string
   name: string
@@ -28,4 +30,5 @@ export function getImpersonatedClub(): ImpersonatedClub | null {
 export function clearImpersonatedClub(): void {
   if (typeof window === "undefined") return
   sessionStorage.removeItem(SESSION_KEY)
+  notifyClubPortalSessionChanged()
 }

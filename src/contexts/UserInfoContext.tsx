@@ -45,7 +45,9 @@ export function UserInfoProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateOrganizationName = useCallback((name: string) => {
-    setUserInfo((prev) => ({ ...prev, organizationName: name }))
+    setUserInfo((prev) =>
+      prev.organizationName === name ? prev : { ...prev, organizationName: name }
+    )
   }, [])
 
   const updateStaffNames = useCallback((names: string[]) => {

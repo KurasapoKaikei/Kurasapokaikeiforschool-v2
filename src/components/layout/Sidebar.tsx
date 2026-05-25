@@ -8,12 +8,14 @@ import { KurasapoBrandLogo } from "@/components/layout/KurasapoBrandLogo"
 import { clubPath } from "@/lib/routes"
 import {
   LayoutDashboard,
+  Mail,
   Receipt,
   BookOpen,
   Wallet,
   BarChart3,
   Users,
   Settings,
+  ClipboardCheck,
   HelpCircle,
   ChevronDown,
   ChevronRight,
@@ -41,6 +43,13 @@ const menuItems: MenuItem[] = [
     icon: LayoutDashboard,
     color: "dashboard",
     colorHex: "#E66A84", // ピンク
+  },
+  {
+    title: "メッセージBOX",
+    href: clubPath("/messages"),
+    icon: Mail,
+    color: "dashboard",
+    colorHex: "#4A90E2",
   },
   {
     title: "入出金登録",
@@ -114,6 +123,13 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
+    title: "決算",
+    href: clubPath("/settlement"),
+    icon: ClipboardCheck,
+    color: "settings",
+    colorHex: "#005088",
+  },
+  {
     title: "操作ガイド",
     href: clubPath("/guide"),
     icon: HelpCircle,
@@ -182,15 +198,17 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-gray-200 bg-white">
-      <div className="flex h-full flex-col">
-        {/* ロゴ・ヘッダー */}
-        <div className="border-b border-gray-200 px-4 py-4">
-          <KurasapoBrandLogo />
-        </div>
+    <aside
+      className="sticky top-0 z-[100] flex h-screen min-h-screen w-64 shrink-0 flex-col self-start border-r border-gray-200 bg-white isolate pointer-events-auto"
+      aria-label="クラブポータル メニュー"
+    >
+      {/* ロゴ・ヘッダー */}
+      <div className="shrink-0 border-b border-gray-200 px-4 py-4">
+        <KurasapoBrandLogo />
+      </div>
 
-        {/* ナビゲーションメニュー */}
-        <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
+      {/* ナビゲーションメニュー（項目が多い場合はサイドバー内のみスクロール） */}
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-4">
           {menuItems.map((item) => {
             const Icon = item.icon
             const hasSubItems = item.subItems && item.subItems.length > 0
@@ -214,12 +232,12 @@ export function Sidebar() {
                       {/* 左端のアクセント線 */}
                       {isActive && (
                         <div
-                          className="absolute left-0 top-0 h-full w-1 rounded-l-lg"
+                          className="pointer-events-none absolute left-0 top-0 h-full w-1 rounded-l-lg"
                           style={{ backgroundColor: item.colorHex }}
                         />
                       )}
                       <Icon
-                        className="h-5 w-5 flex-shrink-0"
+                        className="pointer-events-none h-5 w-5 flex-shrink-0"
                         style={{
                           color: item.colorHex,
                           strokeWidth: 2.5,
@@ -246,12 +264,12 @@ export function Sidebar() {
                     {/* 左端のアクセント線 */}
                     {isActive && (
                       <div
-                        className="absolute left-0 top-0 h-full w-1 rounded-l-lg"
+                        className="pointer-events-none absolute left-0 top-0 h-full w-1 rounded-l-lg"
                         style={{ backgroundColor: item.colorHex }}
                       />
                     )}
                     <Icon
-                      className="h-5 w-5 flex-shrink-0"
+                      className="pointer-events-none h-5 w-5 flex-shrink-0"
                       style={{
                         color: item.colorHex,
                         strokeWidth: 2.5,
@@ -271,6 +289,7 @@ export function Sidebar() {
                         <Link
                           key={subItem.href}
                           href={subItem.href}
+                          prefetch
                           className={cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
                             subIsActive
@@ -294,8 +313,7 @@ export function Sidebar() {
               </div>
             )
           })}
-        </nav>
-      </div>
+      </nav>
     </aside>
   )
 }

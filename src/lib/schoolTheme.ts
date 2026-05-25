@@ -50,7 +50,7 @@ export const SCHOOL_PAGE_TITLES = {
   clubList: "クラブ一覧",
   clubGroups: "グループ作成",
   clubRegister: "クラブ登録",
-  messages: "お知らせ一覧",
+  messages: "メッセージBOX",
   settings: "設定",
   settingsCategory: "共通カテゴリー設定",
   settingsAccountTitles: "共通科目設定",

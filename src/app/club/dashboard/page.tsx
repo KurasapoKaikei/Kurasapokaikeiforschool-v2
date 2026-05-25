@@ -1,8 +1,10 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertTriangle } from "lucide-react"
+import { clubPath } from "@/lib/routes"
 import { useClubSession } from "@/contexts/ClubSessionContext"
 import {
   getPortalAccountTitles,
@@ -10,9 +12,11 @@ import {
   getPortalMessages,
   getPortalTransactions,
 } from "@/lib/clubPortalData"
-import { getClubSettlementStatus } from "@/lib/schoolClubSettlement"
-import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
-import { getCurrentOperator, type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
+import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
+import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
+import { ClubPortalYearBar } from "@/components/club/ClubPortalYearBar"
+import type { ClubPortalMessageView } from "@/lib/portalMessages"
+import { type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -21,18 +25,12 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [members, setMembers] = useState<Member[]>([])
-  const [messages, setMessages] = useState(
-    () => getPortalMessages(activeClub)
-  )
-
-  const [currentOperatorLabel, setCurrentOperatorLabel] = useState<string | null>(null)
-
+  const [messages, setMessages] = useState<ClubPortalMessageView[]>([])
   const loadPortalData = useCallback(() => {
     setTransactions(getPortalTransactions(activeClub))
     setAccountTitles(getPortalAccountTitles(activeClub))
     setMembers(getPortalMembers(activeClub))
     setMessages(getPortalMessages(activeClub))
-    setCurrentOperatorLabel(isEmptyPortal ? null : getCurrentOperator())
     refresh()
   }, [activeClub, isEmptyPortal, refresh])
 
@@ -43,6 +41,16 @@ export default function DashboardPage() {
   useEffect(() => {
     const interval = setInterval(loadPortalData, 500)
     return () => clearInterval(interval)
+  }, [loadPortalData])
+
+  useEffect(() => {
+    const onRefresh = () => loadPortalData()
+    window.addEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onRefresh)
+    window.addEventListener("storage", onRefresh)
+    return () => {
+      window.removeEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onRefresh)
+      window.removeEventListener("storage", onRefresh)
+    }
   }, [loadPortalData])
 
   // 現金・預金科目のみを取得
@@ -175,92 +183,33 @@ export default function DashboardPage() {
     return `${year}/${month}/${day}`
   }
 
-  const settlementStatus = activeClub
-    ? getClubSettlementStatus(activeClub.id)
-    : null
-
-  const unreadMessageCount = messages.filter((m) => m.isUnread).length
+  const unreadMessageCount = messages.filter((m) => !m.isRead).length
 
   // 金額フォーマット（￥なし、カンマ区切り）
   const formatAmount = (n: number): string => n.toLocaleString()
 
   return (
-    <div className="min-h-screen bg-[#F5F5F0]">
-      {/* 年度選択バー */}
-      <div className="bg-white border-b border-gray-200 px-6 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[#6B7280] mr-2">年度切替:</span>
-          {["2024年度", "2025年度", "2026年度"].map((year) => (
-            <button
-              key={year}
-              onClick={() => setSelectedYear(year)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                selectedYear === year
-                  ? "bg-[#E66A84] text-white"
-                  : "bg-gray-100 text-[#374151] hover:bg-gray-200"
-              }`}
-            >
-              {year}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="flex flex-col bg-[#F5F5F0]">
+      <ClubPortalYearBar
+        selectedYear={selectedYear}
+        onYearChange={setSelectedYear}
+      />
 
-      {/* 作業者表示（チェックイン前は未選択。値は localStorage classapo_current_operator） */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
-        <div
-          className="rounded-lg border-2 border-[#E66A84]/40 bg-[#FCE7F3]/60 px-4 py-3 text-center shadow-sm"
-          role="status"
-        >
-          <p className="text-sm text-[#374151] sm:text-base">
-            現在の作業者は{" "}
-            <span className="font-semibold text-[#E66A84] tabular-nums">
-              [{currentOperatorLabel ?? "未選択"}]
-            </span>
-            です
-          </p>
-          <p className="text-xs text-[#6B7280] mt-1.5">
-            ※今後ここからチェックインできるようになります（現時点は表示のみ）
-          </p>
-        </div>
-      </div>
-
-      <div className="px-6 py-4">
-        {activeClub ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#E66A84]/25 bg-white px-4 py-3 shadow-sm">
-            <div>
-              <p className="text-sm text-[#6B7280]">ログイン中のクラブ</p>
-              <p className="text-lg font-bold text-[#374151]">{activeClub.name}</p>
-              <p className="text-xs text-[#9CA3AF]">クラブID: {activeClub.id}</p>
-            </div>
-            {settlementStatus ? (
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-xs text-[#6B7280]">決算ステータス</span>
-                <SchoolClubSettlementBadge status={settlementStatus} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {isEmptyPortal ? (
-          <div className="mb-4 rounded-lg border border-dashed border-gray-300 bg-white/80 px-4 py-3 text-center text-sm text-[#6B7280]">
-            今期の決算データはまだ登録されていません。入出金や予算を登録すると、この画面に反映されます。
-          </div>
-        ) : null}
-
-        {/* 一段目: 3カラム構成（同等幅） */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-          {/* 左ブロック: 現在の残高 */}
-          <div className="rounded-lg border-l-[5px] border-l-[#E66A84] border border-gray-200 bg-white p-4 shadow-sm flex flex-col h-full">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-[#E66A84] border-b-2 border-[#E66A84] pb-1.5">
+      {/* ダッシュボード本体のみ 67vh（サイドバーには適用しない） */}
+      <div className="flex h-[67vh] max-h-[67vh] min-h-0 flex-col overflow-hidden px-6 pb-3 pt-2">
+        <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-3">
+          {/* 左ブロック: 現在の残高（科目多数時はこのカード内のみスクロール） */}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#E66A84] bg-white p-3 shadow-sm">
+            <div className="mb-2 flex shrink-0 items-center justify-between">
+              <h2 className="border-b-2 border-[#E66A84] pb-1 text-base font-semibold text-[#E66A84]">
                 現在の残高
               </h2>
               <span className="text-xs text-[#9CA3AF]">（単位：円）</span>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {/* 現金預金の内訳 */}
-            <div className="mb-3">
+            <div className="mb-2">
               <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
                 <h3 className="text-xs font-semibold text-[#6B7280]">現金預金</h3>
               </div>
@@ -298,7 +247,7 @@ export default function DashboardPage() {
             </div>
 
             {/* 入る予定（資産） */}
-            <div className="mb-3">
+            <div className="mb-2">
               <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
                 <h3 className="text-xs font-semibold text-[#6B7280]">入る予定（資産）</h3>
               </div>
@@ -327,7 +276,7 @@ export default function DashboardPage() {
             </div>
 
             {/* 支払う予定（負債） */}
-            <div className="mb-3">
+            <div className="mb-2">
               <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
                 <h3 className="text-xs font-semibold text-[#6B7280]">支払う予定（負債）</h3>
               </div>
@@ -355,14 +304,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {isEmptyPortal && cashBalances.length === 0 ? (
-              <p className="mb-3 px-2 text-center text-sm text-[#9CA3AF]">
-                今期の決算データはまだ登録されていません
-              </p>
-            ) : null}
-
             {/* 実質残高（次期繰越金）- 会計上の最終値（最も強調） */}
-            <div className="border-2 border-[#E66A84] border-double pt-2 mt-2 bg-[#FCE7F3] rounded-lg p-2.5">
+            <div className="mt-2 rounded-lg border-2 border-double border-[#E66A84] bg-[#FCE7F3] p-2 pt-2">
               <div className="flex items-center justify-between mb-0.5">
                 <span className="text-base font-bold text-[#374151]">実質残高（次期繰越金）</span>
                 <span className="text-2xl font-bold text-[#E66A84] text-right min-w-[120px] tabular-nums">
@@ -372,79 +315,38 @@ export default function DashboardPage() {
               <p className="text-xs text-[#6B7280] mt-0.5 mb-0.5">
                 (現金預金合計 + 資産合計 - 負債合計)
               </p>
-              <p className="text-xs text-[#6B7280] italic">
+              <p className="text-xs italic text-[#6B7280]">
                 ※手元の現金に、入る予定を足し、支払う予定を引いた金額です
               </p>
             </div>
+            </div>
           </div>
 
-          {/* 中央ブロック: お知らせ */}
-          <div className="rounded-lg border-l-[5px] border-l-[#4A90E2] border border-gray-200 bg-white p-4 shadow-sm flex flex-col h-full">
-            <h2 className="text-lg font-semibold mb-3 text-[#4A90E2] border-b-2 border-[#4A90E2] pb-1.5 flex-shrink-0">
-              お知らせ
-            </h2>
-            <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
-              {messages.length > 0 ? (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className="flex items-start gap-3 px-2 py-2 hover:bg-gray-50 rounded transition-colors"
-                  >
-                    <span className="text-xs text-[#6B7280] min-w-[70px]">{message.date}</span>
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className={`text-sm truncate ${message.isUnread ? "font-semibold text-[#374151]" : "text-[#6B7280]"}`}>
-                        {message.subject}
-                      </span>
-                      {message.isUnread && (
-                        <span className="w-2 h-2 bg-[#EF4444] rounded-full flex-shrink-0"></span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="px-2 py-8 text-center text-sm text-[#6B7280]">
-                  学校管理者からのメッセージはありません
-                </p>
-              )}
+          {/* 中央ブロック: メッセージBOX */}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white p-3 shadow-sm">
+            <div className="mb-2 flex shrink-0 items-center justify-between gap-2 border-b-2 border-[#4A90E2] pb-1">
+              <h2 className="text-base font-semibold text-[#4A90E2]">メッセージBOX</h2>
+              <Link
+                href={clubPath("/messages")}
+                className="shrink-0 text-xs font-medium text-[#4A90E2] transition-colors hover:text-[#3A7BC8] hover:underline"
+              >
+                一覧はこちら ➔
+              </Link>
             </div>
-            {unreadMessageCount > 0 && (
-              <div className="mt-3 pt-2 border-t border-gray-200 flex-shrink-0">
-                <p className="text-xs text-[#6B7280]">
-                  未読: <span className="font-semibold text-[#EF4444]">{unreadMessageCount}件</span>
-                </p>
-              </div>
-            )}
+            <ClubMessageInboxList
+              messages={messages}
+              variant="compact"
+              showUnreadSummary={unreadMessageCount > 0}
+              className="min-h-0 flex-1"
+            />
           </div>
 
-          {/* 右ブロック: エラー通知と部員数を縦に配置（各50%） */}
-          <div className="flex flex-col gap-4 h-full">
-            {/* 重要：未処理・エラー通知（上段、50%） */}
-            <div className="rounded-lg border-l-[5px] border-l-[#FF0000] border border-gray-200 bg-white p-4 shadow-sm flex flex-col flex-1 min-h-0">
-              <div className="flex items-center gap-2 mb-2 flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-[#FF0000]" strokeWidth={2.5} />
-                <h2 className="text-lg font-semibold text-[#FF0000] border-b-2 border-[#FF0000] pb-1">
-                  重要：未処理・エラー通知
-                </h2>
-              </div>
-              <div className="flex-1 flex flex-col justify-center">
-                <p className="text-xs text-[#6B7280] mb-3">監査警告件数</p>
-                <p className="text-xl font-bold text-[#FF0000]">
-                  {isEmptyPortal ? "0" : alertCount}件
-                </p>
-                {!isEmptyPortal && alertCount > 0 && (
-                  <p className="text-xs text-[#FF0000] mt-2 font-medium">至急確認が必要です</p>
-                )}
-                {isEmptyPortal && (
-                  <p className="text-xs text-[#9CA3AF] mt-2">未登録の取引はありません</p>
-                )}
-              </div>
-            </div>
-
-            {/* 部員数（下段、50%） */}
-            <div className="rounded-lg border-l-[5px] border-l-[#9D8CC3] border border-gray-200 bg-white p-4 shadow-sm flex flex-col flex-1 min-h-0">
-              <div className="mb-2 flex-shrink-0">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-lg font-semibold text-[#9D8CC3] border-b-2 border-[#9D8CC3] pb-1">
+          {/* 右ブロック: 部員数（上）→ エラー通知（下） */}
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="flex min-h-0 flex-[1.15] flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#9D8CC3] bg-white p-3 shadow-sm">
+              <div className="mb-2 shrink-0">
+                <div className="mb-1 flex items-center justify-between">
+                  <h2 className="border-b-2 border-[#9D8CC3] pb-1 text-base font-semibold text-[#9D8CC3]">
                     現在の部員数
                   </h2>
                   {memberLastUpdated && (
@@ -454,7 +356,7 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
-              <div className="space-y-1 flex-1 flex flex-col justify-between">
+              <div className="flex min-h-0 flex-1 flex-col justify-between space-y-1">
                 <div>
                   {memberCountsByGrade.map((item) => (
                     <div key={item.grade} className="flex items-center justify-between px-2">
@@ -465,7 +367,7 @@ export default function DashboardPage() {
                     </div>
                   ))}
                 </div>
-                <div className="border-t border-gray-200 pt-1 mt-1 px-2">
+                <div className="mt-1 border-t border-gray-200 px-2 pt-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-[#374151]">合計</span>
                     <span className="text-base font-bold text-[#374151] text-right min-w-[60px] tabular-nums">
@@ -474,9 +376,27 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 {totalMembers === 0 && (
-                  <p className="text-xs text-[#9CA3AF] px-2 mt-1">
+                  <p className="mt-1 px-2 text-xs text-[#9CA3AF]">
                     部員管理 → 部員登録から登録してください
                   </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#FF0000] bg-white p-3 shadow-sm">
+              <div className="mb-2 flex shrink-0 items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-[#FF0000]" strokeWidth={2.5} />
+                <h2 className="border-b-2 border-[#FF0000] pb-1 text-base font-semibold text-[#FF0000]">
+                  重要：未処理・エラー通知
+                </h2>
+              </div>
+              <div className="flex flex-1 flex-col justify-center">
+                <p className="mb-2 text-xs text-[#6B7280]">監査警告件数</p>
+                <p className="text-xl font-bold text-[#FF0000]">
+                  {isEmptyPortal ? "0" : alertCount}件
+                </p>
+                {!isEmptyPortal && alertCount > 0 && (
+                  <p className="mt-1 text-xs font-medium text-[#FF0000]">至急確認が必要です</p>
                 )}
               </div>
             </div>

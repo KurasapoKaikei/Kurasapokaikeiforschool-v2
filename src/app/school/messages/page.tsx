@@ -1,9 +1,6 @@
-import { SchoolContentPanel } from "@/components/layout/school/SchoolContentPanel"
+import { SchoolMessagesView } from "@/components/school/SchoolMessagesView"
 
-export default function SchoolNoticesPage() {
-  return (
-    <SchoolContentPanel title="お知らせ一覧">
-      <p>（ここにお知らせの一覧・配信履歴が入ります）</p>
-    </SchoolContentPanel>
-  )
+/** メッセージ作成・送信（学校管理者） */
+export default function SchoolMessagesPage() {
+  return <SchoolMessagesView />
 }

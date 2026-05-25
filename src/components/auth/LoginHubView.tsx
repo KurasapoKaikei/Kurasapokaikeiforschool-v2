@@ -93,6 +93,17 @@ export function LoginHubView() {
             </span>
           </button>
         </div>
+
+        <p className="mt-8 text-center text-sm text-[#6B7280]">
+          初めてご利用の学校様は
+          <Link
+            href="/register/school"
+            className="mx-1 font-medium text-[#005088] hover:underline"
+          >
+            新規お申し込み
+          </Link>
+          から
+        </p>
       </div>
 
       {memberNoticeOpen ? (

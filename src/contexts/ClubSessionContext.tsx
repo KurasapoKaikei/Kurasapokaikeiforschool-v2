@@ -9,8 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { getCurrentClub } from "@/lib/clubLoginSession"
 import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeClubSession"
 import { isEmptyPortalForClub, isLegacyGlobalPortal } from "@/lib/clubPortalData"
+import { clearImpersonatedClub } from "@/lib/schoolClubSession"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { mockUserInfo } from "@/constants/userInfo"
 
@@ -18,6 +20,8 @@ type ClubSessionContextValue = {
   activeClub: ActiveClubSession | null
   isEmptyPortal: boolean
   isLegacyGlobalPortal: boolean
+  /** localStorage 反映後に true（ハイドレーション整合用） */
+  isHydrated: boolean
   refresh: () => void
 }
 
@@ -25,41 +29,34 @@ const ClubSessionContext = createContext<ClubSessionContextValue | undefined>(
   undefined
 )
 
-function readInitialSession() {
-  if (typeof window === "undefined") {
-    return { active: null as ActiveClubSession | null, empty: false, legacy: true }
-  }
-  const active = resolveActiveClubSession()
-  return {
-    active,
-    empty: isEmptyPortalForClub(active),
-    legacy: isLegacyGlobalPortal(active),
-  }
-}
-
 export function ClubSessionProvider({ children }: { children: ReactNode }) {
   const { updateOrganizationName } = useUserInfo()
-  const initial = readInitialSession()
-  const [activeClub, setActiveClub] = useState<ActiveClubSession | null>(
-    initial.active
-  )
-  const [isEmptyPortal, setIsEmptyPortal] = useState(initial.empty)
-  const [isLegacy, setIsLegacy] = useState(initial.legacy)
+  const [activeClub, setActiveClub] = useState<ActiveClubSession | null>(null)
+  const [isEmptyPortal, setIsEmptyPortal] = useState(false)
+  const [isLegacy, setIsLegacy] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
 
   const refresh = useCallback(() => {
     const active = resolveActiveClubSession()
-    setActiveClub(active)
-    setIsEmptyPortal(isEmptyPortalForClub(active))
-    setIsLegacy(isLegacyGlobalPortal(active))
-    if (active) {
-      updateOrganizationName(active.name)
-    } else {
-      updateOrganizationName(mockUserInfo.organizationName)
-    }
+    setActiveClub((prev) => {
+      if (prev?.id === active?.id && prev?.name === active?.name) return prev
+      return active
+    })
+    const empty = isEmptyPortalForClub(active)
+    const legacy = isLegacyGlobalPortal(active)
+    setIsEmptyPortal((prev) => (prev === empty ? prev : empty))
+    setIsLegacy((prev) => (prev === legacy ? prev : legacy))
+    updateOrganizationName(
+      active ? active.name : mockUserInfo.organizationName
+    )
   }, [updateOrganizationName])
 
   useEffect(() => {
+    if (getCurrentClub()) {
+      clearImpersonatedClub()
+    }
     refresh()
+    setIsHydrated(true)
     const interval = setInterval(refresh, 400)
     return () => clearInterval(interval)
   }, [refresh])
@@ -69,9 +66,10 @@ export function ClubSessionProvider({ children }: { children: ReactNode }) {
       activeClub,
       isEmptyPortal,
       isLegacyGlobalPortal: isLegacy,
+      isHydrated,
       refresh,
     }),
-    [activeClub, isEmptyPortal, isLegacy, refresh]
+    [activeClub, isEmptyPortal, isLegacy, isHydrated, refresh]
   )
 
   return (

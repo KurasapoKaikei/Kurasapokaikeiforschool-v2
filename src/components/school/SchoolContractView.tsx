@@ -1,4 +1,13 @@
-import { SCHOOL_CONTRACT_DEMO, SCHOOL_THEME } from "@/lib/schoolTheme"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
+import { SCHOOL_THEME } from "@/lib/schoolTheme"
+import {
+  getSchoolContractDisplay,
+  type ContractDisplayData,
+} from "@/lib/getSchoolContractDisplay"
 
 function SectionCard({
   title,
@@ -20,10 +29,6 @@ function SectionCard({
   )
 }
 
-/**
- * ご契約情報：項目名は左1/3幅で固定、内容はその直後（約2/3位置）から左寄せで縦揃え。
- * 長い文字列は改行せず右方向へ1行で伸ばす。
- */
 function ContractInfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline border-t border-gray-100 py-3 first:border-t-0 first:pt-0">
@@ -59,7 +64,26 @@ function ChangeLink({ label, onClick }: { label: string; onClick?: () => void })
 }
 
 export function SchoolContractView() {
-  const d = SCHOOL_CONTRACT_DEMO
+  const searchParams = useSearchParams()
+  const [d, setD] = useState<ContractDisplayData | null>(null)
+  const showApplied = searchParams.get("applied") === "1"
+
+  useEffect(() => {
+    const refresh = () => setD(getSchoolContractDisplay())
+    refresh()
+    window.addEventListener("storage", refresh)
+    window.addEventListener(SCHOOL_SESSION_CHANGED_EVENT, refresh)
+    return () => {
+      window.removeEventListener("storage", refresh)
+      window.removeEventListener(SCHOOL_SESSION_CHANGED_EVENT, refresh)
+    }
+  }, [])
+
+  if (!d) {
+    return (
+      <div className="px-6 py-8 text-sm text-[#6B7280]">読み込み中…</div>
+    )
+  }
 
   return (
     <div className="px-6 py-8">
@@ -69,19 +93,43 @@ export function SchoolContractView() {
           <p className="mt-1 text-sm text-[#6B7280]">
             ご契約内容・学校情報・ログイン情報の確認
           </p>
+          {showApplied ? (
+            <p
+              className="mt-3 rounded-lg border border-[#005088]/25 bg-[#F0F7FB] px-4 py-2 text-sm font-medium"
+              style={{ color: "#005088" }}
+              role="status"
+            >
+              お申し込み内容を反映しました（localStorage: contract_info）
+            </p>
+          ) : null}
         </header>
 
         <div className="space-y-6">
           <SectionCard title="ご契約情報">
             <div className="overflow-x-auto">
               <ContractInfoRow label="ご利用開始日" value={d.startDate} />
-              <ContractInfoRow label="ご利用プラン" value={d.plan} />
+              <ContractInfoRow label="ご契約プラン" value={d.planSelectLabel} />
               <ContractInfoRow label="登録クラブ数" value={d.registeredClubs} />
               <ContractInfoRow label="会計期間" value={d.fiscalPeriod} />
+              <ContractInfoRow label="決算日" value={d.settlementDate} />
               <ContractInfoRow label="年額" value={d.annualFee} />
-              <ContractInfoRow label="ご請求月" value={d.billingMonth} />
+              <ContractInfoRow
+                label="お支払い回数（サイクル）"
+                value={d.paymentCycle}
+              />
+              <ContractInfoRow label="お支払い日" value={d.paymentDayLabel} />
               <ContractInfoRow label="お支払方法" value={d.paymentMethod} />
             </div>
+            {d.paymentCycleNote ? (
+              <div className="mt-4 rounded-lg border border-gray-100 bg-slate-50 px-4 py-3">
+                <p className="mb-2 text-xs font-medium text-[#6B7280]">
+                  お支払いに関する注釈
+                </p>
+                <p className="text-xs leading-relaxed text-slate-400 whitespace-pre-wrap">
+                  {d.paymentCycleNote}
+                </p>
+              </div>
+            ) : null}
           </SectionCard>
 
           <SectionCard title="学校情報">
@@ -94,7 +142,12 @@ export function SchoolContractView() {
               <InfoField label="以降のご住所" value={d.addressLine} />
               <InfoField label="電話番号" value={d.phone} />
               <InfoField label="担当管理部署" value={d.department} />
+              {d.position ? (
+                <InfoField label="役職" value={d.position} />
+              ) : null}
               <InfoField label="担当者氏名" value={d.contactName} />
+              <InfoField label="担当者電話番号" value={d.contactPhone} />
+              <InfoField label="メールアドレス" value={d.email} />
             </dl>
           </SectionCard>
 

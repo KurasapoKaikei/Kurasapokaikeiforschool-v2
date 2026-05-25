@@ -12,6 +12,7 @@ import {
 import {
   generateInitialPassword,
   generateUniqueClubId,
+  isDuplicateClubName,
   loadSchoolClubs,
   saveSchoolClubs,
   type SchoolClub,
@@ -33,7 +34,7 @@ type SchoolClubsContextValue = {
   clubs: SchoolClub[]
   sortedClubs: SchoolClub[]
   isLoaded: boolean
-  registerClub: (input: RegisterClubInput) => SchoolClub
+  registerClub: (input: RegisterClubInput) => SchoolClub | null
   updateClub: (id: string, input: UpdateClubInput) => boolean
   deleteClub: (id: string) => void
   setClubsOrder: (ordered: SchoolClub[]) => void
@@ -60,25 +61,20 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
     [clubs]
   )
 
-  const registerClub = useCallback((input: RegisterClubInput) => {
+  const registerClub = useCallback((input: RegisterClubInput): SchoolClub | null => {
     const trimmedName = input.name.trim()
-    let created: SchoolClub = {
-      id: "",
-      name: trimmedName,
-      groupIds: [input.groupId],
-      groupNames: [input.groupName],
-      registeredAt: new Date().toISOString(),
-      order: 0,
-      initialPassword: "",
-      password: "",
-    }
+    let created: SchoolClub | null = null
     setClubs((prev) => {
+      if (isDuplicateClubName(trimmedName, prev)) return prev
       const id = generateUniqueClubId(prev)
       const order = prev.length > 0 ? Math.max(...prev.map((c) => c.order)) + 1 : 1
       const initialPassword = generateInitialPassword()
       created = {
-        ...created,
         id,
+        name: trimmedName,
+        groupIds: [input.groupId],
+        groupNames: [input.groupName],
+        registeredAt: new Date().toISOString(),
         order,
         initialPassword,
         password: initialPassword,
@@ -97,6 +93,7 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
       if (!target) return prev
       const name = input.name !== undefined ? input.name.trim() : target.name
       if (!name) return prev
+      if (isDuplicateClubName(name, prev, id)) return prev
       const groupId = input.groupId ?? target.groupIds[0]
       const groupName =
         input.groupName ?? target.groupNames[0] ?? ""

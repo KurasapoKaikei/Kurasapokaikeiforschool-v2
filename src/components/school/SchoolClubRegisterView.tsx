@@ -1,17 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useSchoolClubGroups } from "@/contexts/SchoolClubGroupsContext"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { SchoolFormRequiredBadge } from "@/components/school/SchoolFormRequiredBadge"
 import { SchoolClubAddedListSection } from "@/components/school/SchoolClubAddedListSection"
+import {
+  DUPLICATE_CLUB_NAME_ERROR,
+  isDuplicateClubName,
+} from "@/lib/schoolClubs"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
 
 /** クラブ登録・管理（グループ作成と共有データ連動） */
 export function SchoolClubRegisterView() {
   const { sortedGroups, isLoaded: groupsLoaded } = useSchoolClubGroups()
-  const { registerClub, isLoaded: clubsLoaded } = useSchoolClubs()
+  const { registerClub, sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [selectedGroupId, setSelectedGroupId] = useState("")
   const [clubName, setClubName] = useState("")
   const [groupError, setGroupError] = useState<string | null>(null)
@@ -19,6 +23,16 @@ export function SchoolClubRegisterView() {
   const [listResetKey, setListResetKey] = useState(0)
 
   const isLoaded = groupsLoaded && clubsLoaded
+  const trimmedName = clubName.trim()
+  const isDuplicateName = useMemo(
+    () =>
+      isLoaded &&
+      trimmedName !== "" &&
+      isDuplicateClubName(trimmedName, sortedClubs),
+    [isLoaded, trimmedName, sortedClubs]
+  )
+  const displayNameError =
+    nameError ?? (isDuplicateName ? DUPLICATE_CLUB_NAME_ERROR : null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,9 +46,11 @@ export function SchoolClubRegisterView() {
       setGroupError(null)
     }
 
-    const trimmedName = clubName.trim()
     if (!trimmedName) {
       setNameError("クラブ名を入力してください。")
+      valid = false
+    } else if (isDuplicateClubName(trimmedName, sortedClubs)) {
+      setNameError(DUPLICATE_CLUB_NAME_ERROR)
       valid = false
     } else {
       setNameError(null)
@@ -45,11 +61,15 @@ export function SchoolClubRegisterView() {
     const group = sortedGroups.find((g) => g.id === selectedGroupId)
     if (!group) return
 
-    registerClub({
+    const created = registerClub({
       name: trimmedName,
       groupId: group.id,
       groupName: group.name,
     })
+    if (!created) {
+      setNameError(DUPLICATE_CLUB_NAME_ERROR)
+      return
+    }
 
     setClubName("")
     setSelectedGroupId("")
@@ -136,14 +156,14 @@ export function SchoolClubRegisterView() {
                 disabled={!isLoaded}
                 placeholder="例：男子サッカー部"
                 className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                  nameError
+                  displayNameError
                     ? "border-[#EF4444] focus:ring-[#EF4444]/40"
                     : "border-gray-300 focus:ring-[#005088]/40"
                 }`}
               />
-              {nameError ? (
+              {displayNameError ? (
                 <p className="mt-2 text-sm text-[#EF4444]" role="alert">
-                  {nameError}
+                  {displayNameError}
                 </p>
               ) : null}
             </div>
@@ -151,7 +171,12 @@ export function SchoolClubRegisterView() {
             <div className="pt-2">
               <Button
                 type="submit"
-                disabled={!isLoaded || sortedGroups.length === 0}
+                disabled={
+                  !isLoaded ||
+                  sortedGroups.length === 0 ||
+                  !trimmedName ||
+                  isDuplicateName
+                }
                 className="rounded-lg px-6 py-2.5 text-white hover:opacity-90"
                 style={{ backgroundColor: SCHOOL_BRAND_NAVY }}
               >

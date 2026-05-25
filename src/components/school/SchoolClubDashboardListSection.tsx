@@ -8,9 +8,11 @@ import { Mail } from "lucide-react"
 import { useSchoolClubGroups } from "@/contexts/SchoolClubGroupsContext"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
+import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettlementReviewDialog"
 import {
   ensureClubSettlementStatuses,
   getClubSettlementStatus,
+  SETTLEMENT_CHANGED_EVENT,
   type ClubSettlementStatus,
 } from "@/lib/schoolClubSettlement"
 import { clearCurrentClub } from "@/lib/clubLoginSession"
@@ -34,12 +36,30 @@ export function SchoolClubDashboardListSection() {
   const [statusMap, setStatusMap] = useState<Record<string, ClubSettlementStatus>>(
     {}
   )
+  const [reviewClub, setReviewClub] = useState<{
+    id: string
+    name: string
+  } | null>(null)
 
   const isLoaded = groupsLoaded && clubsLoaded
 
-  useEffect(() => {
-    if (!clubsLoaded || sortedClubs.length === 0) return
+  const syncStatuses = () => {
+    if (!clubsLoaded || sortedClubs.length === 0) {
+      setStatusMap({})
+      return
+    }
     setStatusMap(ensureClubSettlementStatuses(sortedClubs.map((c) => c.id)))
+  }
+
+  useEffect(() => {
+    syncStatuses()
+    const onChange = () => syncStatuses()
+    window.addEventListener(SETTLEMENT_CHANGED_EVENT, onChange)
+    window.addEventListener("storage", onChange)
+    return () => {
+      window.removeEventListener(SETTLEMENT_CHANGED_EVENT, onChange)
+      window.removeEventListener("storage", onChange)
+    }
   }, [clubsLoaded, sortedClubs])
 
   const filteredClubs = useMemo(() => {
@@ -54,6 +74,7 @@ export function SchoolClubDashboardListSection() {
   }
 
   return (
+    <>
     <div className="w-full max-w-none rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex flex-wrap gap-2 border-b border-gray-200">
         <button
@@ -149,7 +170,20 @@ export function SchoolClubDashboardListSection() {
                       <span className="mr-auto text-xs text-[#6B7280] sm:hidden">
                         アクション
                       </span>
-                      <div className="flex shrink-0 items-center justify-end gap-3">
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        {status === "submitted" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 shrink-0 text-xs"
+                            onClick={() =>
+                              setReviewClub({ id: club.id, name: club.name })
+                            }
+                          >
+                            確認・審査
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -184,5 +218,17 @@ export function SchoolClubDashboardListSection() {
         </>
       )}
     </div>
+    {reviewClub ? (
+      <SchoolSettlementReviewDialog
+        clubId={reviewClub.id}
+        clubName={reviewClub.name}
+        open
+        onClose={() => {
+          setReviewClub(null)
+          syncStatuses()
+        }}
+      />
+    ) : null}
+    </>
   )
 }
