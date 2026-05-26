@@ -57,6 +57,8 @@ export const SCHOOL_PAGE_TITLES = {
   settingsCategory: "共通カテゴリー設定",
   settingsAccountTitles: "共通科目設定",
   settingsStaff: "担当者設定",
+  settingsAuditFlow: "監査運用設定",
+  auditors: "監査人管理",
   contract: "契約状況",
   guide: "操作ガイド",
 } as const
@@ -74,7 +76,9 @@ export const SCHOOL_ROUTES = {
   settingsCategory: "/school/settings/category",
   settingsAccountTitles: "/school/settings/account-titles",
   settingsStaff: "/school/settings/staff",
+  settingsAuditFlow: "/school/settings/audit-flow",
   settingsBase: "/school/settings",
+  auditors: "/school/clubs/auditors",
   contract: "/school/contract",
   guide: "/school/guide",
 } as const

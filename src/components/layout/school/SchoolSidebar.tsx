@@ -14,9 +14,14 @@ import {
 } from "@/lib/schoolTheme"
 import { KurasapoBrandLogo } from "@/components/layout/KurasapoBrandLogo"
 import {
+  loadSchoolUseAuditFlow,
+  SCHOOL_AUDIT_FLOW_CHANGED_EVENT,
+} from "@/lib/schoolAuditFlow"
+import {
   BookOpen,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   FileEdit,
   FileText,
   Layers,
@@ -26,6 +31,7 @@ import {
   Mail,
   Plus,
   Settings,
+  SlidersHorizontal,
   Tags,
   UserCog,
   Users,
@@ -50,61 +56,87 @@ const CLUB_PARENT_KEY = SCHOOL_ROUTES.clubsBase
 const SETTINGS_PARENT_KEY = SCHOOL_ROUTES.settingsBase
 const MESSAGES_PARENT_KEY = SCHOOL_ROUTES.messages
 
-const menuItems: MenuItem[] = [
-  {
-    title: "ポータルトップ",
-    href: SCHOOL_ROUTES.home,
-    icon: LayoutDashboard,
-    match: (path) => path === SCHOOL_ROUTES.home,
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.messages,
-    href: MESSAGES_PARENT_KEY,
-    icon: Mail,
-    parentKey: "messages",
-    subItems: [
-      { title: SCHOOL_PAGE_TITLES.messagesList, href: SCHOOL_ROUTES.messages },
-      { title: SCHOOL_PAGE_TITLES.messagesDrafts, href: SCHOOL_ROUTES.messagesDrafts },
-    ],
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.clubs,
-    href: CLUB_PARENT_KEY,
-    icon: Users,
-    parentKey: "club",
-    subItems: [
-      { title: SCHOOL_PAGE_TITLES.clubList, href: SCHOOL_ROUTES.clubList },
-      { title: SCHOOL_PAGE_TITLES.clubGroups, href: SCHOOL_ROUTES.clubGroups },
-      { title: SCHOOL_PAGE_TITLES.clubRegister, href: SCHOOL_ROUTES.clubRegister },
-    ],
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.contract,
-    href: SCHOOL_ROUTES.contract,
-    icon: FileText,
-    match: (path) => path.startsWith(SCHOOL_ROUTES.contract),
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.settings,
-    href: SETTINGS_PARENT_KEY,
-    icon: Settings,
-    parentKey: "settings",
-    subItems: [
-      { title: SCHOOL_PAGE_TITLES.settingsCategory, href: SCHOOL_ROUTES.settingsCategory },
-      {
-        title: SCHOOL_PAGE_TITLES.settingsAccountTitles,
-        href: SCHOOL_ROUTES.settingsAccountTitles,
-      },
-      { title: SCHOOL_PAGE_TITLES.settingsStaff, href: SCHOOL_ROUTES.settingsStaff },
-    ],
-  },
-  {
-    title: SCHOOL_PAGE_TITLES.guide,
-    href: SCHOOL_ROUTES.guide,
-    icon: BookOpen,
-    match: (path) => path.startsWith(SCHOOL_ROUTES.guide),
-  },
-]
+function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
+  const clubSubItems: SubMenuItem[] = [
+    { title: SCHOOL_PAGE_TITLES.clubList, href: SCHOOL_ROUTES.clubList },
+    { title: SCHOOL_PAGE_TITLES.clubGroups, href: SCHOOL_ROUTES.clubGroups },
+    { title: SCHOOL_PAGE_TITLES.clubRegister, href: SCHOOL_ROUTES.clubRegister },
+  ]
+
+  return [
+    {
+      title: "ポータルトップ",
+      href: SCHOOL_ROUTES.home,
+      icon: LayoutDashboard,
+      match: (path) => path === SCHOOL_ROUTES.home,
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.messages,
+      href: MESSAGES_PARENT_KEY,
+      icon: Mail,
+      parentKey: "messages",
+      subItems: [
+        { title: SCHOOL_PAGE_TITLES.messagesList, href: SCHOOL_ROUTES.messages },
+        {
+          title: SCHOOL_PAGE_TITLES.messagesDrafts,
+          href: SCHOOL_ROUTES.messagesDrafts,
+        },
+      ],
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.clubs,
+      href: CLUB_PARENT_KEY,
+      icon: Users,
+      parentKey: "club",
+      subItems: clubSubItems,
+    },
+    ...(auditFlowEnabled
+      ? ([
+          {
+            title: SCHOOL_PAGE_TITLES.auditors,
+            href: SCHOOL_ROUTES.auditors,
+            icon: ClipboardCheck,
+            match: (path) =>
+              path === SCHOOL_ROUTES.auditors ||
+              path.startsWith(`${SCHOOL_ROUTES.auditors}/`),
+          },
+        ] satisfies MenuItem[])
+      : []),
+    {
+      title: SCHOOL_PAGE_TITLES.contract,
+      href: SCHOOL_ROUTES.contract,
+      icon: FileText,
+      match: (path) => path.startsWith(SCHOOL_ROUTES.contract),
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.settings,
+      href: SETTINGS_PARENT_KEY,
+      icon: Settings,
+      parentKey: "settings",
+      subItems: [
+        {
+          title: SCHOOL_PAGE_TITLES.settingsCategory,
+          href: SCHOOL_ROUTES.settingsCategory,
+        },
+        {
+          title: SCHOOL_PAGE_TITLES.settingsAccountTitles,
+          href: SCHOOL_ROUTES.settingsAccountTitles,
+        },
+        { title: SCHOOL_PAGE_TITLES.settingsStaff, href: SCHOOL_ROUTES.settingsStaff },
+        {
+          title: SCHOOL_PAGE_TITLES.settingsAuditFlow,
+          href: SCHOOL_ROUTES.settingsAuditFlow,
+        },
+      ],
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.guide,
+      href: SCHOOL_ROUTES.guide,
+      icon: BookOpen,
+      match: (path) => path.startsWith(SCHOOL_ROUTES.guide),
+    },
+  ]
+}
 
 function subItemPathMatches(pathname: string, subHref: string): boolean {
   if (subHref === SCHOOL_ROUTES.messages) {
@@ -119,10 +151,22 @@ function subItemPathMatches(pathname: string, subHref: string): boolean {
   if (subHref === SCHOOL_ROUTES.clubList) {
     return pathname === SCHOOL_ROUTES.clubList
   }
+  if (subHref === SCHOOL_ROUTES.auditors) {
+    return (
+      pathname === SCHOOL_ROUTES.auditors ||
+      pathname.startsWith(`${SCHOOL_ROUTES.auditors}/`)
+    )
+  }
   if (subHref === SCHOOL_ROUTES.settingsCategory) {
     return (
       pathname === SCHOOL_ROUTES.settingsCategory ||
       pathname === SCHOOL_ROUTES.settingsBase
+    )
+  }
+  if (subHref === SCHOOL_ROUTES.settingsAuditFlow) {
+    return (
+      pathname === SCHOOL_ROUTES.settingsAuditFlow ||
+      pathname.startsWith(`${SCHOOL_ROUTES.settingsAuditFlow}/`)
     )
   }
   return pathname === subHref || pathname.startsWith(`${subHref}/`)
@@ -137,6 +181,8 @@ function getSubIcon(href: string): LucideIcon {
   if (href === SCHOOL_ROUTES.settingsCategory) return Tags
   if (href === SCHOOL_ROUTES.settingsAccountTitles) return ListOrdered
   if (href === SCHOOL_ROUTES.settingsStaff) return UserCog
+  if (href === SCHOOL_ROUTES.settingsAuditFlow) return SlidersHorizontal
+  if (href === SCHOOL_ROUTES.auditors) return ClipboardCheck
   return List
 }
 
@@ -157,9 +203,23 @@ function initialExpanded(pathname: string): string[] {
 
 export function SchoolSidebar() {
   const pathname = usePathname()
+  const [auditFlowEnabled, setAuditFlowEnabled] = useState(true)
   const [expandedItems, setExpandedItems] = useState<string[]>(() =>
     initialExpanded(pathname)
   )
+
+  useEffect(() => {
+    const sync = () => setAuditFlowEnabled(loadSchoolUseAuditFlow())
+    sync()
+    window.addEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
+    window.addEventListener("storage", sync)
+    return () => {
+      window.removeEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+
+  const menuItems = buildMenuItems(auditFlowEnabled)
 
   useEffect(() => {
     setExpandedItems((prev) => {

@@ -38,6 +38,12 @@ function resolveTitle(pathname: string): string {
 
   }
 
+  if (pathname.startsWith(SCHOOL_ROUTES.settingsAuditFlow)) {
+
+    return SCHOOL_PAGE_TITLES.settingsAuditFlow
+
+  }
+
   if (pathname.startsWith(SCHOOL_ROUTES.settingsAccountTitles)) {
 
     return SCHOOL_PAGE_TITLES.settingsAccountTitles
@@ -67,6 +73,13 @@ function resolveTitle(pathname: string): string {
   if (isSchoolMessagesPath(pathname)) return SCHOOL_PAGE_TITLES.messages
 
   if (/\/school\/clubs\/[^/]+\/messages/.test(pathname)) return "メッセージ"
+
+  if (
+    pathname === SCHOOL_ROUTES.auditors ||
+    pathname.startsWith(`${SCHOOL_ROUTES.auditors}/`)
+  ) {
+    return SCHOOL_PAGE_TITLES.auditors
+  }
 
   if (pathname.startsWith(SCHOOL_ROUTES.clubRegister)) {
 
