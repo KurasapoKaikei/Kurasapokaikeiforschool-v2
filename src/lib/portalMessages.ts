@@ -1,5 +1,11 @@
 /** 学校⇔クラブ メッセージBOX（5/27デモ・localStorage） */
 
+import {
+  getOperationalSchoolId,
+  readScopedWorkspace,
+  writeScopedWorkspace,
+} from "@/lib/schoolWorkspace"
+
 /** 学校→クラブメッセージの正本キー（学校・クラブ双方で同一） */
 export const SCHOOL_TO_CLUB_MESSAGES_KEY = "school_to_club_messages"
 
@@ -41,6 +47,8 @@ export type PortalMessage = {
   confirmedByClubIds: string[]
   kind: PortalMessageKind
   sender?: PortalMessageSender
+  /** 監査人送信時の担当者 ID（AUD-0001 形式） */
+  auditorId?: string
   /** 未指定はクラブ宛て（既存データ互換） */
   audience?: PortalMessageAudience
 }
@@ -193,28 +201,42 @@ function normalizeRawMessage(raw: unknown): PortalMessage | null {
     kind:
       item.kind === "settlement_deadline" ? "settlement_deadline" : "general",
     sender: normalizeSender(item),
+    auditorId:
+      typeof item.auditorId === "string" ? item.auditorId.trim() : undefined,
     audience: item.audience === "staff" ? "staff" : "club",
   }
 }
 
-export function loadPortalMessages(): PortalMessage[] {
+function parsePortalMessages(parsed: unknown): PortalMessage[] {
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .map(normalizeRawMessage)
+    .filter((m): m is PortalMessage => m != null)
+    .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
+}
+
+function loadPortalMessagesFromGlobal(): PortalMessage[] {
   if (typeof window === "undefined") return []
   try {
     migrateLegacyStorageKey()
     const raw = localStorage.getItem(SCHOOL_TO_CLUB_MESSAGES_KEY)
     if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map(normalizeRawMessage)
-      .filter((m): m is PortalMessage => m != null)
-      .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
+    return parsePortalMessages(JSON.parse(raw) as unknown)
   } catch {
     return []
   }
 }
 
-function savePortalMessages(messages: PortalMessage[]): void {
+export function loadPortalMessages(): PortalMessage[] {
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => parsePortalMessages(ws.portalMessages),
+    loadPortalMessagesFromGlobal
+  )
+}
+
+function savePortalMessagesToGlobal(messages: PortalMessage[]): void {
   if (typeof window === "undefined") return
   try {
     localStorage.setItem(SCHOOL_TO_CLUB_MESSAGES_KEY, JSON.stringify(messages))
@@ -222,6 +244,15 @@ function savePortalMessages(messages: PortalMessage[]): void {
   } catch {
     // localStorage 不可・容量超過時は保存をスキップ（UI は継続）
   }
+}
+
+function savePortalMessages(messages: PortalMessage[]): void {
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, portalMessages: messages }),
+    () => savePortalMessagesToGlobal(messages)
+  )
 }
 
 /** クラブID向けの既読（isRead） */
@@ -264,6 +295,7 @@ export type SendPortalMessageInput = {
   targetClubName: string
   kind?: PortalMessageKind
   sender?: PortalMessageSender
+  auditorId?: string
   audience?: PortalMessageAudience
 }
 
@@ -314,6 +346,7 @@ export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage 
     confirmedByClubIds: [],
     kind: input.kind ?? "general",
     sender: input.sender ?? "school",
+    auditorId: input.auditorId?.trim() || undefined,
     audience: input.audience ?? "club",
   }
   const next = [message, ...loadPortalMessages()]
@@ -446,9 +479,23 @@ export function sendSystemPortalMessage(
   return sendPortalMessage({ ...input, sender: "system" })
 }
 
-/** 監査からの送信（表示用・送信ロジックは後続実装） */
+/** 監査人→担当クラブへの送信 */
 export function sendAuditPortalMessage(
   input: Omit<SendPortalMessageInput, "sender">
 ): PortalMessage {
   return sendPortalMessage({ ...input, sender: "audit" })
+}
+
+/** 監査人の送信履歴（担当クラブ宛てのみ） */
+export function loadAuditorOutboundMessages(
+  auditorId: string,
+  assignedClubIds: string[]
+): PortalMessage[] {
+  const id = auditorId.trim()
+  const clubSet = new Set(assignedClubIds)
+  return loadPortalMessages().filter((m) => {
+    if (!isClubAudienceMessage(m) || resolveSender(m) !== "audit") return false
+    if (m.auditorId) return m.auditorId === id
+    return clubSet.has(m.targetClubId)
+  })
 }

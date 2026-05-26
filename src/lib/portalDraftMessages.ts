@@ -5,6 +5,11 @@ import {
   isAllClubsTarget,
   type PortalMessageAudience,
 } from "@/lib/portalMessages"
+import {
+  getOperationalSchoolId,
+  readScopedWorkspace,
+  writeScopedWorkspace,
+} from "@/lib/schoolWorkspace"
 
 export const SCHOOL_DRAFT_MESSAGES_KEY = "school_draft_messages"
 
@@ -29,23 +34,35 @@ function newDraftId(): string {
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function loadSchoolDraftMessages(): SchoolMessageDraft[] {
+function parseDrafts(parsed: unknown): SchoolMessageDraft[] {
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .map(normalizeDraft)
+    .filter((d): d is SchoolMessageDraft => d != null)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
+}
+
+function loadDraftsFromGlobal(): SchoolMessageDraft[] {
   if (typeof window === "undefined") return []
   try {
     const raw = localStorage.getItem(SCHOOL_DRAFT_MESSAGES_KEY)
     if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map(normalizeDraft)
-      .filter((d): d is SchoolMessageDraft => d != null)
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      )
+    return parseDrafts(JSON.parse(raw) as unknown)
   } catch {
     return []
   }
+}
+
+export function loadSchoolDraftMessages(): SchoolMessageDraft[] {
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => parseDrafts(ws.draftMessages),
+    loadDraftsFromGlobal
+  )
 }
 
 function normalizeDraft(raw: unknown): SchoolMessageDraft | null {
@@ -76,7 +93,7 @@ function normalizeDraft(raw: unknown): SchoolMessageDraft | null {
   }
 }
 
-function saveAllDrafts(drafts: SchoolMessageDraft[]): void {
+function saveAllDraftsToGlobal(drafts: SchoolMessageDraft[]): void {
   if (typeof window === "undefined") return
   try {
     localStorage.setItem(SCHOOL_DRAFT_MESSAGES_KEY, JSON.stringify(drafts))
@@ -84,6 +101,15 @@ function saveAllDrafts(drafts: SchoolMessageDraft[]): void {
   } catch {
     // localStorage 不可時はスキップ
   }
+}
+
+function saveAllDrafts(drafts: SchoolMessageDraft[]): void {
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, draftMessages: drafts }),
+    () => saveAllDraftsToGlobal(drafts)
+  )
 }
 
 export type SaveSchoolDraftInput = {

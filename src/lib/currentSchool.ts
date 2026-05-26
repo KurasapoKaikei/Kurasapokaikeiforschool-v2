@@ -12,6 +12,12 @@ import {
   getRegistrationById,
   registrationToContractInfo,
 } from "@/lib/schoolRegistration"
+import {
+  DEMO_SCHOOL_MASTER_ID,
+  ensureSchoolMastersSeeded,
+  getSchoolMaster,
+  loadSchoolUseAuditFlowForSchool,
+} from "@/lib/schoolMasters"
 import { SCHOOL_DISPLAY_NAME, SCHOOL_FISCAL_PERIOD } from "@/lib/schoolTheme"
 
 export const CURRENT_SCHOOL_KEY = "current_school"
@@ -22,10 +28,15 @@ export type CurrentSchool = {
   schoolId: string
   schoolName: string
   fiscalPeriod: string
+  /** 学校マスタ由来（プラン設定） */
+  useAuditFlow: boolean
   contract: SchoolContractInfo
 }
 
 export const SCHOOL_SESSION_CHANGED_EVENT = "kurasaokaikei-school-session-changed"
+
+/** デモ管理者ログインはクラサポ大学マスタに固定 */
+const DEMO_ADMIN_LOGIN_IDS = new Set(["admin", "tc-university-admin"])
 
 function notifySchoolSessionChanged(): void {
   if (typeof window === "undefined") return
@@ -55,6 +66,16 @@ export function resolveSchoolContractForLogin(
   return null
 }
 
+function withAuditFlowFlag(data: CurrentSchool): CurrentSchool {
+  ensureSchoolMastersSeeded()
+  const masterId =
+    data.schoolId?.trim() ||
+    data.contract?.schoolId?.trim() ||
+    DEMO_SCHOOL_MASTER_ID
+  const useAuditFlow = loadSchoolUseAuditFlowForSchool(masterId)
+  return { ...data, schoolId: masterId, useAuditFlow }
+}
+
 export function loadCurrentSchool(): CurrentSchool | null {
   if (typeof window === "undefined") return null
   try {
@@ -62,7 +83,7 @@ export function loadCurrentSchool(): CurrentSchool | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as CurrentSchool
     if (parsed?.schoolName) {
-      return parsed
+      return withAuditFlowFlag(parsed)
     }
     return null
   } catch {
@@ -86,27 +107,35 @@ export function persistCurrentSchool(loginId: string): void {
   const id = loginId.trim() || "admin"
   const contract = resolveSchoolContractForLogin(id)
 
+  ensureSchoolMastersSeeded()
+
   if (contract) {
     const display = contractInfoToDisplay(contract)
-    const schoolId = contract.schoolId ?? id
-    const data: CurrentSchool = {
+    const schoolId = DEMO_ADMIN_LOGIN_IDS.has(id)
+      ? DEMO_SCHOOL_MASTER_ID
+      : (contract.schoolId ?? DEMO_SCHOOL_MASTER_ID)
+    const master = getSchoolMaster(schoolId)
+    const data: CurrentSchool = withAuditFlowFlag({
       loginId: id,
       schoolId,
-      schoolName: display.schoolName,
+      schoolName: master?.schoolName ?? display.schoolName,
       fiscalPeriod: display.fiscalPeriod,
+      useAuditFlow: master?.useAuditFlow ?? false,
       contract: { ...contract, schoolId },
-    }
+    })
     localStorage.setItem(CURRENT_SCHOOL_KEY, JSON.stringify(data))
     mirrorCurrentSchoolUser(data)
     notifySchoolSessionChanged()
     return
   }
 
-  const fallback: CurrentSchool = {
+  const master = getSchoolMaster(DEMO_SCHOOL_MASTER_ID)
+  const fallback: CurrentSchool = withAuditFlowFlag({
     loginId: id,
-    schoolId: id,
-    schoolName: SCHOOL_DISPLAY_NAME,
+    schoolId: DEMO_SCHOOL_MASTER_ID,
+    schoolName: master?.schoolName ?? "クラサポ大学",
     fiscalPeriod: SCHOOL_FISCAL_PERIOD,
+    useAuditFlow: master?.useAuditFlow ?? true,
     contract: {
       submittedAt: new Date().toISOString(),
       school: {
@@ -134,7 +163,7 @@ export function persistCurrentSchool(loginId: string): void {
         paymentMethod: "bank_transfer",
       },
     },
-  }
+  })
   localStorage.setItem(CURRENT_SCHOOL_KEY, JSON.stringify(fallback))
   mirrorCurrentSchoolUser(fallback)
   notifySchoolSessionChanged()

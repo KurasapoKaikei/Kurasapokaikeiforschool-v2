@@ -9,12 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
 import {
   isDuplicateGroupName,
   loadSchoolClubGroups,
   saveSchoolClubGroups,
   type SchoolClubGroup,
 } from "@/lib/schoolClubGroups"
+import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
 
 type SchoolClubGroupsContextValue = {
   groups: SchoolClubGroup[]
@@ -34,10 +36,26 @@ export function SchoolClubGroupsProvider({ children }: { children: ReactNode }) 
   const [groups, setGroups] = useState<SchoolClubGroup[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
 
-  useEffect(() => {
+  const reloadFromStorage = useCallback(() => {
     setGroups(loadSchoolClubGroups())
     setIsLoaded(true)
   }, [])
+
+  useEffect(() => {
+    reloadFromStorage()
+  }, [reloadFromStorage])
+
+  useEffect(() => {
+    const onReload = () => reloadFromStorage()
+    window.addEventListener(SCHOOL_SESSION_CHANGED_EVENT, onReload)
+    window.addEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onReload)
+    window.addEventListener("storage", onReload)
+    return () => {
+      window.removeEventListener(SCHOOL_SESSION_CHANGED_EVENT, onReload)
+      window.removeEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onReload)
+      window.removeEventListener("storage", onReload)
+    }
+  }, [reloadFromStorage])
 
   useEffect(() => {
     if (!isLoaded) return

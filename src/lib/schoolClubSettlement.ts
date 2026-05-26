@@ -1,6 +1,11 @@
 /** 学校ポータル：クラブ決算提出ステータス（5/27デモ・localStorage） */
 
 import { loadSchoolClubs } from "@/lib/schoolClubs"
+import {
+  getOperationalSchoolId,
+  readScopedWorkspace,
+  writeScopedWorkspace,
+} from "@/lib/schoolWorkspace"
 
 export type ClubSettlementStatus =
   | "draft"
@@ -54,30 +59,51 @@ function normalizeStatus(raw: string): ClubSettlementStatus {
   return "draft"
 }
 
-function loadAll(): Record<string, ClubSettlementStatus> {
+function parseStatusMap(parsed: unknown): Record<string, ClubSettlementStatus> {
+  if (!parsed || typeof parsed !== "object") return {}
+  const out: Record<string, ClubSettlementStatus> = {}
+  for (const [id, status] of Object.entries(parsed as Record<string, string>)) {
+    out[id] = normalizeStatus(status)
+  }
+  return out
+}
+
+function loadAllFromGlobal(): Record<string, ClubSettlementStatus> {
   if (typeof window === "undefined") return {}
   try {
     const raw = localStorage.getItem(STATUS_STORAGE_KEY)
     if (!raw) return {}
-    const parsed = JSON.parse(raw) as Record<string, string>
-    if (!parsed || typeof parsed !== "object") return {}
-    const out: Record<string, ClubSettlementStatus> = {}
-    for (const [id, status] of Object.entries(parsed)) {
-      out[id] = normalizeStatus(status)
-    }
-    return out
+    return parseStatusMap(JSON.parse(raw) as unknown)
   } catch {
     return {}
   }
 }
 
-function saveAll(map: Record<string, ClubSettlementStatus>): void {
+function loadAll(): Record<string, ClubSettlementStatus> {
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws.settlementStatus }),
+    loadAllFromGlobal
+  )
+}
+
+function saveAllToGlobal(map: Record<string, ClubSettlementStatus>): void {
   if (typeof window === "undefined") return
   localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(map))
   dispatchChanged()
 }
 
-function loadRejectReasons(): Record<string, string> {
+function saveAll(map: Record<string, ClubSettlementStatus>): void {
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, settlementStatus: map }),
+    () => saveAllToGlobal(map)
+  )
+}
+
+function loadRejectReasonsFromGlobal(): Record<string, string> {
   if (typeof window === "undefined") return {}
   try {
     const raw = localStorage.getItem(REJECT_REASON_KEY)
@@ -88,10 +114,28 @@ function loadRejectReasons(): Record<string, string> {
   }
 }
 
-function saveRejectReasons(map: Record<string, string>): void {
+function loadRejectReasons(): Record<string, string> {
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws.settlementRejectReasons }),
+    loadRejectReasonsFromGlobal
+  )
+}
+
+function saveRejectReasonsToGlobal(map: Record<string, string>): void {
   if (typeof window === "undefined") return
   localStorage.setItem(REJECT_REASON_KEY, JSON.stringify(map))
   dispatchChanged()
+}
+
+function saveRejectReasons(map: Record<string, string>): void {
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, settlementRejectReasons: map }),
+    () => saveRejectReasonsToGlobal(map)
+  )
 }
 
 function mockStatusForClubId(clubId: string): ClubSettlementStatus {
@@ -220,22 +264,45 @@ export function checkFiscalRollover(clubIds: string[]): FiscalRolloverCheck {
   }
 }
 
-export function isFiscalRolloverCompleted(): boolean {
+function isFiscalRolloverCompletedGlobal(): boolean {
   if (typeof window === "undefined") return false
   return localStorage.getItem(ROLLOVER_STORAGE_KEY) === "done"
+}
+
+export function isFiscalRolloverCompleted(): boolean {
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => ws.fiscalRolloverDone === true,
+    isFiscalRolloverCompletedGlobal
+  )
 }
 
 export function executeFiscalRollover(clubIds: string[]): boolean {
   const check = checkFiscalRollover(clubIds)
   if (!check.canExecute) return false
   if (typeof window === "undefined") return false
-  localStorage.setItem(ROLLOVER_STORAGE_KEY, "done")
-  dispatchChanged()
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, fiscalRolloverDone: true }),
+    () => {
+      localStorage.setItem(ROLLOVER_STORAGE_KEY, "done")
+      dispatchChanged()
+    }
+  )
   return true
 }
 
 export function resetFiscalRolloverDemo(): void {
   if (typeof window === "undefined") return
-  localStorage.removeItem(ROLLOVER_STORAGE_KEY)
-  dispatchChanged()
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, fiscalRolloverDone: false }),
+    () => {
+      localStorage.removeItem(ROLLOVER_STORAGE_KEY)
+      dispatchChanged()
+    }
+  )
 }

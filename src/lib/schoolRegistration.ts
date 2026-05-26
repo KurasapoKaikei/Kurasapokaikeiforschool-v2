@@ -4,12 +4,16 @@
 
 import {
   saveContractInfo,
+  loadContractInfo,
   type MonthlyBillingDay,
   type PaymentCycleId,
   type PaymentMethodId,
   type SchoolContractInfo,
   type SchoolPlanId,
 } from "@/lib/schoolContractInfo"
+import type { RegisterOptionsState } from "@/lib/registerPricing"
+import { upsertSchoolMaster } from "@/lib/schoolMasters"
+import { initializeCleanSchoolWorkspace } from "@/lib/schoolWorkspace"
 
 export type RegistrationStatus = "pending" | "active"
 
@@ -43,7 +47,62 @@ export type PendingSchoolData = {
     monthlyBillingDay: MonthlyBillingDay
     paymentMethod: PaymentMethodId
   }
+  /** 有料オプション（申込時点） */
+  options: RegisterOptionsState
   termsAcceptedAt: string
+}
+
+export const EMAIL_ALREADY_USED_ERROR =
+  "このメールアドレスはすでに使用されています"
+
+const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export function normalizeSchoolContactEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function isValidEmailForDuplicateCheck(email: string): boolean {
+  return EMAIL_FORMAT.test(email.trim())
+}
+
+function collectEmailsFromRegistrations(
+  map: Record<string, SchoolRegistration>
+): string[] {
+  return Object.values(map)
+    .map((r) => r.contact?.email)
+    .filter((e): e is string => typeof e === "string" && e.trim().length > 0)
+    .map(normalizeSchoolContactEmail)
+}
+
+/** localStorage 内の全学校データで担当者メールの重複を判定 */
+export function isSchoolContactEmailAlreadyRegistered(email: string): boolean {
+  if (typeof window === "undefined") return false
+  const normalized = normalizeSchoolContactEmail(email)
+  if (!normalized || !isValidEmailForDuplicateCheck(email)) return false
+
+  const pending = loadPendingSchoolEnvelope()
+  if (
+    pending?.contact?.email &&
+    normalizeSchoolContactEmail(pending.contact.email) === normalized
+  ) {
+    return true
+  }
+
+  const activeEmails = collectEmailsFromRegistrations(loadActiveSchools())
+  if (activeEmails.includes(normalized)) return true
+
+  const regEmails = collectEmailsFromRegistrations(loadAllRegistrations())
+  if (regEmails.includes(normalized)) return true
+
+  const contract = loadContractInfo()
+  if (
+    contract?.contact?.email &&
+    normalizeSchoolContactEmail(contract.contact.email) === normalized
+  ) {
+    return true
+  }
+
+  return false
 }
 
 /** localStorage に保存する仮申込エンベロープ（token を含む） */
@@ -292,7 +351,15 @@ export function activateSchoolRegistrationByToken(
   const envelope = loadPendingSchoolEnvelope()
   if (!envelope) return null
 
-  const { token: storedToken, ...pending } = envelope
+  const { token: storedToken, ...pendingRaw } = envelope
+  const pending = {
+    ...pendingRaw,
+    options: pendingRaw.options ?? {
+      auditFlow: false,
+      memberMypage: false,
+      onlinePayment: false,
+    },
+  }
 
   if (tokenFromUrl && storedToken && tokenFromUrl !== storedToken) {
     console.info(
@@ -320,6 +387,14 @@ export function activateSchoolRegistrationByToken(
   clearPendingSchoolData()
 
   saveContractInfo({ ...registrationToContractInfo(activated), schoolId })
+
+  upsertSchoolMaster({
+    schoolId,
+    schoolName: activated.school.schoolName,
+    useAuditFlow: activated.options?.auditFlow === true,
+  })
+
+  initializeCleanSchoolWorkspace(schoolId)
 
   setCachedVerifyResult(tokenFromUrl || storedToken, schoolId)
 
@@ -352,5 +427,13 @@ export function activateSchoolRegistration(schoolId: string): boolean {
   saveAllRegistrations(regs)
 
   saveContractInfo({ ...registrationToContractInfo(activated), schoolId })
+
+  upsertSchoolMaster({
+    schoolId,
+    schoolName: activated.school.schoolName,
+    useAuditFlow: activated.options?.auditFlow === true,
+  })
+  initializeCleanSchoolWorkspace(schoolId)
+
   return true
 }

@@ -25,16 +25,30 @@ import {
   YEARLY_PAYMENT_NOTE,
 } from "@/lib/registerFormUtils"
 import {
+  EMAIL_ALREADY_USED_ERROR,
+  isSchoolContactEmailAlreadyRegistered,
   savePendingSchoolData,
   simulateVerificationEmail,
   type PendingSchoolData,
 } from "@/lib/schoolRegistration"
+import {
+  DEFAULT_REGISTER_OPTIONS,
+  REGISTER_OPTION_DEFINITIONS,
+  type RegisterOptionsState,
+} from "@/lib/registerPricing"
+import { RegisterOptionsSection } from "@/components/register/RegisterOptionsSection"
+import { RegisterPricingSummary } from "@/components/register/RegisterPricingSummary"
 import {
   ADMIN_PASSWORD_MISMATCH_ERROR,
   ADMIN_PASSWORD_STRENGTH_ERROR,
   isValidAdminPassword,
 } from "@/lib/registerPasswordUtils"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
+import {
+  filterToKatakana,
+  isValidKatakanaInput,
+  KATAKANA_INPUT_ERROR,
+} from "@/lib/katakanaInput"
 
 const STEPS = [
   { id: 1, label: "学校情報" },
@@ -62,12 +76,18 @@ function isValidEmailFormat(email: string): boolean {
 function mergeEmailFieldErrors(
   email: string,
   emailConfirm: string,
-  prev: Record<string, string>
+  prev: Record<string, string>,
+  options?: { checkDuplicate?: boolean }
 ): Record<string, string> {
   const next = { ...prev }
   if (!email.trim()) next.email = "メールアドレスを入力してください"
   else if (!isValidEmailFormat(email)) next.email = EMAIL_FORMAT_ERROR
-  else delete next.email
+  else if (
+    options?.checkDuplicate &&
+    isSchoolContactEmailAlreadyRegistered(email)
+  ) {
+    next.email = EMAIL_ALREADY_USED_ERROR
+  } else delete next.email
 
   if (!emailConfirm.trim())
     next.emailConfirm = "メールアドレス（確認）を入力してください"
@@ -80,6 +100,22 @@ function mergeEmailFieldErrors(
 
 function joinFullName(last: string, first: string): string {
   return `${last.trim()}${first.trim()}`
+}
+
+function applyKanaFieldErrors(
+  last: string,
+  first: string,
+  lastKey: string,
+  firstKey: string,
+  emptyLastMsg: string,
+  emptyFirstMsg: string,
+  errors: Record<string, string>
+): void {
+  if (!last.trim()) errors[lastKey] = emptyLastMsg
+  else if (!isValidKatakanaInput(last)) errors[lastKey] = KATAKANA_INPUT_ERROR
+
+  if (!first.trim()) errors[firstKey] = emptyFirstMsg
+  else if (!isValidKatakanaInput(first)) errors[firstKey] = KATAKANA_INPUT_ERROR
 }
 
 function joinKanaName(last: string, first: string): string {
@@ -111,6 +147,7 @@ type ContactFormState = {
   contactFirstNameKana: string
   contactPhone: string
   email: string
+  emailConfirm: string
 }
 
 export function SchoolRegisterForm() {
@@ -151,6 +188,8 @@ export function SchoolRegisterForm() {
     useState<MonthlyBillingDay>(26)
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethodId>("bank_transfer")
+  const [registerOptions, setRegisterOptions] =
+    useState<RegisterOptionsState>(DEFAULT_REGISTER_OPTIONS)
   const [adminPassword, setAdminPassword] = useState("")
   const [adminPasswordConfirm, setAdminPasswordConfirm] = useState("")
 
@@ -168,7 +207,9 @@ export function SchoolRegisterForm() {
     if (step !== 2) return
     if (!contact.email && !contact.emailConfirm) return
     setErrors((prev) =>
-      mergeEmailFieldErrors(contact.email, contact.emailConfirm, prev)
+      mergeEmailFieldErrors(contact.email, contact.emailConfirm, prev, {
+        checkDuplicate: true,
+      })
     )
   }, [contact.email, contact.emailConfirm, step])
 
@@ -179,10 +220,15 @@ export function SchoolRegisterForm() {
       e.representativeLastName = "姓を入力してください"
     if (!school.representativeFirstName.trim())
       e.representativeFirstName = "名を入力してください"
-    if (!school.representativeLastNameKana.trim())
-      e.representativeLastNameKana = "姓（フリガナ）を入力してください"
-    if (!school.representativeFirstNameKana.trim())
-      e.representativeFirstNameKana = "名（フリガナ）を入力してください"
+    applyKanaFieldErrors(
+      school.representativeLastNameKana,
+      school.representativeFirstNameKana,
+      "representativeLastNameKana",
+      "representativeFirstNameKana",
+      "姓（フリガナ）を入力してください",
+      "名（フリガナ）を入力してください",
+      e
+    )
     if (!school.postalCode.trim()) e.postalCode = "郵便番号を入力してください"
     if (!school.prefecture.trim()) e.prefecture = "都道府県を入力してください"
     if (!school.city.trim()) e.city = "市区町村を入力してください"
@@ -199,15 +245,21 @@ export function SchoolRegisterForm() {
       e.contactLastName = "姓を入力してください"
     if (!contact.contactFirstName.trim())
       e.contactFirstName = "名を入力してください"
-    if (!contact.contactLastNameKana.trim())
-      e.contactLastNameKana = "姓（フリガナ）を入力してください"
-    if (!contact.contactFirstNameKana.trim())
-      e.contactFirstNameKana = "名（フリガナ）を入力してください"
+    applyKanaFieldErrors(
+      contact.contactLastNameKana,
+      contact.contactFirstNameKana,
+      "contactLastNameKana",
+      "contactFirstNameKana",
+      "姓（フリガナ）を入力してください",
+      "名（フリガナ）を入力してください",
+      e
+    )
     if (!contact.contactPhone.trim()) e.contactPhone = "電話番号を入力してください"
     const merged = mergeEmailFieldErrors(
       contact.email,
       contact.emailConfirm,
-      e
+      e,
+      { checkDuplicate: true }
     )
     Object.assign(e, merged)
     setErrors(e)
@@ -285,6 +337,11 @@ export function SchoolRegisterForm() {
       setErrors({ terms: "利用規約への同意が必要です" })
       return
     }
+    if (isSchoolContactEmailAlreadyRegistered(contact.email)) {
+      setErrors({ email: EMAIL_ALREADY_USED_ERROR })
+      setStep(2)
+      return
+    }
     setErrors({})
 
     const pending: PendingSchoolData = {
@@ -326,6 +383,7 @@ export function SchoolRegisterForm() {
           paymentCycle === "yearly" ? 31 : monthlyBillingDay,
         paymentMethod,
       },
+      options: { ...registerOptions },
       termsAcceptedAt: new Date().toISOString(),
     }
 
@@ -386,6 +444,8 @@ export function SchoolRegisterForm() {
               setMonthlyBillingDay={setMonthlyBillingDay}
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
+              registerOptions={registerOptions}
+              setRegisterOptions={setRegisterOptions}
               adminPassword={adminPassword}
               onAdminPasswordChange={handleAdminPasswordChange}
               adminPasswordConfirm={adminPasswordConfirm}
@@ -403,6 +463,7 @@ export function SchoolRegisterForm() {
               paymentCycle={paymentCycle}
               monthlyBillingDay={monthlyBillingDay}
               paymentMethod={paymentMethod}
+              registerOptions={registerOptions}
               termsAccepted={termsAccepted}
               setTermsAccepted={setTermsAccepted}
               errors={errors}
@@ -515,14 +576,11 @@ function StepSchool({
           setSchool({ ...school, representativeFirstName: v })
         }
       />
-      <NamePairField
+      <KanaNamePairField
         label="代表者氏名（フリガナ）"
         required
-        error={
-          errors.representativeLastNameKana ||
-          errors.representativeFirstNameKana ||
-          undefined
-        }
+        lastError={errors.representativeLastNameKana}
+        firstError={errors.representativeFirstNameKana}
         lastName={school.representativeLastNameKana}
         firstName={school.representativeFirstNameKana}
         lastPlaceholder="例：クラブ"
@@ -532,6 +590,16 @@ function StepSchool({
         }
         onFirstNameChange={(v) =>
           setSchool({ ...school, representativeFirstNameKana: v })
+        }
+        lastNameKey="representativeLastNameKana"
+        firstNameKey="representativeFirstNameKana"
+        onFieldError={(key, message) =>
+          setErrors((prev) => {
+            const next = { ...prev }
+            if (message) next[key] = message
+            else delete next[key]
+            return next
+          })
         }
       />
       <Field label="郵便番号" error={errors.postalCode} required>
@@ -635,14 +703,11 @@ function StepContact({
           setContact({ ...contact, contactFirstName: v })
         }
       />
-      <NamePairField
+      <KanaNamePairField
         label="担当者氏名（フリガナ）"
         required
-        error={
-          errors.contactLastNameKana ||
-          errors.contactFirstNameKana ||
-          undefined
-        }
+        lastError={errors.contactLastNameKana}
+        firstError={errors.contactFirstNameKana}
         lastName={contact.contactLastNameKana}
         firstName={contact.contactFirstNameKana}
         lastPlaceholder="例：カイケイ"
@@ -652,6 +717,16 @@ function StepContact({
         }
         onFirstNameChange={(v) =>
           setContact({ ...contact, contactFirstNameKana: v })
+        }
+        lastNameKey="contactLastNameKana"
+        firstNameKey="contactFirstNameKana"
+        onFieldError={(key, message) =>
+          setErrors((prev) => {
+            const next = { ...prev }
+            if (message) next[key] = message
+            else delete next[key]
+            return next
+          })
         }
       />
       <Field label="電話番号" error={errors.contactPhone} required>
@@ -712,6 +787,10 @@ function StepContact({
           }}
           placeholder={EMAIL_PLACEHOLDER}
           autoComplete="off"
+          data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          aria-autocomplete="none"
           data-testid="register-contact-email-confirm"
         />
       </Field>
@@ -733,6 +812,8 @@ function StepContract({
   setMonthlyBillingDay,
   paymentMethod,
   setPaymentMethod,
+  registerOptions,
+  setRegisterOptions,
   adminPassword,
   onAdminPasswordChange,
   adminPasswordConfirm,
@@ -752,6 +833,8 @@ function StepContract({
   setMonthlyBillingDay: (d: MonthlyBillingDay) => void
   paymentMethod: PaymentMethodId
   setPaymentMethod: (p: PaymentMethodId) => void
+  registerOptions: RegisterOptionsState
+  setRegisterOptions: (o: RegisterOptionsState) => void
   adminPassword: string
   onAdminPasswordChange: (s: string) => void
   adminPasswordConfirm: string
@@ -776,6 +859,14 @@ function StepContract({
           ))}
         </select>
       </Field>
+
+      <RegisterOptionsSection
+        options={registerOptions}
+        onChange={setRegisterOptions}
+      />
+
+      <RegisterPricingSummary plan={plan} options={registerOptions} />
+
       <Field label="決算日" required>
         <div className="flex gap-3">
           <select
@@ -903,6 +994,12 @@ function StepContract({
   )
 }
 
+function formatSelectedOptionsSummary(options: RegisterOptionsState): string {
+  const selected = REGISTER_OPTION_DEFINITIONS.filter((d) => options[d.id])
+  if (selected.length === 0) return "なし"
+  return selected.map((d) => d.label).join(" / ")
+}
+
 function StepConfirm({
   school,
   contact,
@@ -912,6 +1009,7 @@ function StepConfirm({
   paymentCycle,
   monthlyBillingDay,
   paymentMethod,
+  registerOptions,
   termsAccepted,
   setTermsAccepted,
   errors,
@@ -924,6 +1022,7 @@ function StepConfirm({
   paymentCycle: PaymentCycleId
   monthlyBillingDay: MonthlyBillingDay
   paymentMethod: PaymentMethodId
+  registerOptions: RegisterOptionsState
   termsAccepted: boolean
   setTermsAccepted: (v: boolean) => void
   errors: Record<string, string>
@@ -961,6 +1060,10 @@ function StepConfirm({
         <ReviewSection title="お申込み情報">
           <ReviewRow label="ご利用プラン" value={planLabel} />
           <ReviewRow
+            label="オプション"
+            value={formatSelectedOptionsSummary(registerOptions)}
+          />
+          <ReviewRow
             label="決算日"
             value={`${settlementMonth}月${settlementDay}日`}
           />
@@ -982,6 +1085,7 @@ function StepConfirm({
           />
         </ReviewSection>
       </dl>
+      <RegisterPricingSummary plan={plan} options={registerOptions} compact />
       <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-4">
         <input
           type="checkbox"
@@ -1100,6 +1204,99 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
     <div className="flex gap-2">
       <dt className="w-24 shrink-0 text-[#6B7280]">{label}</dt>
       <dd className="text-[#374151]">{value || "—"}</dd>
+    </div>
+  )
+}
+
+/** フリガナ：全角カタカナのみ・リアルタイム除去・blur 検証 */
+function KanaNamePairField({
+  label,
+  lastName,
+  firstName,
+  lastPlaceholder,
+  firstPlaceholder,
+  onLastNameChange,
+  onFirstNameChange,
+  lastNameKey,
+  firstNameKey,
+  lastError,
+  firstError,
+  onFieldError,
+  required,
+}: {
+  label: string
+  lastName: string
+  firstName: string
+  lastPlaceholder: string
+  firstPlaceholder: string
+  onLastNameChange: (v: string) => void
+  onFirstNameChange: (v: string) => void
+  lastNameKey: string
+  firstNameKey: string
+  lastError?: string
+  firstError?: string
+  onFieldError: (key: string, message: string | null) => void
+  required?: boolean
+}) {
+  const handleBlur = (value: string, key: string) => {
+    if (!value.trim()) return
+    if (!isValidKatakanaInput(value)) {
+      onFieldError(key, KATAKANA_INPUT_ERROR)
+    }
+  }
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium text-[#374151]">
+        {label}
+        {required ? <span className="text-[#EF4444]"> *</span> : null}
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <span className="mb-1 block text-xs text-[#6B7280]">姓</span>
+          <input
+            className={inputClass}
+            value={lastName}
+            inputMode="text"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => {
+              onLastNameChange(filterToKatakana(e.target.value))
+              onFieldError(lastNameKey, null)
+            }}
+            onBlur={() => handleBlur(lastName, lastNameKey)}
+            placeholder={lastPlaceholder}
+          />
+          {lastError ? (
+            <p className="mt-1 text-xs text-[#EF4444]" role="alert">
+              {lastError}
+            </p>
+          ) : null}
+        </div>
+        <div>
+          <span className="mb-1 block text-xs text-[#6B7280]">名</span>
+          <input
+            className={inputClass}
+            value={firstName}
+            inputMode="text"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => {
+              onFirstNameChange(filterToKatakana(e.target.value))
+              onFieldError(firstNameKey, null)
+            }}
+            onBlur={() => handleBlur(firstName, firstNameKey)}
+            placeholder={firstPlaceholder}
+          />
+          {firstError ? (
+            <p className="mt-1 text-xs text-[#EF4444]" role="alert">
+              {firstError}
+            </p>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }

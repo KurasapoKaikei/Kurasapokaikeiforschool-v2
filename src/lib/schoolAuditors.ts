@@ -1,5 +1,11 @@
 /** 学校ポータル：監査担当者マスタ（localStorage） */
 
+import {
+  getOperationalSchoolId,
+  readScopedWorkspace,
+  writeScopedWorkspace,
+} from "@/lib/schoolWorkspace"
+
 export const SCHOOL_AUDITORS_KEY = "school_auditors"
 
 export const SCHOOL_AUDITORS_CHANGED_EVENT =
@@ -109,7 +115,29 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   }
 }
 
-function saveAll(auditors: SchoolAuditor[]): void {
+function parseAuditors(parsed: unknown): SchoolAuditor[] {
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .map(normalizeAuditor)
+    .filter((a): a is SchoolAuditor => a != null)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
+}
+
+function loadAuditorsFromGlobal(): SchoolAuditor[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = localStorage.getItem(SCHOOL_AUDITORS_KEY)
+    if (!raw) return []
+    return parseAuditors(JSON.parse(raw) as unknown)
+  } catch {
+    return []
+  }
+}
+
+function saveAllToGlobal(auditors: SchoolAuditor[]): void {
   if (typeof window === "undefined") return
   try {
     localStorage.setItem(SCHOOL_AUDITORS_KEY, JSON.stringify(auditors))
@@ -119,23 +147,22 @@ function saveAll(auditors: SchoolAuditor[]): void {
   }
 }
 
+function saveAll(auditors: SchoolAuditor[]): void {
+  const schoolId = getOperationalSchoolId()
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, auditors }),
+    () => saveAllToGlobal(auditors)
+  )
+}
+
 export function loadSchoolAuditors(): SchoolAuditor[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = localStorage.getItem(SCHOOL_AUDITORS_KEY)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map(normalizeAuditor)
-      .filter((a): a is SchoolAuditor => a != null)
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      )
-  } catch {
-    return []
-  }
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => parseAuditors(ws.auditors),
+    loadAuditorsFromGlobal
+  )
 }
 
 export function isDuplicateAuditorEmail(

@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from "react"
 import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
+import { ensureSchoolMastersSeeded } from "@/lib/schoolMasters"
 import { getSchoolAdminSession } from "@/lib/schoolLoginSession"
 import { SchoolClubGroupsProvider } from "@/contexts/SchoolClubGroupsContext"
 import { SchoolClubsProvider } from "@/contexts/SchoolClubsContext"
@@ -11,6 +12,10 @@ import { SchoolHeader } from "@/components/layout/school/SchoolHeader"
 /** 学校管理者向け（/school 配下）のサイドバー＋ヘッダー枠 */
 export function SchoolAppShell({ children }: { children: ReactNode }) {
   const [headerKey, setHeaderKey] = useState("init")
+
+  useEffect(() => {
+    ensureSchoolMastersSeeded()
+  }, [])
 
   useEffect(() => {
     const syncKey = () => {

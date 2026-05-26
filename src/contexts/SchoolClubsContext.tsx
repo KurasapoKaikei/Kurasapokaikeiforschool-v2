@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
 import {
   generateInitialPassword,
   generateUniqueClubId,
@@ -17,6 +18,7 @@ import {
   saveSchoolClubs,
   type SchoolClub,
 } from "@/lib/schoolClubs"
+import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
 
 type RegisterClubInput = {
   name: string
@@ -57,12 +59,23 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === null || e.key === "kurasaokaikei-school-clubs") {
+      if (
+        e.key === null ||
+        e.key === "kurasaokaikei-school-clubs" ||
+        e.key === "kurasaokaikei-school-workspaces"
+      ) {
         reloadFromStorage()
       }
     }
+    const onSession = () => reloadFromStorage()
     window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
+    window.addEventListener(SCHOOL_SESSION_CHANGED_EVENT, onSession)
+    window.addEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onSession)
+    return () => {
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener(SCHOOL_SESSION_CHANGED_EVENT, onSession)
+      window.removeEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onSession)
+    }
   }, [reloadFromStorage])
 
   useEffect(() => {

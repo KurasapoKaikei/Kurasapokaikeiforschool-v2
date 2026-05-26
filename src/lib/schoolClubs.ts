@@ -1,5 +1,11 @@
 /** 学校ポータル：登録クラブ（クラブ登録画面で管理） */
 
+import {
+  getOperationalSchoolId,
+  readScopedWorkspace,
+  writeScopedWorkspace,
+} from "@/lib/schoolWorkspace"
+
 export type SchoolClub = {
   /** 例: club-7392 */
   id: string
@@ -71,41 +77,63 @@ export function isDuplicateClubName(
   )
 }
 
-export function loadSchoolClubs(): SchoolClub[] {
+function parseClubsFromRaw(parsed: unknown): SchoolClub[] {
+  if (!Array.isArray(parsed)) return []
+  return normalizeClubOrders(
+    parsed
+      .filter(
+        (c) =>
+          c &&
+          typeof c.id === "string" &&
+          typeof c.name === "string" &&
+          Array.isArray(c.groupIds) &&
+          Array.isArray(c.groupNames) &&
+          typeof c.registeredAt === "string"
+      )
+      .map((c, idx) =>
+        migrateClubFields({
+          ...c,
+          order: typeof c.order === "number" ? c.order : idx + 1,
+          initialPassword: (c as SchoolClub).initialPassword ?? "",
+          password: (c as SchoolClub).password ?? "",
+        })
+      )
+  )
+}
+
+function loadSchoolClubsFromGlobal(): SchoolClub[] {
   if (typeof window === "undefined") return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
-    const parsed = JSON.parse(raw) as SchoolClub[]
-    if (!Array.isArray(parsed)) return []
-    return normalizeClubOrders(
-      parsed
-        .filter(
-          (c) =>
-            c &&
-            typeof c.id === "string" &&
-            typeof c.name === "string" &&
-            Array.isArray(c.groupIds) &&
-            Array.isArray(c.groupNames) &&
-            typeof c.registeredAt === "string"
-        )
-        .map((c, idx) =>
-          migrateClubFields({
-            ...c,
-            order: typeof c.order === "number" ? c.order : idx + 1,
-            initialPassword: (c as SchoolClub).initialPassword ?? "",
-            password: (c as SchoolClub).password ?? "",
-          })
-        )
-    )
+    return parseClubsFromRaw(JSON.parse(raw) as unknown)
   } catch {
     return []
   }
 }
 
-export function saveSchoolClubs(clubs: SchoolClub[]): void {
+function saveSchoolClubsToGlobal(clubs: SchoolClub[]): void {
   if (typeof window === "undefined") return
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeClubOrders(clubs)))
+}
+
+export function loadSchoolClubs(): SchoolClub[] {
+  const schoolId = getOperationalSchoolId()
+  return readScopedWorkspace(
+    schoolId,
+    (ws) => parseClubsFromRaw(ws.clubs),
+    loadSchoolClubsFromGlobal
+  )
+}
+
+export function saveSchoolClubs(clubs: SchoolClub[]): void {
+  const schoolId = getOperationalSchoolId()
+  const normalized = normalizeClubOrders(clubs)
+  writeScopedWorkspace(
+    schoolId,
+    (ws) => ({ ...ws, clubs: normalized }),
+    () => saveSchoolClubsToGlobal(normalized)
+  )
 }
 
 /** club-XXXX（4桁数字）で既存と重複しない ID を発行 */

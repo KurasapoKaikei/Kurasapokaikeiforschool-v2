@@ -1,8 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { Edit2, Trash2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Edit2, Mail, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { establishAuditorSessionById } from "@/lib/currentAuditor"
+import { AUDIT_ROUTES } from "@/lib/auditorTheme"
 import {
   loadSchoolUseAuditFlow,
   SCHOOL_AUDIT_FLOW_CHANGED_EVENT,
@@ -33,7 +36,7 @@ const AUDIT_PAGE_ACCENT = "#4A90E2"
 
 /** 順序｜氏名｜監査人ID｜初期PW｜部署｜電話｜メール｜担当クラブ｜アクション */
 const AUDITOR_TABLE_GRID =
-  "grid w-full min-w-[72rem] grid-cols-[3rem_minmax(0,1fr)_7rem_5.5rem_minmax(0,0.95fr)_9rem_minmax(0,1.1fr)_minmax(0,1.5fr)_6.5rem] items-center gap-x-3"
+  "grid w-full min-w-[76rem] grid-cols-[3rem_minmax(0,1fr)_7rem_5.5rem_minmax(0,0.95fr)_9rem_minmax(0,1.1fr)_minmax(0,1.5fr)_9rem] items-center gap-x-3"
 
 const EMPTY_TEXT = "監査人が登録されていません"
 
@@ -63,6 +66,7 @@ function clubNamesByIds(
 }
 
 export function SchoolAuditorsManageView() {
+  const router = useRouter()
   const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [auditFlowEnabled, setAuditFlowEnabled] = useState(true)
   const [auditors, setAuditors] = useState<SchoolAuditor[]>([])
@@ -110,6 +114,13 @@ export function SchoolAuditorsManageView() {
     setForm(emptyForm())
     setEditingId(null)
     setFormError(null)
+  }
+
+  const openAuditorMessages = (auditor: SchoolAuditor) => {
+    if (!establishAuditorSessionById(auditor.id, { simulatedBySchool: true })) {
+      return
+    }
+    router.push(AUDIT_ROUTES.messages)
   }
 
   const toggleClub = (clubId: string) => {
@@ -466,7 +477,18 @@ export function SchoolAuditorsManageView() {
                               </span>
                             )}
                           </span>
-                          <span className="flex min-w-0 items-center justify-center gap-4 sm:justify-end sm:pr-2">
+                          <span className="flex min-w-0 items-center justify-center gap-2 sm:justify-end sm:pr-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 shrink-0 p-0"
+                              onClick={() => openAuditorMessages(auditor)}
+                              aria-label="メッセージBOX"
+                              title="メッセージBOX（シミュレーション）"
+                            >
+                              <Mail className="h-4 w-4 text-[#EA580C]" />
+                            </Button>
                             <Button
                               type="button"
                               variant="outline"

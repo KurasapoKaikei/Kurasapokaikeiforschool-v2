@@ -3,56 +3,83 @@
 import { useCallback, useEffect, useState } from "react"
 import { SchoolContentPanel } from "@/components/layout/school/SchoolContentPanel"
 import {
-  loadSchoolUseAuditFlow,
-  saveSchoolUseAuditFlow,
-  SCHOOL_AUDIT_FLOW_CHANGED_EVENT,
-} from "@/lib/schoolAuditFlow"
+  loadCurrentSchool,
+  SCHOOL_SESSION_CHANGED_EVENT,
+} from "@/lib/currentSchool"
+import {
+  DEMO_SCHOOL_MASTER_ID,
+  getSchoolMaster,
+  SCHOOL_MASTER_CHANGED_EVENT,
+} from "@/lib/schoolMasters"
 
-/** 設定：監査フロー運用 ON/OFF */
+/** 設定：監査フロー運用（学校マスタ参照・画面からは変更不可） */
 export function SchoolAuditFlowSettingsView() {
-  const [enabled, setEnabled] = useState(true)
+  const [schoolName, setSchoolName] = useState("—")
+  const [schoolId, setSchoolId] = useState("—")
+  const [useAuditFlow, setUseAuditFlow] = useState(true)
   const [loaded, setLoaded] = useState(false)
 
   const refresh = useCallback(() => {
-    setEnabled(loadSchoolUseAuditFlow())
+    const current = loadCurrentSchool()
+    const masterId =
+      current?.schoolId?.trim() ||
+      current?.contract?.schoolId?.trim() ||
+      DEMO_SCHOOL_MASTER_ID
+    const master = getSchoolMaster(masterId)
+    setSchoolId(masterId)
+    setSchoolName(master?.schoolName ?? current?.schoolName ?? "—")
+    setUseAuditFlow(
+      current?.useAuditFlow ?? master?.useAuditFlow ?? false
+    )
     setLoaded(true)
   }, [])
 
   useEffect(() => {
     refresh()
     const onChange = () => refresh()
-    window.addEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, onChange)
+    window.addEventListener(SCHOOL_MASTER_CHANGED_EVENT, onChange)
+    window.addEventListener(SCHOOL_SESSION_CHANGED_EVENT, onChange)
     window.addEventListener("storage", onChange)
     return () => {
-      window.removeEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, onChange)
+      window.removeEventListener(SCHOOL_MASTER_CHANGED_EVENT, onChange)
+      window.removeEventListener(SCHOOL_SESSION_CHANGED_EVENT, onChange)
       window.removeEventListener("storage", onChange)
     }
   }, [refresh])
 
-  const handleToggle = (checked: boolean) => {
-    setEnabled(checked)
-    saveSchoolUseAuditFlow(checked)
-  }
-
   return (
     <SchoolContentPanel
       title="監査運用設定"
-      description="監査フローの有効化と、監査人管理メニューの表示を制御します"
+      description="監査フローの有効化はログイン学校のプラン設定（学校マスタ）で管理されます"
     >
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-[#FAFAF9] px-4 py-4">
-        <input
-          type="checkbox"
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-700 focus:ring-indigo-600"
-          checked={enabled}
-          disabled={!loaded}
-          onChange={(e) => handleToggle(e.target.checked)}
-        />
-        <span className="text-sm leading-relaxed text-[#374151]">
-          監査フローを利用する（チェックを入れると監査担当者の登録やクラブへの割り当てが可能になります）
-        </span>
-      </label>
+      <dl className="space-y-4 rounded-lg border border-gray-200 bg-[#FAFAF9] px-4 py-4 text-sm">
+        <div className="flex flex-wrap gap-x-2 gap-y-1">
+          <dt className="font-medium text-[#6B7280]">学校名</dt>
+          <dd className="text-[#374151]">{loaded ? schoolName : "読み込み中…"}</dd>
+        </div>
+        <div className="flex flex-wrap gap-x-2 gap-y-1">
+          <dt className="font-medium text-[#6B7280]">学校ID</dt>
+          <dd className="tabular-nums text-[#374151]">
+            {loaded ? schoolId : "—"}
+          </dd>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <dt className="font-medium text-[#6B7280]">監査フロー</dt>
+          <dd>
+            <span
+              className={
+                useAuditFlow
+                  ? "inline-flex rounded bg-[#D1FAE5] px-2 py-0.5 text-xs font-semibold text-[#047857]"
+                  : "inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold text-[#6B7280]"
+              }
+            >
+              {useAuditFlow ? "利用する（useAuditFlow: true）" : "利用しない"}
+            </span>
+          </dd>
+        </div>
+      </dl>
       <p className="mt-4 text-xs text-[#6B7280]">
-        チェックを外すと、サイドメニューの「監査人管理」は非表示になります。登録済みの監査人データは保持されます。
+        デモのクラサポ大学（{DEMO_SCHOOL_MASTER_ID}）は監査ありプランです。監査なしの学校アカウントでは、サイドメニューの「監査人管理」等が自動的に非表示になります。画面上のチェックボックスでの切替は行いません。
       </p>
     </SchoolContentPanel>
   )

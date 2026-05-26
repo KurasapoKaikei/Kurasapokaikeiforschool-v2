@@ -13,10 +13,12 @@ import {
   SCHOOL_THEME,
 } from "@/lib/schoolTheme"
 import { KurasapoBrandLogo } from "@/components/layout/KurasapoBrandLogo"
+import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
 import {
   loadSchoolUseAuditFlow,
   SCHOOL_AUDIT_FLOW_CHANGED_EVENT,
 } from "@/lib/schoolAuditFlow"
+import { ensureSchoolMastersSeeded } from "@/lib/schoolMasters"
 import {
   BookOpen,
   ChevronDown,
@@ -123,10 +125,14 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
           href: SCHOOL_ROUTES.settingsAccountTitles,
         },
         { title: SCHOOL_PAGE_TITLES.settingsStaff, href: SCHOOL_ROUTES.settingsStaff },
-        {
-          title: SCHOOL_PAGE_TITLES.settingsAuditFlow,
-          href: SCHOOL_ROUTES.settingsAuditFlow,
-        },
+        ...(auditFlowEnabled
+          ? ([
+              {
+                title: SCHOOL_PAGE_TITLES.settingsAuditFlow,
+                href: SCHOOL_ROUTES.settingsAuditFlow,
+              },
+            ] satisfies SubMenuItem[])
+          : []),
       ],
     },
     {
@@ -209,12 +215,15 @@ export function SchoolSidebar() {
   )
 
   useEffect(() => {
+    ensureSchoolMastersSeeded()
     const sync = () => setAuditFlowEnabled(loadSchoolUseAuditFlow())
     sync()
     window.addEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
+    window.addEventListener(SCHOOL_SESSION_CHANGED_EVENT, sync)
     window.addEventListener("storage", sync)
     return () => {
       window.removeEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
+      window.removeEventListener(SCHOOL_SESSION_CHANGED_EVENT, sync)
       window.removeEventListener("storage", sync)
     }
   }, [])
