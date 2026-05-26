@@ -7,11 +7,6 @@ import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
 import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import {
-  filterToKatakana,
-  isValidKatakanaInput,
-  KATAKANA_INPUT_ERROR,
-} from "@/lib/katakanaInput"
-import {
   addSchoolAuditor,
   isDuplicateAuditorEmail,
   loadSchoolAuditors,
@@ -25,7 +20,6 @@ import { cn } from "@/lib/utils"
 
 export type AuditorFormState = {
   name: string
-  nameKana: string
   department: string
   phone: string
   email: string
@@ -34,7 +28,6 @@ export type AuditorFormState = {
 
 export const emptyAuditorForm = (): AuditorFormState => ({
   name: "",
-  nameKana: "",
   department: "",
   phone: "",
   email: "",
@@ -61,7 +54,6 @@ export function SchoolAuditorsRegisterSection({
   const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [form, setForm] = useState<AuditorFormState>(emptyAuditorForm)
   const [formError, setFormError] = useState<string | null>(null)
-  const [kanaError, setKanaError] = useState<string | null>(null)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const editingId = editingAuditor?.id ?? null
@@ -70,7 +62,6 @@ export function SchoolAuditorsRegisterSection({
     if (editingAuditor) {
       setForm({
         name: editingAuditor.name,
-        nameKana: editingAuditor.nameKana,
         department: editingAuditor.department,
         phone: editingAuditor.phone,
         email: editingAuditor.email,
@@ -80,7 +71,6 @@ export function SchoolAuditorsRegisterSection({
       setForm(emptyAuditorForm())
     }
     setFormError(null)
-    setKanaError(null)
   }, [editingAuditor, formResetKey])
 
   const [auditors, setAuditors] = useState(() => loadSchoolAuditors())
@@ -125,7 +115,6 @@ export function SchoolAuditorsRegisterSection({
   const persistAuditor = () => {
     const input = {
       name: form.name.trim(),
-      nameKana: form.nameKana.trim(),
       department: form.department.trim(),
       phone: form.phone.trim(),
       email: form.email.trim(),
@@ -151,18 +140,6 @@ export function SchoolAuditorsRegisterSection({
       setFormError("氏名を入力してください。")
       return
     }
-    const nameKana = form.nameKana.trim()
-    if (!nameKana) {
-      setKanaError("氏名（フリガナ）を入力してください。")
-      setFormError(null)
-      return
-    }
-    if (!isValidKatakanaInput(nameKana)) {
-      setKanaError(KATAKANA_INPUT_ERROR)
-      setFormError(null)
-      return
-    }
-    setKanaError(null)
     const department = form.department.trim()
     if (!department) {
       setFormError("部署を入力してください。")
@@ -220,46 +197,6 @@ export function SchoolAuditorsRegisterSection({
               placeholder="例：鈴木 公認会計士"
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
             />
-          </div>
-          <div>
-            <label
-              htmlFor="auditor-name-kana"
-              className="mb-1.5 flex items-center text-sm font-medium text-[#374151]"
-            >
-              氏名（フリガナ）
-              <SchoolFormRequiredBadge />
-            </label>
-            <input
-              id="auditor-name-kana"
-              type="text"
-              value={form.nameKana}
-              onChange={(e) => {
-                setForm((p) => ({
-                  ...p,
-                  nameKana: filterToKatakana(e.target.value),
-                }))
-                setKanaError(null)
-                setFormError(null)
-              }}
-              onBlur={() => {
-                const v = form.nameKana.trim()
-                if (v && !isValidKatakanaInput(v)) {
-                  setKanaError(KATAKANA_INPUT_ERROR)
-                }
-              }}
-              placeholder="例：スズキ コウニンカイケイシ"
-              className={cn(
-                "w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2",
-                kanaError
-                  ? "border-[#EF4444] focus:ring-[#EF4444]/40"
-                  : "border-gray-300 focus:ring-[#4A90E2]/40"
-              )}
-            />
-            {kanaError ? (
-              <p className="mt-2 text-sm text-[#EF4444]" role="alert">
-                {kanaError}
-              </p>
-            ) : null}
           </div>
           <div>
             <label

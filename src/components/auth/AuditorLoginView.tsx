@@ -9,7 +9,7 @@ export function AuditorLoginView() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#FFF7ED] to-[#F5F5F0] px-6 py-12">
       <AuditorLoginForm
-        onSuccess={() => router.push(AUDIT_ROUTES.messages)}
+        onSuccess={() => router.push(AUDIT_ROUTES.home)}
         onBack={() => router.push("/")}
       />
     </main>

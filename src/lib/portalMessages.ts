@@ -372,7 +372,7 @@ export function formatSchoolAuditorOutboundTargetLabel(m: PortalMessage): string
 
 /** 監査人向け受信メッセージ（全監査人宛て + 個別宛て） */
 export function getMessagesForAuditor(auditorId: string): PortalMessage[] {
-  return loadPortalMessages().filter(
+  return (loadPortalMessages() ?? []).filter(
     (m) =>
       isAuditorAudienceMessage(m) &&
       (isAllAuditorsTarget(m.targetClubId) || m.targetClubId === auditorId)
@@ -551,8 +551,8 @@ export function loadAuditorOutboundMessages(
   assignedClubIds: string[]
 ): PortalMessage[] {
   const id = auditorId.trim()
-  const clubSet = new Set(assignedClubIds)
-  return loadPortalMessages().filter((m) => {
+  const clubSet = new Set(assignedClubIds ?? [])
+  return (loadPortalMessages() ?? []).filter((m) => {
     if (!isClubAudienceMessage(m) || resolveSender(m) !== "audit") return false
     if (m.auditorId) return m.auditorId === id
     return clubSet.has(m.targetClubId)

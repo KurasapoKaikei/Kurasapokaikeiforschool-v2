@@ -15,6 +15,7 @@ export const AUDITOR_SESSION_CHANGED_EVENT =
 export type CurrentAuditorSession = {
   id: string
   name: string
+  department: string
   email: string
   assignedClubIds: string[]
   schoolId: string
@@ -36,6 +37,8 @@ export function loadCurrentAuditor(): CurrentAuditorSession | null {
     if (!parsed?.id || !parsed?.name) return null
     return {
       ...parsed,
+      department:
+        typeof parsed.department === "string" ? parsed.department.trim() : "",
       assignedClubIds: Array.isArray(parsed.assignedClubIds)
         ? parsed.assignedClubIds
         : [],
@@ -54,8 +57,9 @@ export function establishAuditorSession(
   const session: CurrentAuditorSession = {
     id: auditor.id,
     name: auditor.name,
-    email: auditor.email,
-    assignedClubIds: [...auditor.assignedClubIds],
+    department: (auditor.department ?? "").trim(),
+    email: auditor.email ?? "",
+    assignedClubIds: [...(auditor.assignedClubIds ?? [])],
     schoolId: DEMO_SCHOOL_MASTER_ID,
     simulatedBySchool: options?.simulatedBySchool === true,
   }
@@ -84,8 +88,34 @@ export function authenticateAuditor(
   return auditor
 }
 
+/** 監査人ID（AUD-XXXX）＋初期パスワードで照合 */
+export function authenticateAuditorById(
+  auditorId: string,
+  password: string
+): SchoolAuditor | null {
+  const id = auditorId.trim().toUpperCase()
+  const pw = password
+  if (!id || !pw || !/^AUD-\d+$/.test(id)) return null
+  const auditor = loadSchoolAuditors().find(
+    (a) => a.id.trim().toUpperCase() === id
+  )
+  if (!auditor || auditor.initialPassword !== pw) return null
+  return auditor
+}
+
 export function establishAuditorLogin(email: string, password: string): boolean {
   const auditor = authenticateAuditor(email, password)
+  if (!auditor) return false
+  establishAuditorSession(auditor)
+  return true
+}
+
+/** 学校ログイン画面から：AUD-ID で監査人ポータルへ */
+export function establishAuditorLoginById(
+  auditorId: string,
+  password: string
+): boolean {
+  const auditor = authenticateAuditorById(auditorId, password)
   if (!auditor) return false
   establishAuditorSession(auditor)
   return true

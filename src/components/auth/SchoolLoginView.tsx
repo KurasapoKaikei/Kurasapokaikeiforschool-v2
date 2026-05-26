@@ -4,8 +4,11 @@ import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
+import { establishAuditorLoginById } from "@/lib/currentAuditor"
+import { AUDIT_ROUTES } from "@/lib/auditorTheme"
 import {
   authenticateSchool,
+  clearSchoolAdminSession,
   establishSchoolLogin,
 } from "@/lib/schoolLoginSession"
 import { SCHOOL_BRAND_NAVY, SCHOOL_ROUTES } from "@/lib/schoolTheme"
@@ -19,6 +22,17 @@ export function SchoolLoginView() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    const id = loginId.trim()
+    if (/^AUD-/i.test(id)) {
+      if (!establishAuditorLoginById(id, password)) {
+        setError("監査人IDまたはパスワードが正しくありません。")
+        return
+      }
+      clearSchoolAdminSession()
+      window.location.assign(AUDIT_ROUTES.home)
+      return
+    }
 
     if (!authenticateSchool(loginId, password)) {
       setError("ログインIDまたはパスワードが正しくありません。")
@@ -67,7 +81,7 @@ export function SchoolLoginView() {
                   setLoginId(e.target.value)
                   setError(null)
                 }}
-                placeholder="例 admin"
+                placeholder="例 admin または AUD-0001"
                 autoComplete="username"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#005088]/30"
               />

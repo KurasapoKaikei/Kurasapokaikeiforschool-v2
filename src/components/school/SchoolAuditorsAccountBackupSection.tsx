@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 const BACKUP_TABLE_GRID =
   "grid w-full min-w-[82rem] grid-cols-[2rem_minmax(0,0.5fr)_minmax(0,0.48fr)_8.5rem_6.5rem_5.5rem_minmax(0,0.65fr)_minmax(12rem,2.2fr)_3.25rem_5.5rem] items-center gap-x-2"
 
-const EMPTY_TEXT = "登録済みの監査人はありません"
+const EMPTY_TEXT = "登録済の監査人はありません"
 
 function clubNamesByIds(
   clubIds: string[],
@@ -78,7 +78,7 @@ export function SchoolAuditorsAccountBackupSection({
     <div className="mt-8 w-full max-w-none">
       <ActionConfirmDialog {...confirmProps} />
       <h3 className="mb-4 text-lg font-semibold text-[#374151]">
-        登録済みの監査人控え一覧
+        登録済の監査人
       </h3>
       <div className="flex min-h-[200px] w-full flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white shadow-sm">
         <div className="overflow-x-auto">

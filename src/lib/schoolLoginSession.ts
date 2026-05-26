@@ -1,5 +1,6 @@
 /** 学校管理者ログイン（デモ用） */
 
+import { clearCurrentAuditor } from "@/lib/currentAuditor"
 import { clearCurrentSchool, persistCurrentSchool } from "@/lib/currentSchool"
 import { getActiveRegistrationByCredentials } from "@/lib/schoolRegistration"
 
@@ -22,6 +23,7 @@ export function authenticateSchool(loginId: string, password: string): boolean {
 
 export function establishSchoolLogin(loginId: string): void {
   if (typeof window === "undefined") return
+  clearCurrentAuditor()
   const session: SchoolAdminSession = {
     loginId: loginId.trim() || "admin",
     loggedInAt: new Date().toISOString(),

@@ -24,8 +24,6 @@ export type SchoolAuditor = {
   id: string
   /** 監査人氏名 */
   name: string
-  /** 氏名（フリガナ・全角カタカナ） */
-  nameKana: string
   /** 部署 */
   department: string
   /** 監査進捗 */
@@ -44,7 +42,6 @@ export type SchoolAuditor = {
 
 export type SchoolAuditorInput = {
   name: string
-  nameKana: string
   department: string
   phone: string
   email: string
@@ -101,8 +98,6 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   }
   const id = typeof item.id === "string" ? item.id : ""
   const name = typeof item.name === "string" ? item.name.trim() : ""
-  const nameKana =
-    typeof item.nameKana === "string" ? item.nameKana.trim() : ""
   const department =
     typeof item.department === "string" ? item.department.trim() : ""
   const phone = typeof item.phone === "string" ? item.phone.trim() : ""
@@ -127,7 +122,6 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   return {
     id,
     name,
-    nameKana,
     department,
     phone,
     email,
@@ -205,17 +199,15 @@ export function isDuplicateAuditorEmail(
 export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | null {
   const auditors = loadSchoolAuditors()
   const name = input.name.trim()
-  const nameKana = input.nameKana.trim()
   const department = input.department.trim()
   const phone = input.phone.trim()
   const email = input.email.trim()
-  if (!name || !nameKana || !department || !phone || !email) return null
+  if (!name || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors)) return null
   const now = new Date().toISOString()
   const created: SchoolAuditor = {
     id: newAuditorId(auditors),
     name,
-    nameKana,
     department,
     phone,
     email,
@@ -237,17 +229,15 @@ export function updateSchoolAuditor(
   const idx = auditors.findIndex((a) => a.id === id)
   if (idx < 0) return null
   const name = input.name.trim()
-  const nameKana = input.nameKana.trim()
   const department = input.department.trim()
   const phone = input.phone.trim()
   const email = input.email.trim()
-  if (!name || !nameKana || !department || !phone || !email) return null
+  if (!name || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors, id)) return null
   const prev = auditors[idx]!
   const updated: SchoolAuditor = {
     ...prev,
     name,
-    nameKana,
     department,
     phone,
     email,

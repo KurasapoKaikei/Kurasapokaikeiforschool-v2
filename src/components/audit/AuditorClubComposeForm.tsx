@@ -63,13 +63,15 @@ export function AuditorClubComposeForm({
 
   const assignedClubs = useMemo(
     () =>
-      sortedClubs.filter((c) => assignedClubIds.includes(c.id)),
+      (sortedClubs ?? []).filter((c) =>
+        (assignedClubIds ?? []).includes(c?.id ?? "")
+      ),
     [sortedClubs, assignedClubIds]
   )
 
   const defaultClubId =
     initialValues?.targetClubId &&
-    assignedClubIds.includes(initialValues.targetClubId)
+    (assignedClubIds ?? []).includes(initialValues.targetClubId)
       ? initialValues.targetClubId
       : assignedClubs[0]?.id ?? ""
 

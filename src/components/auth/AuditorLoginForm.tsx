@@ -2,7 +2,10 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { establishAuditorLogin } from "@/lib/currentAuditor"
+import {
+  establishAuditorLogin,
+  establishAuditorLoginById,
+} from "@/lib/currentAuditor"
 import { AUDIT_MESSAGE_BOX_ACCENT } from "@/lib/auditorTheme"
 
 type AuditorLoginFormProps = {
@@ -17,8 +20,12 @@ export function AuditorLoginForm({ onSuccess, onBack }: AuditorLoginFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!establishAuditorLogin(email, password)) {
-      setError("メールアドレスまたはパスワードが正しくありません。")
+    const login = email.trim()
+    const ok = /^AUD-/i.test(login)
+      ? establishAuditorLoginById(login, password)
+      : establishAuditorLogin(login, password)
+    if (!ok) {
+      setError("ログインIDまたはパスワードが正しくありません。")
       return
     }
     setError(null)
@@ -29,7 +36,7 @@ export function AuditorLoginForm({ onSuccess, onBack }: AuditorLoginFormProps) {
     <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
       <h1 className="text-xl font-semibold text-[#374151]">監査人ログイン</h1>
       <p className="mt-2 text-sm text-[#6B7280]">
-        登録メールアドレスと初期パスワードでログインしてください。
+        監査人ID（AUD-XXXX）またはメールアドレスと、初期パスワードでログインしてください。
       </p>
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>
@@ -37,11 +44,11 @@ export function AuditorLoginForm({ onSuccess, onBack }: AuditorLoginFormProps) {
             htmlFor="auditorEmail"
             className="mb-1 block text-sm font-medium text-[#374151]"
           >
-            メールアドレス
+            ログインID / メールアドレス
           </label>
           <input
             id="auditorEmail"
-            type="email"
+            type="text"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
