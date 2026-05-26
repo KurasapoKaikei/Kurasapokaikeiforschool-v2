@@ -11,6 +11,8 @@ import {
   isDuplicateClubName,
 } from "@/lib/schoolClubs"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
+import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
+import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
 
 /** クラブ登録・管理（グループ作成と共有データ連動） */
 export function SchoolClubRegisterView() {
@@ -21,6 +23,7 @@ export function SchoolClubRegisterView() {
   const [groupError, setGroupError] = useState<string | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
   const [listResetKey, setListResetKey] = useState(0)
+  const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const isLoaded = groupsLoaded && clubsLoaded
   const trimmedName = clubName.trim()
@@ -61,23 +64,26 @@ export function SchoolClubRegisterView() {
     const group = sortedGroups.find((g) => g.id === selectedGroupId)
     if (!group) return
 
-    const created = registerClub({
-      name: trimmedName,
-      groupId: group.id,
-      groupName: group.name,
-    })
-    if (!created) {
-      setNameError(DUPLICATE_CLUB_NAME_ERROR)
-      return
-    }
+    requestConfirm("register", () => {
+      const created = registerClub({
+        name: trimmedName,
+        groupId: group.id,
+        groupName: group.name,
+      })
+      if (!created) {
+        setNameError(DUPLICATE_CLUB_NAME_ERROR)
+        return
+      }
 
-    setClubName("")
-    setSelectedGroupId("")
-    setListResetKey((k) => k + 1)
+      setClubName("")
+      setSelectedGroupId("")
+      setListResetKey((k) => k + 1)
+    })
   }
 
   return (
     <div className="min-h-full w-full bg-[#F5F5F0] px-6 py-8">
+      <ActionConfirmDialog {...confirmProps} />
       <div className="w-full max-w-none">
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-[#374151]">クラブ登録</h2>

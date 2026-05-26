@@ -12,6 +12,8 @@ import { getSchoolHeaderDisplay } from "@/lib/schoolHeaderDisplay"
 
 import {
 
+  isSchoolAuditorPath,
+
   isSchoolClubPath,
 
   isSchoolMessagesPath,
@@ -74,11 +76,11 @@ function resolveTitle(pathname: string): string {
 
   if (/\/school\/clubs\/[^/]+\/messages/.test(pathname)) return "メッセージ"
 
-  if (
-    pathname === SCHOOL_ROUTES.auditors ||
-    pathname.startsWith(`${SCHOOL_ROUTES.auditors}/`)
-  ) {
-    return SCHOOL_PAGE_TITLES.auditors
+  if (pathname.startsWith(SCHOOL_ROUTES.auditorsRegister)) {
+    return SCHOOL_PAGE_TITLES.auditorRegister
+  }
+  if (isSchoolAuditorPath(pathname)) {
+    return SCHOOL_PAGE_TITLES.auditorList
   }
 
   if (pathname.startsWith(SCHOOL_ROUTES.clubRegister)) {

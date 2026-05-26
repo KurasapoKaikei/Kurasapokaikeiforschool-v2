@@ -13,7 +13,10 @@ import {
 } from "@/lib/schoolContractInfo"
 import type { RegisterOptionsState } from "@/lib/registerPricing"
 import { upsertSchoolMaster } from "@/lib/schoolMasters"
-import { initializeCleanSchoolWorkspace } from "@/lib/schoolWorkspace"
+import {
+  initializeCleanSchoolWorkspace,
+  isProtectedDemoSchool,
+} from "@/lib/schoolWorkspace"
 
 export type RegistrationStatus = "pending" | "active"
 
@@ -394,7 +397,9 @@ export function activateSchoolRegistrationByToken(
     useAuditFlow: activated.options?.auditFlow === true,
   })
 
-  initializeCleanSchoolWorkspace(schoolId)
+  if (!isProtectedDemoSchool(schoolId)) {
+    initializeCleanSchoolWorkspace(schoolId)
+  }
 
   setCachedVerifyResult(tokenFromUrl || storedToken, schoolId)
 
@@ -433,7 +438,9 @@ export function activateSchoolRegistration(schoolId: string): boolean {
     schoolName: activated.school.schoolName,
     useAuditFlow: activated.options?.auditFlow === true,
   })
-  initializeCleanSchoolWorkspace(schoolId)
+  if (!isProtectedDemoSchool(schoolId)) {
+    initializeCleanSchoolWorkspace(schoolId)
+  }
 
   return true
 }

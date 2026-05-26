@@ -9,14 +9,25 @@ import {
 /** 学校→クラブメッセージの正本キー（学校・クラブ双方で同一） */
 export const SCHOOL_TO_CLUB_MESSAGES_KEY = "school_to_club_messages"
 
-const LEGACY_STORAGE_KEY = "portal_messages"
+/** @deprecated school_to_club_messages へ移行済み。クリア時に削除 */
+export const LEGACY_PORTAL_MESSAGES_STORAGE_KEY = "portal_messages"
+
+const LEGACY_STORAGE_KEY = LEGACY_PORTAL_MESSAGES_STORAGE_KEY
 
 export const PORTAL_MESSAGES_CHANGED_EVENT = "kurasaokaikei-portal-messages-changed"
 
 export type PortalMessageKind = "general" | "settlement_deadline"
 
 /** 学校ポータル送信先区分（一覧タブ・履歴フィルタ用） */
-export type PortalMessageAudience = "club" | "staff"
+export type PortalMessageAudience = "club" | "auditor"
+
+/** 旧データ互換（管理担当者 → 監査人） */
+function normalizeMessageAudience(
+  raw: PortalMessageAudience | "staff" | undefined
+): PortalMessageAudience {
+  if (raw === "auditor" || raw === "staff") return "auditor"
+  return "club"
+}
 
 /** 送信元（クラブポータル表示用） */
 export type PortalMessageSender = "school" | "audit" | "system"
@@ -203,7 +214,9 @@ function normalizeRawMessage(raw: unknown): PortalMessage | null {
     sender: normalizeSender(item),
     auditorId:
       typeof item.auditorId === "string" ? item.auditorId.trim() : undefined,
-    audience: item.audience === "staff" ? "staff" : "club",
+    audience: normalizeMessageAudience(
+      item.audience as PortalMessageAudience | "staff" | undefined
+    ),
   }
 }
 
@@ -300,17 +313,29 @@ export type SendPortalMessageInput = {
 }
 
 export function isClubAudienceMessage(m: PortalMessage): boolean {
-  return m.audience !== "staff"
+  return normalizeMessageAudience(m.audience) === "club"
 }
 
+export function isAuditorAudienceMessage(m: PortalMessage): boolean {
+  return normalizeMessageAudience(m.audience) === "auditor"
+}
+
+/** @deprecated 監査人宛てへ名称変更 */
 export function isStaffAudienceMessage(m: PortalMessage): boolean {
-  return m.audience === "staff"
+  return isAuditorAudienceMessage(m)
 }
 
 export const ALL_CLUBS_TARGET_ID = "all"
 
+/** 監査人宛て一括送信（`audience: "auditor"` と組み合わせて解釈） */
+export const ALL_AUDITORS_TARGET_ID = "all"
+
 export function isAllClubsTarget(targetClubId: string): boolean {
   return targetClubId === ALL_CLUBS_TARGET_ID
+}
+
+export function isAllAuditorsTarget(targetId: string): boolean {
+  return targetId === ALL_AUDITORS_TARGET_ID
 }
 
 /** 学校→クラブ送信履歴の送信先表示（全クラブ / 個別） */
@@ -330,8 +355,28 @@ export function loadSchoolClubMessagesForClub(clubId: string): PortalMessage[] {
   )
 }
 
+export function loadSchoolAuditorOutboundMessages(): PortalMessage[] {
+  return loadPortalMessages().filter(isAuditorAudienceMessage)
+}
+
+/** @deprecated loadSchoolAuditorOutboundMessages を使用 */
 export function loadSchoolStaffOutboundMessages(): PortalMessage[] {
-  return loadPortalMessages().filter(isStaffAudienceMessage)
+  return loadSchoolAuditorOutboundMessages()
+}
+
+/** 監査人宛て送信履歴の送信先表示（全監査人 / 個別） */
+export function formatSchoolAuditorOutboundTargetLabel(m: PortalMessage): string {
+  if (isAllAuditorsTarget(m.targetClubId)) return "全監査人宛て"
+  return m.targetClubName ? `監査人：${m.targetClubName}` : "監査人"
+}
+
+/** 監査人向け受信メッセージ（全監査人宛て + 個別宛て） */
+export function getMessagesForAuditor(auditorId: string): PortalMessage[] {
+  return loadPortalMessages().filter(
+    (m) =>
+      isAuditorAudienceMessage(m) &&
+      (isAllAuditorsTarget(m.targetClubId) || m.targetClubId === auditorId)
+  )
 }
 
 export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage {
@@ -363,21 +408,35 @@ export function getMessagesForClub(clubId: string): PortalMessage[] {
   )
 }
 
-const STAFF_ALL_TARGET = "staff-all"
+/** 学校 → 監査人宛てメッセージ送信 */
+export function sendAuditorPortalMessage(input: {
+  subject: string
+  body: string
+  targetAuditorId: string
+  targetAuditorName: string
+}): PortalMessage {
+  return sendPortalMessage({
+    subject: input.subject,
+    body: input.body,
+    targetClubId: input.targetAuditorId,
+    targetClubName: input.targetAuditorName,
+    audience: "auditor",
+    sender: "school",
+  })
+}
 
-/** 管理担当者宛てメッセージ送信（デモ） */
+/** @deprecated sendAuditorPortalMessage を使用 */
 export function sendStaffPortalMessage(input: {
   subject: string
   body: string
   targetStaffId?: string
   targetStaffName?: string
 }): PortalMessage {
-  return sendPortalMessage({
+  return sendAuditorPortalMessage({
     subject: input.subject,
     body: input.body,
-    targetClubId: input.targetStaffId ?? STAFF_ALL_TARGET,
-    targetClubName: input.targetStaffName ?? "管理担当者全員",
-    audience: "staff",
+    targetAuditorId: input.targetStaffId ?? "",
+    targetAuditorName: input.targetStaffName ?? "監査人",
   })
 }
 

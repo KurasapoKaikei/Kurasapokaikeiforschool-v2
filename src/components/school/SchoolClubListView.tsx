@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { SchoolClubDashboardListSection } from "@/components/school/SchoolClubDashboardListSection"
 import { SchoolClubSettlementActions } from "@/components/school/SchoolClubSettlementActions"
-import { SCHOOL_BRAND_NAVY, SCHOOL_ROUTES } from "@/lib/schoolTheme"
+import { SCHOOL_BRAND_NAVY, SCHOOL_PAGE_TITLES, SCHOOL_ROUTES } from "@/lib/schoolTheme"
 import { Button } from "@/components/ui/button"
 
 /** クラブ一覧：活動・決算状況の監視ダッシュボード */
@@ -13,7 +13,9 @@ export function SchoolClubListView() {
       <div className="w-full max-w-none">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-[#374151]">クラブ一覧</h2>
+            <h2 className="text-xl font-semibold text-[#374151]">
+              {SCHOOL_PAGE_TITLES.clubList}
+            </h2>
             <p className="mt-1 text-sm text-[#6B7280]">
               全クラブの決算状況の確認、メッセージ、ポータル閲覧
             </p>

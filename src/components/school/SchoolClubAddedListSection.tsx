@@ -8,6 +8,9 @@ import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { SchoolClubAccountPrintModal } from "@/components/school/SchoolClubAccountPrintModal"
 import { formatClubRegisteredAt } from "@/lib/schoolClubs"
 import type { SchoolClub } from "@/lib/schoolClubs"
+import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
+import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
+import { SchoolPortalSegmentTabs } from "@/components/school/SchoolPortalSegmentTabs"
 
 /** 順序｜クラブ名｜クラブID｜初期PW｜所属グループ｜登録日｜操作 */
 const CLUB_LIST_GRID =
@@ -36,6 +39,7 @@ export function SchoolClubAddedListSection({
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [printOpen, setPrintOpen] = useState(false)
+  const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const isLoaded = groupsLoaded && clubsLoaded
 
@@ -59,18 +63,21 @@ export function SchoolClubAddedListSection({
     if (!trimmed || !editingGroupId) return
     const group = sortedGroups.find((g) => g.id === editingGroupId)
     if (!group) return
-    updateClub(id, {
-      name: trimmed,
-      groupId: group.id,
-      groupName: group.name,
+    requestConfirm("edit", () => {
+      updateClub(id, {
+        name: trimmed,
+        groupId: group.id,
+        groupName: group.name,
+      })
+      setEditingId(null)
     })
-    setEditingId(null)
   }
 
   const handleDelete = (id: string) => {
-    if (!confirm("このクラブを削除してもよろしいですか？")) return
-    deleteClub(id)
-    if (editingId === id) setEditingId(null)
+    requestConfirm("delete", () => {
+      deleteClub(id)
+      if (editingId === id) setEditingId(null)
+    })
   }
 
   const handleDragStart = (id: string) => setDraggedId(id)
@@ -116,6 +123,7 @@ export function SchoolClubAddedListSection({
 
   return (
     <div className="w-full max-w-none rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <ActionConfirmDialog {...confirmProps} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-[#374151]">登録済みクラブ</h3>
         <Button
@@ -136,33 +144,18 @@ export function SchoolClubAddedListSection({
       />
 
       <div className="mb-6">
-        <div className="flex flex-wrap gap-2 border-b border-gray-200">
-          <button
-            type="button"
-            onClick={() => setActiveTab("all")}
-            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === "all"
-                ? "border-[#005088] text-[#005088]"
-                : "border-transparent text-[#6B7280] hover:text-[#374151]"
-            }`}
-          >
-            すべて
-          </button>
-          {sortedGroups.map((group) => (
-            <button
-              key={group.id}
-              type="button"
-              onClick={() => setActiveTab(group.id)}
-              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === group.id
-                  ? "border-[#005088] text-[#005088]"
-                  : "border-transparent text-[#6B7280] hover:text-[#374151]"
-              }`}
-            >
-              {group.name}
-            </button>
-          ))}
-        </div>
+        <SchoolPortalSegmentTabs
+          ariaLabel="グループ"
+          tabs={[
+            { id: "all", label: "すべて" },
+            ...sortedGroups.map((group) => ({
+              id: group.id,
+              label: group.name,
+            })),
+          ]}
+          activeId={activeTab}
+          onChange={setActiveTab}
+        />
       </div>
 
       {!isLoaded ? (
@@ -300,7 +293,7 @@ export function SchoolClubAddedListSection({
                             className="h-8"
                             onClick={() => handleSaveEdit(club.id)}
                           >
-                            保存
+                            変更を保存する
                           </Button>
                           <Button
                             type="button"

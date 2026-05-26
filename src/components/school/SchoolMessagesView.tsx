@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { SchoolPortalSegmentTabs } from "@/components/school/SchoolPortalSegmentTabs"
 import {
   MessageBoxTitleBand,
   SCHOOL_MESSAGE_BOX_BAND_COLOR,
@@ -13,9 +14,9 @@ import {
   type SchoolClubComposeInitial,
 } from "@/components/school/SchoolClubComposeForm"
 import {
-  SchoolStaffComposeForm,
-  type SchoolStaffComposeInitial,
-} from "@/components/school/SchoolStaffComposeForm"
+  SchoolAuditorComposeForm,
+  type SchoolAuditorComposeInitial,
+} from "@/components/school/SchoolAuditorComposeForm"
 import { getSchoolDraftById } from "@/lib/portalDraftMessages"
 import { SCHOOL_ROUTES } from "@/lib/schoolTheme"
 import {
@@ -26,9 +27,10 @@ import {
   SchoolMessageHistoryList,
 } from "@/components/school/SchoolMessageHistoryUi"
 import {
+  formatSchoolAuditorOutboundTargetLabel,
   formatSchoolClubOutboundTargetLabel,
+  loadSchoolAuditorOutboundMessages,
   loadSchoolClubOutboundMessages,
-  loadSchoolStaffOutboundMessages,
   PORTAL_MESSAGES_CHANGED_EVENT,
   type PortalMessage,
 } from "@/lib/portalMessages"
@@ -37,14 +39,14 @@ export { SCHOOL_MESSAGE_LIST_EMPTY_TEXT } from "@/components/school/SchoolMessag
 const MESSAGE_BOX_ACCENT = SCHOOL_MESSAGE_BOX_ACCENT
 const MESSAGE_PAGE_CONTENT_CLASS = SCHOOL_MESSAGE_PAGE_CONTENT_CLASS
 
-type MessageTab = "club" | "staff"
+type MessageTab = "club" | "auditor"
 type ComposeMode = MessageTab | null
 
 type SchoolMessageListViewProps = {
   activeTab: MessageTab
   onTabChange: (tab: MessageTab) => void
   clubHistory: PortalMessage[]
-  staffHistory: PortalMessage[]
+  auditorHistory: PortalMessage[]
   listNotice: string | null
   createButtonLabel: string
   onCreate: () => void
@@ -58,7 +60,7 @@ function SchoolMessageListView({
   activeTab,
   onTabChange,
   clubHistory,
-  staffHistory,
+  auditorHistory,
   listNotice,
   createButtonLabel,
   onCreate,
@@ -66,8 +68,9 @@ function SchoolMessageListView({
   onSelectDetail,
   onBackFromDetail,
 }: SchoolMessageListViewProps) {
-  const displayedHistory = activeTab === "club" ? clubHistory : staffHistory
-  const listTitle = activeTab === "club" ? "クラブ宛て送信履歴" : "管理担当者宛て送信履歴"
+  const displayedHistory = activeTab === "club" ? clubHistory : auditorHistory
+  const listTitle =
+    activeTab === "club" ? "クラブ宛て送信履歴" : "監査人宛て送信履歴"
   const selectedMessage =
     selectedDetailId != null
       ? displayedHistory.find((m) => m.id === selectedDetailId) ?? null
@@ -81,37 +84,17 @@ function SchoolMessageListView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-gray-200 bg-white px-6">
-        <div className={cn(MESSAGE_PAGE_CONTENT_CLASS, "flex gap-1")} role="tablist" aria-label="メッセージ送信先">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "club"}
-            onClick={() => onTabChange("club")}
-            className={cn(
-              "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
-              activeTab === "club"
-                ? "border-[#4A90E2] text-[#4A90E2]"
-                : "border-transparent text-[#6B7280] hover:text-[#374151]"
-            )}
-          >
-            クラブ宛て
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "staff"}
-            onClick={() => onTabChange("staff")}
-            className={cn(
-              "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
-              activeTab === "staff"
-                ? "border-[#4A90E2] text-[#4A90E2]"
-                : "border-transparent text-[#6B7280] hover:text-[#374151]"
-            )}
-          >
-            管理担当者宛て
-          </button>
-        </div>
+      <div className="shrink-0 bg-white px-6 pt-3">
+        <SchoolPortalSegmentTabs
+          className={MESSAGE_PAGE_CONTENT_CLASS}
+          ariaLabel="メッセージ送信先"
+          tabs={[
+            { id: "club", label: "クラブ宛て" },
+            { id: "auditor", label: "監査人宛て" },
+          ]}
+          activeId={activeTab}
+          onChange={(id) => onTabChange(id as MessageTab)}
+        />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
@@ -144,7 +127,10 @@ function SchoolMessageListView({
               className="shrink-0 border-b-2 px-4 py-2"
               style={{ borderColor: MESSAGE_BOX_ACCENT }}
             >
-              <h2 className="text-base font-semibold" style={{ color: MESSAGE_BOX_ACCENT }}>
+              <h2
+                className="text-base font-semibold"
+                style={{ color: MESSAGE_BOX_ACCENT }}
+              >
                 {listTitle}
               </h2>
             </div>
@@ -152,8 +138,8 @@ function SchoolMessageListView({
               history={displayedHistory}
               onSelect={onSelectDetail}
               formatTargetLabel={
-                activeTab === "staff"
-                  ? (m) => m.targetClubName
+                activeTab === "auditor"
+                  ? formatSchoolAuditorOutboundTargetLabel
                   : formatSchoolClubOutboundTargetLabel
               }
             />
@@ -180,19 +166,19 @@ export function SchoolMessagesView() {
   const [clubComposeInitial, setClubComposeInitial] = useState<
     SchoolClubComposeInitial | undefined
   >(undefined)
-  const [staffComposeInitial, setStaffComposeInitial] = useState<
-    SchoolStaffComposeInitial | undefined
+  const [auditorComposeInitial, setAuditorComposeInitial] = useState<
+    SchoolAuditorComposeInitial | undefined
   >(undefined)
   const [clubHistory, setClubHistory] = useState<PortalMessage[]>([])
-  const [staffHistory, setStaffHistory] = useState<PortalMessage[]>([])
+  const [auditorHistory, setAuditorHistory] = useState<PortalMessage[]>([])
 
   const refreshHistory = useCallback(() => {
     try {
       setClubHistory(loadSchoolClubOutboundMessages())
-      setStaffHistory(loadSchoolStaffOutboundMessages())
+      setAuditorHistory(loadSchoolAuditorOutboundMessages())
     } catch {
       setClubHistory([])
-      setStaffHistory([])
+      setAuditorHistory([])
     }
   }, [])
 
@@ -208,6 +194,22 @@ export function SchoolMessagesView() {
   }, [refreshHistory])
 
   useEffect(() => {
+    const compose = searchParams.get("compose")
+    const to = searchParams.get("to")?.trim()
+    if (compose === "auditor" && to) {
+      setActiveTab("auditor")
+      setComposeMode("auditor")
+      setAuditorComposeInitial({
+        targetAuditorId: to,
+        subject: "",
+        body: "",
+      })
+      setListNotice(null)
+      setSelectedDetailId(null)
+      setEditingDraftId(null)
+      return
+    }
+
     const draftId = searchParams.get("draft")
     if (!draftId) return
     const draft = getSchoolDraftById(draftId)
@@ -215,11 +217,14 @@ export function SchoolMessagesView() {
     setEditingDraftId(draft.id)
     setListNotice(null)
     setSelectedDetailId(null)
-    if (draft.audience === "staff") {
-      setActiveTab("staff")
-      setComposeMode("staff")
-      setStaffComposeInitial({
-        targetStaffId: draft.targetId,
+    const isAuditorDraft =
+      draft.audience === "auditor" ||
+      (draft.audience as string) === "staff"
+    if (isAuditorDraft) {
+      setActiveTab("auditor")
+      setComposeMode("auditor")
+      setAuditorComposeInitial({
+        targetAuditorId: draft.targetId,
         subject: draft.subject,
         body: draft.body,
       })
@@ -239,12 +244,12 @@ export function SchoolMessagesView() {
     setListNotice(null)
     setEditingDraftId(null)
     setClubComposeInitial(undefined)
-    setStaffComposeInitial(undefined)
+    setAuditorComposeInitial(undefined)
     if (searchParams.get("draft")) clearComposeQuery(router)
   }
 
   const createButtonLabel =
-    activeTab === "club" ? "クラブへ新規作成" : "管理担当者へ新規作成"
+    activeTab === "club" ? "クラブへ新規作成" : "監査人へ新規作成"
 
   const handleSent = () => {
     refreshHistory()
@@ -258,7 +263,7 @@ export function SchoolMessagesView() {
         accentColor={SCHOOL_MESSAGE_BOX_BAND_COLOR}
         description={
           composeMode == null
-            ? "クラブ・管理担当者へお知らせを配信します"
+            ? "クラブ・監査人へお知らせを配信します"
             : undefined
         }
       />
@@ -270,14 +275,16 @@ export function SchoolMessagesView() {
           editingDraftId={editingDraftId}
           onBack={exitCompose}
           onSent={handleSent}
+          onDraftSaved={refreshHistory}
         />
-      ) : composeMode === "staff" ? (
-        <SchoolStaffComposeForm
-          key={editingDraftId ?? "staff-new"}
-          initialValues={staffComposeInitial}
+      ) : composeMode === "auditor" ? (
+        <SchoolAuditorComposeForm
+          key={editingDraftId ?? "auditor-new"}
+          initialValues={auditorComposeInitial}
           editingDraftId={editingDraftId}
           onBack={exitCompose}
           onSent={handleSent}
+          onDraftSaved={refreshHistory}
         />
       ) : (
         <SchoolMessageListView
@@ -288,7 +295,7 @@ export function SchoolMessagesView() {
             setSelectedDetailId(null)
           }}
           clubHistory={clubHistory}
-          staffHistory={staffHistory}
+          auditorHistory={auditorHistory}
           listNotice={listNotice}
           createButtonLabel={createButtonLabel}
           selectedDetailId={selectedDetailId}
@@ -299,7 +306,7 @@ export function SchoolMessagesView() {
             setSelectedDetailId(null)
             setEditingDraftId(null)
             setClubComposeInitial(undefined)
-            setStaffComposeInitial(undefined)
+            setAuditorComposeInitial(undefined)
             if (searchParams.get("draft")) clearComposeQuery(router)
             setComposeMode(activeTab)
           }}

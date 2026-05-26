@@ -9,6 +9,7 @@ import { useSchoolClubGroups } from "@/contexts/SchoolClubGroupsContext"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
 import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettlementReviewDialog"
+import { SchoolPortalSegmentTabs } from "@/components/school/SchoolPortalSegmentTabs"
 import {
   ensureClubSettlementStatuses,
   getClubSettlementStatus,
@@ -76,32 +77,19 @@ export function SchoolClubDashboardListSection() {
   return (
     <>
     <div className="w-full max-w-none rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-6 flex flex-wrap gap-2 border-b border-gray-200">
-        <button
-          type="button"
-          onClick={() => setActiveTab("all")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "all"
-              ? "border-[#005088] text-[#005088]"
-              : "border-transparent text-[#6B7280] hover:text-[#374151]"
-          }`}
-        >
-          すべて
-        </button>
-        {sortedGroups.map((group) => (
-          <button
-            key={group.id}
-            type="button"
-            onClick={() => setActiveTab(group.id)}
-            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === group.id
-                ? "border-[#005088] text-[#005088]"
-                : "border-transparent text-[#6B7280] hover:text-[#374151]"
-            }`}
-          >
-            {group.name}
-          </button>
-        ))}
+      <div className="mb-6">
+        <SchoolPortalSegmentTabs
+          ariaLabel="グループ"
+          tabs={[
+            { id: "all", label: "すべて" },
+            ...sortedGroups.map((group) => ({
+              id: group.id,
+              label: group.name,
+            })),
+          ]}
+          activeId={activeTab}
+          onChange={setActiveTab}
+        />
       </div>
 
       {!isLoaded ? (

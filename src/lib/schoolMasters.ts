@@ -99,21 +99,32 @@ export function getSchoolMaster(schoolId: string): SchoolMasterRecord | null {
 export function loadSchoolUseAuditFlowForSchool(
   schoolId: string | null | undefined
 ): boolean {
-  ensureSchoolMastersSeeded()
-  const id = schoolId?.trim()
-  if (!id) return true
-  const master = getSchoolMaster(id)
-  return master?.useAuditFlow ?? false
+  try {
+    ensureSchoolMastersSeeded()
+    const id = schoolId?.trim()
+    if (!id) return true
+    const master = getSchoolMaster(id)
+    if (id === DEMO_SCHOOL_MASTER_ID) {
+      return master?.useAuditFlow ?? true
+    }
+    return master?.useAuditFlow ?? false
+  } catch {
+    return schoolId?.trim() === DEMO_SCHOOL_MASTER_ID
+  }
 }
 
 /** ログイン中の学校アカウントに紐づく監査フロー可否 */
 export function loadCurrentSchoolUseAuditFlow(): boolean {
-  const school = loadCurrentSchool()
-  const schoolId =
-    school?.schoolId?.trim() ||
-    school?.contract?.schoolId?.trim() ||
-    DEMO_SCHOOL_MASTER_ID
-  return loadSchoolUseAuditFlowForSchool(schoolId)
+  try {
+    const school = loadCurrentSchool()
+    const schoolId =
+      school?.schoolId?.trim() ||
+      school?.contract?.schoolId?.trim() ||
+      DEMO_SCHOOL_MASTER_ID
+    return loadSchoolUseAuditFlowForSchool(schoolId)
+  } catch {
+    return true
+  }
 }
 
 /** 本登録時など：学校マスタを追加・更新 */

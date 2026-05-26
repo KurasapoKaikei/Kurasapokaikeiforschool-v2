@@ -1,6 +1,6 @@
-import { SchoolAuditorsManageView } from "@/components/school/SchoolAuditorsManageView"
+import { SchoolAuditorsListView } from "@/components/school/SchoolAuditorsListView"
 
-/** クラブ管理：監査人管理 */
-export default function SchoolClubAuditorsPage() {
-  return <SchoolAuditorsManageView />
+/** 監査人管理 > 監査人一覧 */
+export default function SchoolClubAuditorsListPage() {
+  return <SchoolAuditorsListView />
 }

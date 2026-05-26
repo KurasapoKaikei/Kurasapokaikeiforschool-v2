@@ -11,12 +11,25 @@ export const SCHOOL_AUDITORS_KEY = "school_auditors"
 export const SCHOOL_AUDITORS_CHANGED_EVENT =
   "kurasaokaikei-school-auditors-changed"
 
+/** 監査進捗（一覧ステータス表示用） */
+export type AuditorAuditStatus = "before" | "in_progress" | "completed"
+
+export const AUDITOR_AUDIT_STATUS_LABELS: Record<AuditorAuditStatus, string> = {
+  before: "ー",
+  in_progress: "監査中",
+  completed: "終了",
+}
+
 export type SchoolAuditor = {
   id: string
   /** 監査人氏名 */
   name: string
+  /** 氏名（フリガナ・全角カタカナ） */
+  nameKana: string
   /** 部署 */
   department: string
+  /** 監査進捗 */
+  auditStatus: AuditorAuditStatus
   /** 電話番号 */
   phone: string
   /** メールアドレス（ログインID 代替） */
@@ -31,10 +44,17 @@ export type SchoolAuditor = {
 
 export type SchoolAuditorInput = {
   name: string
+  nameKana: string
   department: string
   phone: string
   email: string
   assignedClubIds: string[]
+  auditStatus?: AuditorAuditStatus
+}
+
+function normalizeAuditStatus(raw: unknown): AuditorAuditStatus {
+  if (raw === "in_progress" || raw === "completed") return raw
+  return "before"
 }
 
 function dispatchChanged(): void {
@@ -81,6 +101,8 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   }
   const id = typeof item.id === "string" ? item.id : ""
   const name = typeof item.name === "string" ? item.name.trim() : ""
+  const nameKana =
+    typeof item.nameKana === "string" ? item.nameKana.trim() : ""
   const department =
     typeof item.department === "string" ? item.department.trim() : ""
   const phone = typeof item.phone === "string" ? item.phone.trim() : ""
@@ -105,11 +127,13 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   return {
     id,
     name,
+    nameKana,
     department,
     phone,
     email,
     initialPassword,
     assignedClubIds,
+    auditStatus: normalizeAuditStatus(item.auditStatus),
     createdAt,
     updatedAt,
   }
@@ -181,20 +205,23 @@ export function isDuplicateAuditorEmail(
 export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | null {
   const auditors = loadSchoolAuditors()
   const name = input.name.trim()
+  const nameKana = input.nameKana.trim()
   const department = input.department.trim()
   const phone = input.phone.trim()
   const email = input.email.trim()
-  if (!name || !department || !phone || !email) return null
+  if (!name || !nameKana || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors)) return null
   const now = new Date().toISOString()
   const created: SchoolAuditor = {
     id: newAuditorId(auditors),
     name,
+    nameKana,
     department,
     phone,
     email,
     initialPassword: generateInitialAuditorPassword(),
     assignedClubIds: [...new Set(input.assignedClubIds)],
+    auditStatus: "before",
     createdAt: now,
     updatedAt: now,
   }
@@ -210,18 +237,22 @@ export function updateSchoolAuditor(
   const idx = auditors.findIndex((a) => a.id === id)
   if (idx < 0) return null
   const name = input.name.trim()
+  const nameKana = input.nameKana.trim()
   const department = input.department.trim()
   const phone = input.phone.trim()
   const email = input.email.trim()
-  if (!name || !department || !phone || !email) return null
+  if (!name || !nameKana || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors, id)) return null
+  const prev = auditors[idx]!
   const updated: SchoolAuditor = {
-    ...auditors[idx]!,
+    ...prev,
     name,
+    nameKana,
     department,
     phone,
     email,
     assignedClubIds: [...new Set(input.assignedClubIds)],
+    auditStatus: input.auditStatus ?? prev.auditStatus,
     updatedAt: new Date().toISOString(),
   }
   const next = [...auditors]
@@ -240,4 +271,12 @@ export function deleteSchoolAuditor(id: string): boolean {
 
 export function getSchoolAuditorById(id: string): SchoolAuditor | null {
   return loadSchoolAuditors().find((a) => a.id === id) ?? null
+}
+
+/** メッセージBOX宛先プルダウン用（部署名 ＋ 氏名） */
+export function formatAuditorSelectLabel(auditor: SchoolAuditor): string {
+  const dept = auditor.department.trim()
+  const name = auditor.name.trim()
+  if (dept && name) return `${dept} ${name}`
+  return name || dept || auditor.id
 }

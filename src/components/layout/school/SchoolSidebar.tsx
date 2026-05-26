@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
+  isSchoolAuditorPath,
   isSchoolClubPath,
   isSchoolMessagesPath,
   isSchoolSettingsPath,
@@ -51,10 +52,11 @@ interface MenuItem {
   icon: LucideIcon
   match?: (path: string) => boolean
   subItems?: SubMenuItem[]
-  parentKey?: "club" | "settings" | "messages"
+  parentKey?: "club" | "auditor" | "settings" | "messages"
 }
 
 const CLUB_PARENT_KEY = SCHOOL_ROUTES.clubsBase
+const AUDITORS_PARENT_KEY = SCHOOL_ROUTES.auditorsBase
 const SETTINGS_PARENT_KEY = SCHOOL_ROUTES.settingsBase
 const MESSAGES_PARENT_KEY = SCHOOL_ROUTES.messages
 
@@ -73,6 +75,33 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
       match: (path) => path === SCHOOL_ROUTES.home,
     },
     {
+      title: SCHOOL_PAGE_TITLES.clubs,
+      href: CLUB_PARENT_KEY,
+      icon: Users,
+      parentKey: "club",
+      subItems: clubSubItems,
+    },
+    ...(auditFlowEnabled
+      ? ([
+          {
+            title: SCHOOL_PAGE_TITLES.auditors,
+            href: AUDITORS_PARENT_KEY,
+            icon: ClipboardCheck,
+            parentKey: "auditor",
+            subItems: [
+              {
+                title: SCHOOL_PAGE_TITLES.auditorList,
+                href: SCHOOL_ROUTES.auditors,
+              },
+              {
+                title: SCHOOL_PAGE_TITLES.auditorRegister,
+                href: SCHOOL_ROUTES.auditorsRegister,
+              },
+            ],
+          },
+        ] satisfies MenuItem[])
+      : []),
+    {
       title: SCHOOL_PAGE_TITLES.messages,
       href: MESSAGES_PARENT_KEY,
       icon: Mail,
@@ -85,25 +114,6 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
         },
       ],
     },
-    {
-      title: SCHOOL_PAGE_TITLES.clubs,
-      href: CLUB_PARENT_KEY,
-      icon: Users,
-      parentKey: "club",
-      subItems: clubSubItems,
-    },
-    ...(auditFlowEnabled
-      ? ([
-          {
-            title: SCHOOL_PAGE_TITLES.auditors,
-            href: SCHOOL_ROUTES.auditors,
-            icon: ClipboardCheck,
-            match: (path) =>
-              path === SCHOOL_ROUTES.auditors ||
-              path.startsWith(`${SCHOOL_ROUTES.auditors}/`),
-          },
-        ] satisfies MenuItem[])
-      : []),
     {
       title: SCHOOL_PAGE_TITLES.contract,
       href: SCHOOL_ROUTES.contract,
@@ -158,9 +168,12 @@ function subItemPathMatches(pathname: string, subHref: string): boolean {
     return pathname === SCHOOL_ROUTES.clubList
   }
   if (subHref === SCHOOL_ROUTES.auditors) {
+    return pathname === SCHOOL_ROUTES.auditors
+  }
+  if (subHref === SCHOOL_ROUTES.auditorsRegister) {
     return (
-      pathname === SCHOOL_ROUTES.auditors ||
-      pathname.startsWith(`${SCHOOL_ROUTES.auditors}/`)
+      pathname === SCHOOL_ROUTES.auditorsRegister ||
+      pathname.startsWith(`${SCHOOL_ROUTES.auditorsRegister}/`)
     )
   }
   if (subHref === SCHOOL_ROUTES.settingsCategory) {
@@ -188,12 +201,14 @@ function getSubIcon(href: string): LucideIcon {
   if (href === SCHOOL_ROUTES.settingsAccountTitles) return ListOrdered
   if (href === SCHOOL_ROUTES.settingsStaff) return UserCog
   if (href === SCHOOL_ROUTES.settingsAuditFlow) return SlidersHorizontal
-  if (href === SCHOOL_ROUTES.auditors) return ClipboardCheck
+  if (href === SCHOOL_ROUTES.auditors) return List
+  if (href === SCHOOL_ROUTES.auditorsRegister) return Plus
   return List
 }
 
 function isParentActive(item: MenuItem, pathname: string): boolean {
   if (item.parentKey === "club") return isSchoolClubPath(pathname)
+  if (item.parentKey === "auditor") return isSchoolAuditorPath(pathname)
   if (item.parentKey === "settings") return isSchoolSettingsPath(pathname)
   if (item.parentKey === "messages") return isSchoolMessagesPath(pathname)
   return false
@@ -202,6 +217,7 @@ function isParentActive(item: MenuItem, pathname: string): boolean {
 function initialExpanded(pathname: string): string[] {
   const keys: string[] = []
   if (isSchoolClubPath(pathname)) keys.push(CLUB_PARENT_KEY)
+  if (isSchoolAuditorPath(pathname)) keys.push(AUDITORS_PARENT_KEY)
   if (isSchoolSettingsPath(pathname)) keys.push(SETTINGS_PARENT_KEY)
   if (isSchoolMessagesPath(pathname)) keys.push(MESSAGES_PARENT_KEY)
   return keys
@@ -215,8 +231,18 @@ export function SchoolSidebar() {
   )
 
   useEffect(() => {
-    ensureSchoolMastersSeeded()
-    const sync = () => setAuditFlowEnabled(loadSchoolUseAuditFlow())
+    try {
+      ensureSchoolMastersSeeded()
+    } catch {
+      /* ignore */
+    }
+    const sync = () => {
+      try {
+        setAuditFlowEnabled(loadSchoolUseAuditFlow())
+      } catch {
+        setAuditFlowEnabled(true)
+      }
+    }
     sync()
     window.addEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
     window.addEventListener(SCHOOL_SESSION_CHANGED_EVENT, sync)
@@ -234,6 +260,7 @@ export function SchoolSidebar() {
     setExpandedItems((prev) => {
       const next = new Set(prev)
       if (isSchoolClubPath(pathname)) next.add(CLUB_PARENT_KEY)
+      if (isSchoolAuditorPath(pathname)) next.add(AUDITORS_PARENT_KEY)
       if (isSchoolSettingsPath(pathname)) next.add(SETTINGS_PARENT_KEY)
       if (isSchoolMessagesPath(pathname)) next.add(MESSAGES_PARENT_KEY)
       return Array.from(next)

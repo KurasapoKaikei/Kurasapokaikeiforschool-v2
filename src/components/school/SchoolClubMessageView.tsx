@@ -18,7 +18,7 @@ import {
   PORTAL_MESSAGES_CHANGED_EVENT,
   type PortalMessage,
 } from "@/lib/portalMessages"
-import { SCHOOL_ROUTES } from "@/lib/schoolTheme"
+import { SCHOOL_PAGE_TITLES, SCHOOL_ROUTES } from "@/lib/schoolTheme"
 
 type SchoolClubMessageViewProps = {
   clubId: string
@@ -86,7 +86,7 @@ export function SchoolClubMessageView({ clubId }: SchoolClubMessageViewProps) {
             className="mb-4 inline-flex items-center gap-1 text-sm text-[#005088] hover:underline"
           >
             <ArrowLeft className="h-4 w-4" />
-            クラブ一覧に戻る
+            {SCHOOL_PAGE_TITLES.clubList}に戻る
           </Link>
           <p className="text-sm text-[#6B7280]">
             クラブ（ID: {clubId}）が見つかりません。
@@ -106,7 +106,7 @@ export function SchoolClubMessageView({ clubId }: SchoolClubMessageViewProps) {
               className="inline-flex items-center gap-1 text-sm text-[#005088] hover:underline"
             >
               <ArrowLeft className="h-4 w-4" />
-              クラブ一覧に戻る
+              {SCHOOL_PAGE_TITLES.clubList}に戻る
             </Link>
             <h1 className="mt-2 text-lg font-semibold text-[#374151]">
               {club.name} へのメッセージ
@@ -137,7 +137,7 @@ export function SchoolClubMessageView({ clubId }: SchoolClubMessageViewProps) {
               className="inline-flex items-center gap-1 text-sm text-[#005088] hover:underline"
             >
               <ArrowLeft className="h-4 w-4" />
-              クラブ一覧に戻る
+              {SCHOOL_PAGE_TITLES.clubList}に戻る
             </Link>
             <h1 className="mt-2 text-lg font-semibold text-[#374151]">
               {club.name} へのメッセージ履歴
@@ -165,7 +165,7 @@ export function SchoolClubMessageView({ clubId }: SchoolClubMessageViewProps) {
             className="inline-flex items-center gap-1 text-sm text-[#005088] hover:underline"
           >
             <ArrowLeft className="h-4 w-4" />
-            クラブ一覧に戻る
+            {SCHOOL_PAGE_TITLES.clubList}に戻る
           </Link>
           <h1 className="mt-2 text-lg font-semibold text-[#374151]">
             {club.name} へのメッセージ履歴

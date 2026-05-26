@@ -16,10 +16,10 @@ export function loadSchoolUseAuditFlow(): boolean {
   if (typeof window === "undefined") return true
   try {
     migrateLegacyCheckboxFlag()
+    return loadCurrentSchoolUseAuditFlow()
   } catch {
-    /* ignore */
+    return true
   }
-  return loadCurrentSchoolUseAuditFlow()
 }
 
 function migrateLegacyCheckboxFlag(): void {

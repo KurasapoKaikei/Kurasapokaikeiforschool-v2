@@ -10,7 +10,7 @@ import {
   getImpersonatedClub,
   type ImpersonatedClub,
 } from "@/lib/schoolClubSession"
-import { SCHOOL_ROUTES } from "@/lib/schoolTheme"
+import { SCHOOL_PAGE_TITLES, SCHOOL_ROUTES } from "@/lib/schoolTheme"
 
 /** 学校管理者がクラブポータルを閲覧中のバナー（通常のクラブログイン時は非表示） */
 export function ClubImpersonationBanner() {
@@ -50,7 +50,7 @@ export function ClubImpersonationBanner() {
             href={SCHOOL_ROUTES.clubList}
             className="font-medium text-[#005088] hover:underline"
           >
-            クラブ一覧に戻る
+            {SCHOOL_PAGE_TITLES.clubList}に戻る
           </Link>
           <button
             type="button"

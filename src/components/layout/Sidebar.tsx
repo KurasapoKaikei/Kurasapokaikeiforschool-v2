@@ -38,18 +38,11 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
-    title: "クラブポータル",
+    title: "ポータルトップ",
     href: clubPath("/dashboard"),
     icon: LayoutDashboard,
     color: "dashboard",
     colorHex: "#E66A84", // ピンク
-  },
-  {
-    title: "メッセージBOX",
-    href: clubPath("/messages"),
-    icon: Mail,
-    color: "dashboard",
-    colorHex: "#4A90E2",
   },
   {
     title: "入出金登録",
@@ -110,6 +103,20 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
+    title: "メッセージBOX",
+    href: clubPath("/messages"),
+    icon: Mail,
+    color: "dashboard",
+    colorHex: "#4A90E2",
+  },
+  {
+    title: "決算",
+    href: clubPath("/settlement"),
+    icon: ClipboardCheck,
+    color: "settings",
+    colorHex: "#005088",
+  },
+  {
     title: "設定",
     href: clubPath("/settings"),
     icon: Settings,
@@ -121,13 +128,6 @@ const menuItems: MenuItem[] = [
       { title: "カテゴリー設定", href: clubPath("/settings/category") },
       { title: "科目設定", href: clubPath("/settings/account-titles") },
     ],
-  },
-  {
-    title: "決算",
-    href: clubPath("/settlement"),
-    icon: ClipboardCheck,
-    color: "settings",
-    colorHex: "#005088",
   },
   {
     title: "操作ガイド",

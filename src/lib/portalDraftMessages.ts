@@ -1,7 +1,9 @@
 /** 学校ポータル：メッセージ下書き（localStorage） */
 
 import {
+  ALL_AUDITORS_TARGET_ID,
   ALL_CLUBS_TARGET_ID,
+  isAllAuditorsTarget,
   isAllClubsTarget,
   type PortalMessageAudience,
 } from "@/lib/portalMessages"
@@ -72,14 +74,19 @@ function normalizeDraft(raw: unknown): SchoolMessageDraft | null {
   const subject = typeof item.subject === "string" ? item.subject : ""
   const body = typeof item.body === "string" ? item.body : ""
   if (!id) return null
-  const audience = item.audience === "staff" ? "staff" : "club"
-  const targetId = typeof item.targetId === "string" ? item.targetId : ALL_CLUBS_TARGET_ID
+  const rawAudience = item.audience as PortalMessageAudience | "staff" | undefined
+  const audience =
+    rawAudience === "auditor" || rawAudience === "staff" ? "auditor" : "club"
+  const defaultTargetId =
+    audience === "auditor" ? ALL_AUDITORS_TARGET_ID : ALL_CLUBS_TARGET_ID
+  const targetId =
+    typeof item.targetId === "string" ? item.targetId : defaultTargetId
   const targetName =
     typeof item.targetName === "string"
       ? item.targetName
       : audience === "club"
         ? "全クラブ"
-        : "管理担当者"
+        : "全監査人"
   const updatedAt =
     typeof item.updatedAt === "string" ? item.updatedAt : new Date().toISOString()
   return {
@@ -157,7 +164,10 @@ export function getSchoolDraftById(id: string): SchoolMessageDraft | null {
 
 /** 下書き一覧の送信先表示 */
 export function formatSchoolDraftTargetLabel(d: SchoolMessageDraft): string {
-  if (d.audience === "staff") return d.targetName
+  if (d.audience === "auditor") {
+    if (isAllAuditorsTarget(d.targetId)) return "全監査人宛て"
+    return d.targetName ? `監査人：${d.targetName}` : "監査人"
+  }
   if (isAllClubsTarget(d.targetId)) return "全クラブ宛て"
   return `個別：${d.targetName}`
 }

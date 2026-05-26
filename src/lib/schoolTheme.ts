@@ -47,7 +47,7 @@ export type SchoolFiscalYearLabel = (typeof SCHOOL_FISCAL_YEARS)[number]
 export const SCHOOL_PAGE_TITLES = {
   home: "管理者ポータル",
   clubs: "クラブ管理",
-  clubList: "クラブ一覧",
+  clubList: "クラブダッシュボード",
   clubGroups: "グループ作成",
   clubRegister: "クラブ登録",
   messages: "メッセージBOX",
@@ -59,6 +59,8 @@ export const SCHOOL_PAGE_TITLES = {
   settingsStaff: "担当者設定",
   settingsAuditFlow: "監査運用設定",
   auditors: "監査人管理",
+  auditorList: "監査人ダッシュボード",
+  auditorRegister: "監査人登録",
   contract: "契約状況",
   guide: "操作ガイド",
 } as const
@@ -79,6 +81,8 @@ export const SCHOOL_ROUTES = {
   settingsAuditFlow: "/school/settings/audit-flow",
   settingsBase: "/school/settings",
   auditors: "/school/clubs/auditors",
+  auditorsRegister: "/school/clubs/auditors/register",
+  auditorsBase: "/school/clubs/auditors",
   contract: "/school/contract",
   guide: "/school/guide",
 } as const
@@ -88,9 +92,26 @@ export function schoolClubMessagesPath(clubId: string): string {
   return `${SCHOOL_ROUTES.clubsBase}/${clubId}/messages`
 }
 
+/** 監査人宛てメッセージ新規作成（宛先プリセット） */
+export function schoolAuditorComposeMessagePath(auditorId: string): string {
+  const params = new URLSearchParams({
+    compose: "auditor",
+    to: auditorId,
+  })
+  return `${SCHOOL_ROUTES.messages}?${params.toString()}`
+}
+
 export const CLUB_PORTAL_DASHBOARD = "/club/dashboard"
 
+export function isSchoolAuditorPath(pathname: string): boolean {
+  return (
+    pathname === SCHOOL_ROUTES.auditors ||
+    pathname.startsWith(`${SCHOOL_ROUTES.auditorsBase}/`)
+  )
+}
+
 export function isSchoolClubPath(pathname: string): boolean {
+  if (isSchoolAuditorPath(pathname)) return false
   return (
     pathname === SCHOOL_ROUTES.clubList ||
     pathname.startsWith(`${SCHOOL_ROUTES.clubsBase}/`)
