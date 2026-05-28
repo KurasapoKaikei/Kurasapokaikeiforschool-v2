@@ -151,6 +151,7 @@ function subItemPathMatches(pathname: string, subHref: string): boolean {
 }
 
 export function Sidebar() {
+  const navyColor = "#001e43"
   const pathname = usePathname()
   const [expandedItems, setExpandedItems] = useState<string[]>(() => {
     const initialExpanded: string[] = []
@@ -224,7 +225,7 @@ export function Sidebar() {
                     className={cn(
                       "group relative flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                       isActive
-                        ? "bg-[#FCE7F3] text-[#374151]"
+                        ? "bg-[#E6ECF5] text-[#001e43]"
                         : "text-[#374151] hover:bg-gray-50"
                     )}
                   >
@@ -257,7 +258,7 @@ export function Sidebar() {
                     className={cn(
                       "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                       isActive
-                        ? "bg-[#FCE7F3] text-[#374151]"
+                        ? "bg-[#E6ECF5] text-[#001e43]"
                         : "text-[#374151] hover:bg-gray-50"
                     )}
                   >
@@ -293,7 +294,7 @@ export function Sidebar() {
                           className={cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
                             subIsActive
-                              ? "bg-[#FCE7F3] text-[#374151] font-medium"
+                              ? "bg-[#E6ECF5] text-[#001e43] font-medium"
                               : "text-[#6B7280] hover:bg-gray-50 hover:text-[#374151]"
                           )}
                         >
@@ -302,7 +303,7 @@ export function Sidebar() {
                               "h-1.5 w-1.5 rounded-full",
                               subIsActive ? item.colorHex : "bg-gray-300"
                             )}
-                            style={subIsActive ? { backgroundColor: item.colorHex } : {}}
+                            style={subIsActive ? { backgroundColor: navyColor } : {}}
                           />
                           <span>{subItem.title}</span>
                         </Link>
