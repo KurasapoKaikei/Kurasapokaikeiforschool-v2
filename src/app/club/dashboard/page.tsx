@@ -14,14 +14,12 @@ import {
 } from "@/lib/clubPortalData"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
-import { ClubPortalYearBar } from "@/components/club/ClubPortalYearBar"
 import type { ClubPortalMessageView } from "@/lib/portalMessages"
 import { type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
 
 export default function DashboardPage() {
   const router = useRouter()
   const { activeClub, isEmptyPortal, refresh } = useClubSession()
-  const [selectedYear, setSelectedYear] = useState("2026年度")
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -185,11 +183,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col bg-[#F5F5F0]">
-      <ClubPortalYearBar
-        selectedYear={selectedYear}
-        onYearChange={setSelectedYear}
-      />
-
       {/* ダッシュボード本体のみ 67vh（サイドバーには適用しない） */}
       <div className="flex h-[67vh] max-h-[67vh] min-h-0 flex-col overflow-hidden px-6 pb-3 pt-2">
         <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-3">

@@ -2,20 +2,13 @@
 
 import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
-import { AuditorAuditStatusBadge } from "@/components/school/AuditorAuditStatusBadge"
-import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
-import {
-  auditStatusFromSettlement,
-  getClubMemberCount,
-  getClubSettlementSubmissionLabel,
-} from "@/lib/auditorClubDashboard"
-import type { ClubSettlementStatus } from "@/lib/schoolClubSettlement"
+import { useClubSettlementLocked } from "@/components/audit/useClubSettlementLocked"
+import { getClubMemberCount } from "@/lib/auditorClubDashboard"
 import type { SchoolClub } from "@/lib/schoolClubs"
 import { cn } from "@/lib/utils"
 
 type AuditorClubDashboardCardProps = {
   club: SchoolClub
-  settlementStatus: ClubSettlementStatus
   onReview: () => void
 }
 
@@ -34,14 +27,33 @@ function DataRow({
   )
 }
 
+function StatusBadge({
+  label,
+  variant,
+}: {
+  label: string
+  variant: "muted" | "navy"
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex min-w-[3.5rem] justify-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        variant === "navy"
+          ? "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]"
+          : "border-gray-200 bg-gray-100 text-[#6B7280]"
+      )}
+    >
+      {label}
+    </span>
+  )
+}
+
 export function AuditorClubDashboardCard({
   club,
-  settlementStatus,
   onReview,
 }: AuditorClubDashboardCardProps) {
-  const submissionLabel = getClubSettlementSubmissionLabel(settlementStatus)
-  const auditStatus = auditStatusFromSettlement(settlementStatus)
-  const canReview = settlementStatus === "submitted"
+  const isClubSubmitted = useClubSettlementLocked()
+  const canReview = isClubSubmitted
   const memberCount = getClubMemberCount(club?.id ?? "")
   const clubName = club?.name?.trim() || "（名称未設定）"
   const clubId = club?.id ?? "—"
@@ -67,22 +79,16 @@ export function AuditorClubDashboardCard({
           </span>
         </DataRow>
         <DataRow label="当期の決算提出状況">
-          <span
-            className={cn(
-              "font-semibold",
-              submissionLabel === "提出済"
-                ? "text-emerald-600"
-                : "text-red-600"
-            )}
-          >
-            {submissionLabel}
-          </span>
-        </DataRow>
-        <DataRow label="決算ワークフロー">
-          <SchoolClubSettlementBadge status={settlementStatus} />
+          <StatusBadge
+            label={isClubSubmitted ? "提出済" : "未提出"}
+            variant={isClubSubmitted ? "navy" : "muted"}
+          />
         </DataRow>
         <DataRow label="監査ステータス">
-          <AuditorAuditStatusBadge status={auditStatus} />
+          <StatusBadge
+            label={isClubSubmitted ? "監査中" : "未着手"}
+            variant={isClubSubmitted ? "navy" : "muted"}
+          />
         </DataRow>
       </div>
 

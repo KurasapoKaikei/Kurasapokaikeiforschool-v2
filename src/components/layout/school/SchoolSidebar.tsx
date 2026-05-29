@@ -293,6 +293,7 @@ export function SchoolSidebar() {
           >
             <KurasapoBrandLogo />
           </Link>
+          <p className="mt-2 text-xs font-medium text-[#6B7280]">学校管理者ポータル</p>
         </div>
         <p className="px-5 py-2 text-xs font-medium text-indigo-700/80">学校管理</p>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">

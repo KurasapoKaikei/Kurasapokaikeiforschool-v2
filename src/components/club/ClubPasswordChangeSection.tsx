@@ -12,7 +12,11 @@ import {
 } from "@/lib/schoolClubs"
 
 /** クラブ設定：パスワード変更（デモ用） */
-export function ClubPasswordChangeSection() {
+export function ClubPasswordChangeSection({
+  actionDisabled = false,
+}: {
+  actionDisabled?: boolean
+}) {
   const [clubId, setClubId] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -166,7 +170,7 @@ export function ClubPasswordChangeSection() {
 
         <Button
           type="submit"
-          disabled={!club}
+          disabled={!club || actionDisabled}
           className="bg-[#E66A84] text-white hover:opacity-90"
         >
           変更する

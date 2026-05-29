@@ -206,6 +206,7 @@ export function Sidebar() {
       {/* ロゴ・ヘッダー */}
       <div className="shrink-0 border-b border-gray-200 px-4 py-4">
         <KurasapoBrandLogo />
+        <p className="mt-2 text-xs font-medium text-[#6B7280]">クラブポータル</p>
       </div>
 
       {/* ナビゲーションメニュー（項目が多い場合はサイドバー内のみスクロール） */}

@@ -1,16 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
+import { usePortalFiscalYear } from "@/contexts/PortalFiscalYearContext"
 import { cn } from "@/lib/utils"
 import {
-  SCHOOL_FISCAL_YEARS,
   SCHOOL_PAGE_TITLES,
   SCHOOL_ROUTES,
   SCHOOL_THEME,
-  type SchoolFiscalYearLabel,
 } from "@/lib/schoolTheme"
+import { DEFAULT_PORTAL_FISCAL_YEAR } from "@/lib/portalBrand"
 import {
   BookOpen,
   Building2,
@@ -19,8 +19,6 @@ import {
   Plus,
   Users,
 } from "lucide-react"
-
-const CURRENT_YEAR: SchoolFiscalYearLabel = "2026年度"
 
 type SummaryCard = {
   title: string
@@ -34,8 +32,8 @@ type SummaryCard = {
 
 export function SchoolMypageView() {
   const { clubs, isLoaded } = useSchoolClubs()
-  const [selectedYear, setSelectedYear] = useState<SchoolFiscalYearLabel>(CURRENT_YEAR)
-  const isCurrentYear = selectedYear === CURRENT_YEAR
+  const { selectedYear } = usePortalFiscalYear()
+  const isCurrentYear = selectedYear === DEFAULT_PORTAL_FISCAL_YEAR
 
   const registeredClubCount = clubs.length
 
@@ -85,27 +83,6 @@ export function SchoolMypageView() {
 
   return (
     <div className="min-h-full bg-[#F5F5F0]">
-      <div className="border-b border-gray-200 bg-white px-6 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-2 text-xs text-[#6B7280]">年度切替:</span>
-          {SCHOOL_FISCAL_YEARS.map((year) => (
-            <button
-              key={year}
-              type="button"
-              onClick={() => setSelectedYear(year)}
-              className={cn(
-                "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                selectedYear === year
-                  ? "bg-blue-950 text-white shadow-sm"
-                  : "bg-gray-100 text-[#374151] hover:bg-gray-200"
-              )}
-            >
-              {year}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="px-6 py-6">
         {!isCurrentYear ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center shadow-sm">

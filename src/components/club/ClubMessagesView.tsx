@@ -8,7 +8,6 @@ import {
   MessageBoxTitleBand,
 } from "@/components/shared/MessageBoxTitleBand"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
-import { ClubPortalYearBar } from "@/components/club/ClubPortalYearBar"
 import { useClubSession } from "@/contexts/ClubSessionContext"
 import { getPortalMessages, LEGACY_INBOX_CLUB_ID } from "@/lib/clubPortalData"
 import {
@@ -22,7 +21,6 @@ const CLUB_PAGE_CONTENT_CLASS = "px-6 py-4 pb-8"
 /** クラブ：メッセージBOX（ダッシュボードと同一データ） */
 export function ClubMessagesView() {
   const { activeClub, isHydrated, isLegacyGlobalPortal } = useClubSession()
-  const [selectedYear, setSelectedYear] = useState("2026年度")
   const [messages, setMessages] = useState<ClubPortalMessageView[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -82,11 +80,6 @@ export function ClubMessagesView() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F5F5F0]">
-      <ClubPortalYearBar
-        selectedYear={selectedYear}
-        onYearChange={setSelectedYear}
-      />
-
       <div className={`flex min-h-0 flex-1 flex-col ${CLUB_PAGE_CONTENT_CLASS}`}>
         <MessageBoxTitleBand
           accentColor={CLUB_MESSAGE_BOX_BAND_COLOR}

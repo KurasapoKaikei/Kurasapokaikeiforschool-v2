@@ -17,6 +17,7 @@ import {
   type CollectionSchedule,
 } from "@/utils/localStorage"
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -88,10 +89,21 @@ export default function LedgerCashBankPage() {
   const [startDate, setStartDate] = useState<string>(getFiscalYearStart())
   const [endDate, setEndDate] = useState<string>(getTodayString())
   const [isInitialized, setIsInitialized] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const refreshTransactions = () => setTransactions(getTransactions())
 
   const handleDelete = (id: string) => {
+    if (isLocked) return
     if (!confirm("この取引を削除しますか？")) return
     if (deleteTransaction(id)) {
       refreshTransactions()
@@ -134,6 +146,7 @@ export default function LedgerCashBankPage() {
   }
 
   const handleEdit = (t: Transaction) => {
+    if (isLocked) return
     // 振替の片側レコードは登録履歴と同じく「振替専用編集モード」へ遷移する
     if (isTransferLeg(t)) {
       const pair = resolveTransferPair(t)
@@ -149,6 +162,7 @@ export default function LedgerCashBankPage() {
     router.push(getEditUrl(t, editReturnTo))
   }
   const handleOpenCollection = (t: Transaction) => {
+    if (isLocked) return
     if (t.type !== "collection" || !t.collectionMemberId) return
     const month = Number(t.date.slice(5, 7))
     const params = new URLSearchParams()
@@ -372,6 +386,7 @@ export default function LedgerCashBankPage() {
             現金・預金出納帳
           </h2>
           <p className="text-sm text-[#6B7280] mt-1">現金・預金科目の入出金一覧</p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-3" />
         </div>
 
         {/* 検索・絞り込み */}
@@ -603,8 +618,9 @@ export default function LedgerCashBankPage() {
                           row.transaction.type === "collection" ? (
                             <button
                               type="button"
+                              disabled={isLocked}
                               onClick={() => handleOpenCollection(row.transaction!)}
-                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
+                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title="集金タブへ移動"
                               aria-label="集金タブへ移動"
                             >
@@ -613,8 +629,9 @@ export default function LedgerCashBankPage() {
                           ) : (
                             <button
                               type="button"
+                              disabled={isLocked}
                               onClick={() => handleEdit(row.transaction!)}
-                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384]"
+                              className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title={isCsvLinkedTransaction(row.transaction) ? "CSV一括編集へ" : "明細を編集"}
                               aria-label="編集"
                             >
@@ -632,8 +649,9 @@ export default function LedgerCashBankPage() {
                         ) : row.transaction ? (
                           <button
                             type="button"
+                            disabled={isLocked}
                             onClick={() => handleDelete(row.transactionId!)}
-                            className="p-1.5 rounded hover:bg-red-100 text-red-600"
+                            className="p-1.5 rounded hover:bg-red-100 text-red-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                             title="削除"
                             aria-label="削除"
                           >

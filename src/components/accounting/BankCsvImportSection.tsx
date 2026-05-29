@@ -208,6 +208,7 @@ type Props = {
   cashAccountTitles: AccountTitle[]
   transactions: Transaction[]
   onImported: () => void
+  registerDisabled?: boolean
 }
 
 export function BankCsvImportSection({
@@ -216,6 +217,7 @@ export function BankCsvImportSection({
   cashAccountTitles,
   transactions,
   onImported,
+  registerDisabled = false,
 }: Props) {
   const { currentOperatorName } = useUserInfo()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -611,7 +613,8 @@ export function BankCsvImportSection({
           <Button
             type="button"
             style={{ backgroundColor: "#A3BC68" }}
-            className="text-white"
+            className="text-white disabled:opacity-40"
+            disabled={registerDisabled}
             onClick={() => fileInputRef.current?.click()}
           >
             CSVを選択
@@ -772,7 +775,7 @@ export function BankCsvImportSection({
 
             <Button
               type="button"
-              disabled={!canRegister}
+              disabled={!canRegister || registerDisabled}
               className="w-full max-w-md py-6 text-base font-semibold text-white rounded-lg disabled:opacity-40"
               style={{ backgroundColor: "#A3BC68" }}
               onClick={handleBulkRegister}

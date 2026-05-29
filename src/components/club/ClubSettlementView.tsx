@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { ClipboardCheck } from "lucide-react"
 import { useClubSession } from "@/contexts/ClubSessionContext"
-import { ClubPortalYearBar } from "@/components/club/ClubPortalYearBar"
+import { usePortalFiscalYear } from "@/contexts/PortalFiscalYearContext"
 import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
 import { getPortalMessages } from "@/lib/clubPortalData"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
@@ -29,7 +29,7 @@ const STATUS_HINT: Record<ClubSettlementStatus, string> = {
 /** クラブ：決算提出・ステータス管理 */
 export function ClubSettlementView() {
   const { activeClub, isHydrated, isLegacyGlobalPortal } = useClubSession()
-  const [selectedYear, setSelectedYear] = useState("2026年度")
+  const { selectedYear } = usePortalFiscalYear()
   const [settlementStatus, setSettlementStatus] = useState<ClubSettlementStatus | null>(
     null
   )
@@ -81,11 +81,6 @@ export function ClubSettlementView() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F0]">
-      <ClubPortalYearBar
-        selectedYear={selectedYear}
-        onYearChange={setSelectedYear}
-      />
-
       <div className="px-6 py-6">
         <div className="mb-6 flex items-center gap-3">
           <div

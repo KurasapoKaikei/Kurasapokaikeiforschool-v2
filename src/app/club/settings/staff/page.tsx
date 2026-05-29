@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useUserInfo } from "@/contexts/UserInfoContext"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 const MAX_STAFF = 5
 
@@ -12,6 +13,16 @@ export default function StaffSettingsPage() {
     Array.from({ length: MAX_STAFF }, (_, i) => userInfo.staffNames[i] ?? "")
   )
   const [staff1Error, setStaff1Error] = useState<string | null>(null)
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   useEffect(() => {
     setFields(Array.from({ length: MAX_STAFF }, (_, i) => userInfo.staffNames[i] ?? ""))
@@ -19,6 +30,7 @@ export default function StaffSettingsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
     const first = fields[0]?.trim() ?? ""
     if (!first) {
       setStaff1Error("担当者1は必須です")
@@ -42,6 +54,7 @@ export default function StaffSettingsPage() {
           <p className="text-sm text-[#6B7280]">
             会計入力の担当者（最大{MAX_STAFF}名）を登録します。担当者1は必須です。担当者2以降の空欄は保存されません。
           </p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
         </div>
 
         <form noValidate onSubmit={handleSubmit} className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
@@ -88,7 +101,7 @@ export default function StaffSettingsPage() {
           })}
 
           <div className="flex justify-end gap-3 pt-2">
-            <Button type="submit" className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-8">
+            <Button type="submit" disabled={isLocked} className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-8">
               保存する
             </Button>
           </div>

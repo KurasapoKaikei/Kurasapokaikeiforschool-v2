@@ -19,6 +19,7 @@ import {
   type CollectionSchedule,
   type CollectionRecord,
 } from "@/utils/localStorage"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -71,10 +72,12 @@ function MemoCell({
   subjectId,
   year,
   month,
+  isLocked,
 }: {
   subjectId?: string
   year: number
   month: number
+  isLocked: boolean
 }) {
   const [memo, setMemo] = useState("")
   const [isFocused, setIsFocused] = useState(false)
@@ -90,9 +93,9 @@ function MemoCell({
 
   const handleBlur = useCallback(() => {
     setIsFocused(false)
-    if (!subjectId) return
+    if (!subjectId || isLocked) return
     saveMonthlyNote(subjectId, year, month, memo)
-  }, [subjectId, year, month, memo])
+  }, [subjectId, year, month, memo, isLocked])
 
   return (
     <input
@@ -101,7 +104,7 @@ function MemoCell({
       onChange={(e) => setMemo(e.target.value)}
       onFocus={() => setIsFocused(true)}
       onBlur={handleBlur}
-      disabled={!subjectId}
+      disabled={!subjectId || isLocked}
       lang="ja"
       autoComplete="off"
       className={`w-full px-2 py-1.5 text-sm text-center text-[#374151] bg-transparent border rounded focus:outline-none focus:ring-1 focus:ring-[#68A384] ${
@@ -125,6 +128,7 @@ export default function SummaryPage() {
   const [openingCarryover, setOpeningCarryover] = useState(0)
   const fiscalYear = getCurrentFiscalYear()
   const [selectedMonth, setSelectedMonth] = useState<number>(getCurrentMonth())
+  const [isLocked, setIsLocked] = useState(false)
   const categoryOrderMap = useMemo(
     () => new Map(categories.map((c) => [c.id, c.order])),
     [categories]
@@ -149,6 +153,15 @@ export default function SummaryPage() {
   useEffect(() => {
     refreshAll()
   }, [refreshAll])
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   useEffect(() => {
     const interval = setInterval(refreshAll, 500)
@@ -511,6 +524,7 @@ export default function SummaryPage() {
         <h2 className="text-xl font-semibold" style={{ color: THEME_COLOR }}>
           収支集計表
         </h2>
+        <SettlementLockAlert isLocked={isLocked} className="mt-3" />
       </div>
 
       {/* 年次/月次 切替タブ */}
@@ -914,6 +928,7 @@ export default function SummaryPage() {
                           subjectId={row.subjectId}
                           year={displayYear}
                           month={selectedMonth}
+                          isLocked={isLocked}
                         />
                       </td>
                     </tr>
@@ -976,6 +991,7 @@ export default function SummaryPage() {
                           subjectId={row.subjectId}
                           year={displayYear}
                           month={selectedMonth}
+                          isLocked={isLocked}
                         />
                       </td>
                     </tr>

@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useState } from "react"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { AppShellHeader } from "@/components/layout/AppShellHeader"
+import { PortalFiscalYearProvider } from "@/contexts/PortalFiscalYearContext"
 import { isSchoolImpersonatingClub } from "@/lib/clubPortalAccess"
 import { CLUB_PORTAL_SESSION_CHANGED_EVENT } from "@/lib/clubPortalSessionEvents"
 
@@ -26,6 +27,7 @@ export function ClubAppShell({ children }: { children: ReactNode }) {
   }, [])
 
   return (
+    <PortalFiscalYearProvider>
     <div className="flex min-h-screen overflow-x-hidden bg-[#F5F5F0]">
       {/* サイドバー：メイン領域より前面に固定し、リンククリックを確実に通す */}
       <Sidebar />
@@ -45,5 +47,6 @@ export function ClubAppShell({ children }: { children: ReactNode }) {
         </div>
       </main>
     </div>
+    </PortalFiscalYearProvider>
   )
 }

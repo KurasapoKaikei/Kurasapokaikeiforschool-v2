@@ -1,22 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { AuditorAuditStatusBadge } from "@/components/school/AuditorAuditStatusBadge"
-import { SchoolClubSettlementBadge } from "@/components/school/SchoolClubSettlementBadge"
+import { useClubSettlementLocked } from "@/components/audit/useClubSettlementLocked"
 import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettlementReviewDialog"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
-import {
-  auditStatusFromSettlement,
-  getClubMemberCount,
-  getClubSettlementSubmissionLabel,
-} from "@/lib/auditorClubDashboard"
+import { getClubMemberCount } from "@/lib/auditorClubDashboard"
+import { cn } from "@/lib/utils"
 import { loadCurrentAuditor } from "@/lib/currentAuditor"
-import {
-  getClubSettlementStatus,
-  SETTLEMENT_CHANGED_EVENT,
-} from "@/lib/schoolClubSettlement"
 import { AUDIT_BRAND_ORANGE, AUDIT_ROUTES } from "@/lib/auditorTheme"
 
 type AuditorClubReviewViewProps = {
@@ -26,22 +18,11 @@ type AuditorClubReviewViewProps = {
 export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
   const { sortedClubs, isLoaded } = useSchoolClubs()
   const [reviewOpen, setReviewOpen] = useState(false)
-  const [status, setStatus] = useState(getClubSettlementStatus(clubId))
+  const isClubSubmitted = useClubSettlementLocked()
 
   const session = loadCurrentAuditor()
   const club = sortedClubs.find((c) => c.id === clubId)
   const isAssigned = session?.assignedClubIds.includes(clubId) ?? false
-
-  useEffect(() => {
-    const sync = () => setStatus(getClubSettlementStatus(clubId))
-    sync()
-    window.addEventListener(SETTLEMENT_CHANGED_EVENT, sync)
-    window.addEventListener("storage", sync)
-    return () => {
-      window.removeEventListener(SETTLEMENT_CHANGED_EVENT, sync)
-      window.removeEventListener("storage", sync)
-    }
-  }, [clubId])
 
   if (!session) {
     return (
@@ -70,8 +51,6 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
     )
   }
 
-  const auditStatus = auditStatusFromSettlement(status)
-
   return (
     <div className="min-h-full px-6 py-8">
       <SchoolSettlementReviewDialog
@@ -97,20 +76,32 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
             <dt className="text-[#6B7280]">当期の決算提出状況</dt>
-            <dd className="font-medium text-[#374151]">
-              {getClubSettlementSubmissionLabel(status)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
-            <dt className="text-[#6B7280]">決算ワークフロー</dt>
             <dd>
-              <SchoolClubSettlementBadge status={status} />
+              <span
+                className={cn(
+                  "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                  isClubSubmitted
+                    ? "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]"
+                    : "border-gray-200 bg-gray-100 text-[#6B7280]"
+                )}
+              >
+                {isClubSubmitted ? "提出済" : "未提出"}
+              </span>
             </dd>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <dt className="text-[#6B7280]">監査ステータス</dt>
             <dd>
-              <AuditorAuditStatusBadge status={auditStatus} />
+              <span
+                className={cn(
+                  "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                  isClubSubmitted
+                    ? "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]"
+                    : "border-gray-200 bg-gray-100 text-[#6B7280]"
+                )}
+              >
+                {isClubSubmitted ? "監査中" : "未着手"}
+              </span>
             </dd>
           </div>
         </dl>
@@ -120,11 +111,11 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
             className="rounded-lg text-white hover:opacity-90"
             style={{ backgroundColor: AUDIT_BRAND_ORANGE }}
             onClick={() => setReviewOpen(true)}
-            disabled={status !== "submitted"}
+            disabled={!isClubSubmitted}
           >
             決算データを確認・承認・差戻し
           </Button>
-          {status !== "submitted" ? (
+          {!isClubSubmitted ? (
             <p className="w-full text-xs text-[#6B7280]">
               クラブから決算が「提出済」になると、承認・差戻しが可能になります。
             </p>

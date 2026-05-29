@@ -12,6 +12,7 @@ import {
 } from "@/utils/localStorage"
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 import { formatDateDisplay } from "@/utils/dateDisplay"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 type Tab = "all" | "csv"
 
@@ -95,8 +96,18 @@ export default function RegisterHistoryPage() {
     [pathname, searchQs]
   )
   const [tab, setTab] = useState<Tab>("all")
+  const [isLocked, setIsLocked] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [batches, setBatches] = useState<CsvImportBatch[]>([])
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const refresh = () => {
     setTransactions(getTransactions())
@@ -250,6 +261,7 @@ export default function RegisterHistoryPage() {
   }, [batches, transactions])
 
   const handleRowEdit = (row: HistoryRow) => {
+    if (isLocked) return
     if (row.kind === "transfer") {
       const expId = row.expenseTx?.id ?? ""
       const incId = row.incomeTx?.id ?? ""
@@ -277,6 +289,7 @@ export default function RegisterHistoryPage() {
           <p className="text-sm text-[#6B7280]">
             「すべて」で手動・CSV・その他の取引を一覧します。「CSV」は取込ファイル単位の履歴です。
           </p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
         </div>
 
         <div className="flex gap-1 mb-4 border-b border-gray-200">
@@ -443,8 +456,9 @@ export default function RegisterHistoryPage() {
                             <td className="border border-gray-200 px-2 py-2 text-center align-top">
                               <button
                                 type="button"
+                                disabled={isLocked}
                                 onClick={() => handleRowEdit(row)}
-                                className="inline-flex p-1.5 rounded-md text-[#68A384] hover:bg-[#68A384]/15"
+                                className="inline-flex p-1.5 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                 title="振替を編集"
                                 aria-label="振替を編集"
                               >
@@ -521,8 +535,9 @@ export default function RegisterHistoryPage() {
                           <td className="border border-gray-200 px-2 py-2 text-center align-top">
                             <button
                               type="button"
+                              disabled={isLocked}
                               onClick={() => handleRowEdit(row)}
-                              className="inline-flex p-1.5 rounded-md text-[#68A384] hover:bg-[#68A384]/15"
+                              className="inline-flex p-1.5 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title={isCsvLinkedTransaction(t) ? "CSV一括編集へ" : "明細を編集"}
                               aria-label="編集"
                             >
@@ -567,12 +582,18 @@ export default function RegisterHistoryPage() {
                           {totalVolume.toLocaleString()}
                         </td>
                         <td className="border border-gray-200 px-3 py-2">
-                          <Link
-                            href={withReturnTo(`/club/accounting/register/csv/${batch.id}`, editReturnTo)}
-                            className="inline-flex items-center justify-center rounded-md bg-[#A3BC68] px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
-                          >
-                            内容確認・一括編集
-                          </Link>
+                          {isLocked ? (
+                            <span className="inline-flex items-center justify-center rounded-md bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-500 cursor-not-allowed">
+                              内容確認・一括編集
+                            </span>
+                          ) : (
+                            <Link
+                              href={withReturnTo(`/club/accounting/register/csv/${batch.id}`, editReturnTo)}
+                              className="inline-flex items-center justify-center rounded-md bg-[#A3BC68] px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+                            >
+                              内容確認・一括編集
+                            </Link>
+                          )}
                         </td>
                       </tr>
                     ))

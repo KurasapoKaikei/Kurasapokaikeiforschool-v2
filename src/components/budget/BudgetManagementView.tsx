@@ -17,6 +17,7 @@ import {
   type CollectionSchedule,
   type Transaction,
 } from "@/utils/localStorage"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 const AUTO_COL_BG = "bg-gray-50"
 
@@ -60,7 +61,18 @@ const formatRate = (base: number, current: number) => {
 }
 
 export function BudgetManagementView({ mode }: { mode: ViewMode }) {
-  const canEditBudgetFields = true
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
+
+  const canEditBudgetFields = !isLocked
 
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
@@ -543,6 +555,7 @@ export function BudgetManagementView({ mode }: { mode: ViewMode }) {
             {" · "}
             （単位：円）
           </p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-3" />
         </div>
         <div className="border-t border-gray-200 px-6 py-3">
           <div className="flex flex-wrap gap-2">

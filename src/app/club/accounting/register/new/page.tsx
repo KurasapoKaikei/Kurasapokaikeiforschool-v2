@@ -32,6 +32,7 @@ import {
 import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { BankCsvImportSection } from "@/components/accounting/BankCsvImportSection"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import {
   formatAmountInputDisplay,
   isAllowedSignedIntegerTyping,
@@ -344,6 +345,7 @@ export default function NewRegisterPage() {
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [activeTab, setActiveTab] = useState<TabType>("income")
+  const [isLocked, setIsLocked] = useState(false)
   const [ocrLoading, setOcrLoading] = useState(false)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -443,6 +445,15 @@ export default function NewRegisterPage() {
   const memberRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
   const deepLinkInitDoneRef = useRef(false)
   const deepLinkScrollDoneRef = useRef(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const reloadCollectionData = useCallback(() => {
     syncAllCollectionRecords()
@@ -949,6 +960,7 @@ export default function NewRegisterPage() {
    * 現金預金出納帳・科目別台帳・収支集計表・ダッシュボード残高・収支報告書へ反映される。
    */
   const handleColRegister = (member: Member) => {
+    if (isLocked) return
     const schedules = getMemberMonthSchedules(member.id)
     if (schedules.length === 0) {
       alert("対象月の集金設定がありません")
@@ -1159,6 +1171,7 @@ export default function NewRegisterPage() {
   /** 登録済み部員（入金済・一部入金・過入金）: 編集モードへ（実績の全段を colPayments に展開しスナップショット保存） */
   const handleColEditStart = useCallback(
     (member: Member) => {
+      if (isLocked) return
       const schedules = getMemberMonthSchedules(member.id)
       const defaultCashName = accountTitles.find((t) => t.group === "cash")?.name ?? "現金"
       const { lineKeys, payments, metas } = buildMemberPaymentLineState(
@@ -1194,7 +1207,7 @@ export default function NewRegisterPage() {
       })
       setColEditingMemberIds((prev) => new Set(prev).add(member.id))
     },
-    [accountTitles, colRecords, getMemberMonthSchedules]
+    [accountTitles, colRecords, getMemberMonthSchedules, isLocked]
   )
 
   /** 入金完了部員: 編集を破棄して編集開始前の値・行構成に復元（永続化なし） */
@@ -1236,6 +1249,7 @@ export default function NewRegisterPage() {
 
   /** 入金完了部員: 全段を Transaction / CollectionRecord に反映（0 以外の段は各 1 仕訳） */
   const handleColSaveEdit = (member: Member) => {
+    if (isLocked) return
     const schedules = getMemberMonthSchedules(member.id)
     const defaultCashName = accountTitles.find((t) => t.group === "cash")?.name ?? "現金"
     const allTxs = getTransactions()
@@ -1528,6 +1542,7 @@ export default function NewRegisterPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
 
     if (activeTab === "csv") return
 
@@ -1778,6 +1793,10 @@ export default function NewRegisterPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="flex-shrink-0 w-full px-4 pb-2">
+        <SettlementLockAlert isLocked={isLocked} />
       </div>
 
       {/* ===== 集金タブ: 実績入力一覧 ===== */}
@@ -2163,6 +2182,7 @@ export default function NewRegisterPage() {
                                               type="button"
                                               size="sm"
                                               variant="outline"
+                                              disabled={isLocked}
                                               className="shrink-0 h-8 px-1.5 text-[10px] border-[#67a384] text-[#67a384] hover:bg-[#ECF8F2] whitespace-nowrap"
                                               onClick={() =>
                                                 handleColAddPaymentLine(member.id, schedule, dr.paymentKey)
@@ -2190,6 +2210,7 @@ export default function NewRegisterPage() {
                                         <Button
                                           type="button"
                                           size="sm"
+                                          disabled={isLocked}
                                           className="flex-1 text-white text-xs px-2 h-8"
                                           style={{ backgroundColor: "#67a384" }}
                                           onClick={() => handleColSaveEdit(member)}
@@ -2211,6 +2232,7 @@ export default function NewRegisterPage() {
                                         type="button"
                                         size="sm"
                                         variant="outline"
+                                        disabled={isLocked}
                                         className="w-full text-xs px-3 border-[#67a384] text-[#67a384] hover:bg-[#ECF8F2]"
                                         onClick={() => handleColEditStart(member)}
                                       >
@@ -2221,6 +2243,7 @@ export default function NewRegisterPage() {
                                     <Button
                                       type="button"
                                       size="sm"
+                                      disabled={isLocked}
                                       className="w-full text-white text-xs px-3"
                                       style={{ backgroundColor: "#67a384" }}
                                       onClick={() => handleColRegister(member)}
@@ -2257,6 +2280,7 @@ export default function NewRegisterPage() {
           cashAccountTitles={accountTitles.filter((t) => t.group === "cash")}
           transactions={transactions}
           onImported={() => setTransactions(getTransactions())}
+          registerDisabled={isLocked}
         />
       ) : (
       /* ===== 他のタブ: 既存フォーム ===== */
@@ -2647,6 +2671,7 @@ export default function NewRegisterPage() {
                   </Button>
                   <Button
                     type="submit"
+                    disabled={isLocked}
                     className="shrink-0 py-3 px-6 text-sm font-semibold text-white rounded-lg shadow-sm"
                     style={{ backgroundColor: THEME_COLOR }}
                   >
@@ -2656,6 +2681,7 @@ export default function NewRegisterPage() {
               ) : (
                 <Button
                   type="submit"
+                  disabled={isLocked}
                   className="w-full py-6 text-base font-semibold text-white rounded-lg"
                   style={{ backgroundColor: THEME_COLOR }}
                 >

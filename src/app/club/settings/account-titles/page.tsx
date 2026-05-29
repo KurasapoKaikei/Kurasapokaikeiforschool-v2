@@ -18,6 +18,7 @@ import {
   type CollectionSchedule,
 } from "@/utils/localStorage"
 import { isDuplicateName } from "@/utils/nameNormalize"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 /**
  * データ整合性メッセージ（v2.9 §6.5 / §6.6「整合性チェック」準拠。§6.5 では仕訳に加え集金設定も参照）。
@@ -80,6 +81,16 @@ export default function AccountTitlesPage() {
   const [openingCarryoverInput, setOpeningCarryoverInput] = useState("")
   const [openingCarryoverLocked, setOpeningCarryoverLocked] = useState(false)
   const [yearRolloverCompletedAt, setYearRolloverCompletedAt] = useState<string | null>(null)
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const showToast = (message: string) => {
     setToastMessage(message)
@@ -169,6 +180,7 @@ export default function AccountTitlesPage() {
   }
 
   const handleAddAccountTitle = () => {
+    if (isLocked) return
     if (!newAccountTitle.group || !newAccountTitle.name) {
       alert("グループと科目名は必須です。")
       return
@@ -216,6 +228,7 @@ export default function AccountTitlesPage() {
   }
 
   const handleStartEdit = (title: AccountTitle) => {
+    if (isLocked) return
     setEditingId(title.id)
     setEditingData({
       name: title.name,
@@ -323,6 +336,7 @@ export default function AccountTitlesPage() {
   }
 
   const handleSaveEdit = (id: string) => {
+    if (isLocked) return
     const target = accountTitles.find((t) => t.id === id)
     if (!target) return
 
@@ -403,6 +417,7 @@ export default function AccountTitlesPage() {
   }
 
   const handleDelete = (id: string) => {
+    if (isLocked) return
     const title = accountTitles.find((t) => t.id === id)
     if (!title) return
     // v2.9 §6.5 整合性チェック: 仕訳が1件でも存在する科目は削除禁止
@@ -505,6 +520,7 @@ export default function AccountTitlesPage() {
   }
 
   const handleSaveOpeningCarryover = () => {
+    if (isLocked) return
     if (!isInitialYear({ yearRolloverCompletedAt })) {
       alert("年度更新後のため、前期繰越金は編集できません。")
       return
@@ -530,6 +546,7 @@ export default function AccountTitlesPage() {
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2 text-[#374151]">科目設定</h2>
           <p className="text-sm text-[#6B7280]">勘定科目の登録・編集・削除</p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
         </div>
 
         {/* 追加完了トースト */}
@@ -647,6 +664,7 @@ export default function AccountTitlesPage() {
               <Button
                 type="button"
                 onClick={handleAddAccountTitle}
+                disabled={isLocked}
                 className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-6 py-2.5 rounded-lg"
               >
                 追加する
@@ -792,6 +810,7 @@ export default function AccountTitlesPage() {
                               <Button
                                 type="button"
                                 onClick={() => handleSaveEdit(title.id)}
+                                disabled={isLocked}
                                 variant="outline"
                                 size="sm"
                                 className="h-8 w-full sm:w-auto min-w-[2.75rem] px-2"
@@ -802,6 +821,7 @@ export default function AccountTitlesPage() {
                               <Button
                                 type="button"
                                 onClick={() => handleStartEdit(title)}
+                                disabled={isLocked}
                                 variant="outline"
                                 size="sm"
                                 className="h-8 w-8 p-0 shrink-0"
@@ -831,11 +851,11 @@ export default function AccountTitlesPage() {
                                 variant="outline"
                                 size="sm"
                                 className={`h-8 w-8 p-0 shrink-0 ${
-                                  isInUse
+                                  isInUse || isLocked
                                     ? "text-gray-400 cursor-not-allowed"
                                     : "text-[#EF4444] hover:text-[#EF4444]"
                                 }`}
-                                disabled={isInUse}
+                                disabled={isInUse || isLocked}
                                 title={isInUse ? "仕訳または集金設定で使用中のため削除不可" : "削除"}
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -897,7 +917,7 @@ export default function AccountTitlesPage() {
                 inputMode="numeric"
                 value={openingCarryoverInput}
                 onChange={(e) => handleOpeningCarryoverChange(e.target.value)}
-                disabled={!isInitialYear({ yearRolloverCompletedAt })}
+                disabled={!isInitialYear({ yearRolloverCompletedAt }) || isLocked}
                 className="w-full pl-3 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#77B8DA] focus:border-transparent tabular-nums text-right disabled:bg-gray-100 disabled:text-[#6B7280]"
                 placeholder="例：1,000,000"
               />
@@ -907,6 +927,7 @@ export default function AccountTitlesPage() {
                 <Button
                   type="button"
                   onClick={handleSaveOpeningCarryover}
+                  disabled={isLocked}
                   className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-6 py-2.5 rounded-lg"
                 >
                   保存

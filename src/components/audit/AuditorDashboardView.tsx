@@ -10,19 +10,10 @@ import {
   type CurrentAuditorSession,
 } from "@/lib/currentAuditor"
 import { getSchoolAuditorById } from "@/lib/schoolAuditors"
-import {
-  ensureClubSettlementStatuses,
-  getClubSettlementStatus,
-  SETTLEMENT_CHANGED_EVENT,
-} from "@/lib/schoolClubSettlement"
-import { SCHOOL_AUDITORS_CHANGED_EVENT } from "@/lib/schoolAuditors"
 
 export function AuditorDashboardView() {
   const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [session, setSession] = useState<CurrentAuditorSession | null>(null)
-  const [statusMap, setStatusMap] = useState<
-    Record<string, ReturnType<typeof getClubSettlementStatus>>
-  >({})
   const [reviewClub, setReviewClub] = useState<{
     id: string
     name: string
@@ -56,32 +47,6 @@ export function AuditorDashboardView() {
     return clubList.filter((c) => c?.id && idSet.has(c.id))
   }, [assignedClubIds, clubList])
 
-  const syncStatuses = useCallback(() => {
-    const clubs = assignedClubs ?? []
-    if (clubs.length === 0) {
-      setStatusMap({})
-      return
-    }
-    try {
-      setStatusMap(ensureClubSettlementStatuses(clubs.map((c) => c.id)))
-    } catch {
-      setStatusMap({})
-    }
-  }, [assignedClubs])
-
-  useEffect(() => {
-    syncStatuses()
-    const onChange = () => syncStatuses()
-    window.addEventListener(SETTLEMENT_CHANGED_EVENT, onChange)
-    window.addEventListener("storage", onChange)
-    window.addEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onChange)
-    return () => {
-      window.removeEventListener(SETTLEMENT_CHANGED_EVENT, onChange)
-      window.removeEventListener("storage", onChange)
-      window.removeEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onChange)
-    }
-  }, [syncStatuses])
-
   const auditorMaster = session?.id
     ? getSchoolAuditorById(session.id)
     : null
@@ -108,10 +73,7 @@ export function AuditorDashboardView() {
           clubId={reviewClub.id}
           clubName={reviewClub.name}
           open
-          onClose={() => {
-            setReviewClub(null)
-            syncStatuses()
-          }}
+          onClose={() => setReviewClub(null)}
         />
       ) : null}
 
@@ -143,13 +105,10 @@ export function AuditorDashboardView() {
         <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {(assignedClubs ?? []).map((club) => {
             if (!club?.id) return null
-            const settlementStatus =
-              statusMap[club.id] ?? getClubSettlementStatus(club.id)
             return (
               <AuditorClubDashboardCard
                 key={club.id}
                 club={club}
-                settlementStatus={settlementStatus}
                 onReview={() =>
                   setReviewClub({
                     id: club.id,

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ClubPasswordChangeSection } from "@/components/club/ClubPasswordChangeSection"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 
 export default function ClubSettingsPage() {
@@ -29,6 +30,17 @@ export default function ClubSettingsPage() {
     email: "rugby@example.com",
   })
 
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
+
   // userInfoが変更されたらformDataを更新
   useEffect(() => {
     setFormData((prev) => ({ ...prev, organizationName: userInfo.organizationName }))
@@ -36,6 +48,7 @@ export default function ClubSettingsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
     // TODO: フォーム送信処理（API呼び出し）
     console.log("Save:", formData)
     
@@ -51,6 +64,7 @@ export default function ClubSettingsPage() {
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2 text-[#374151]">クラブ設定</h2>
           <p className="text-sm text-[#6B7280]">クラブ情報の登録・編集</p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -199,7 +213,7 @@ export default function ClubSettingsPage() {
             </div>
           </div>
 
-          <ClubPasswordChangeSection />
+          <ClubPasswordChangeSection actionDisabled={isLocked} />
 
           {/* セクション3：ログイン情報 */}
           <div className="rounded-lg border border-gray-200 bg-white p-6">
@@ -259,6 +273,7 @@ export default function ClubSettingsPage() {
           <div className="flex justify-end">
             <Button
               type="submit"
+              disabled={isLocked}
               className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-8"
             >
               変更を保存する

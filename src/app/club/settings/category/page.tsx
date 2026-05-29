@@ -10,6 +10,7 @@ import {
   type Category,
 } from "@/utils/localStorage"
 import { isDuplicateName } from "@/utils/nameNormalize"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 /** v2.9 §6.6 整合性チェック：名称重複禁止のメッセージ */
 const MSG_CATEGORY_DUPLICATE =
@@ -40,6 +41,16 @@ export default function CategorySettingsPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [addToast, setAddToast] = useState(false)
   const [toastMessage, setToastMessage] = useState("")
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const showToast = (message: string) => {
     setToastMessage(message)
@@ -51,6 +62,7 @@ export default function CategorySettingsPage() {
   }
 
   const handleAddCategory = () => {
+    if (isLocked) return
     const trimmed = newCategoryName.trim()
     if (!trimmed) return
 
@@ -73,11 +85,13 @@ export default function CategorySettingsPage() {
   }
 
   const handleStartEdit = (category: Category) => {
+    if (isLocked) return
     setEditingId(category.id)
     setEditingName(category.name)
   }
 
   const handleSaveEdit = (id: string) => {
+    if (isLocked) return
     const target = categories.find((c) => c.id === id)
     if (!target) return
     const trimmed = editingName.trim()
@@ -121,6 +135,7 @@ export default function CategorySettingsPage() {
   }
 
   const handleDelete = (id: string) => {
+    if (isLocked) return
     const category = categories.find((cat) => cat.id === id)
     if (category?.isUsed) {
       alert("このカテゴリーは既に使用されているため削除できません。")
@@ -180,6 +195,7 @@ export default function CategorySettingsPage() {
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2 text-[#374151]">カテゴリー設定</h2>
           <p className="text-sm text-[#6B7280]">カテゴリーの登録・編集・削除</p>
+          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
         </div>
 
         {/* 追加完了トースト */}
@@ -236,6 +252,7 @@ export default function CategorySettingsPage() {
             <Button
               type="button"
               onClick={handleAddCategory}
+              disabled={isLocked}
               className="bg-[#77B8DA] hover:bg-[#77B8DA]/90 text-white px-6 transition-colors"
             >
               追加する
@@ -255,8 +272,8 @@ export default function CategorySettingsPage() {
                 .map((category, index) => (
                   <div
                     key={category.id}
-                    draggable
-                    onDragStart={() => handleDragStart(index)}
+                    draggable={!isLocked}
+                    onDragStart={() => !isLocked && handleDragStart(index)}
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDrop={(e) => handleDrop(e, index)}
                     onDragEnd={handleDragEnd}
@@ -289,6 +306,7 @@ export default function CategorySettingsPage() {
                           <Button
                             type="button"
                             onClick={() => handleSaveEdit(category.id)}
+                            disabled={isLocked}
                             variant="outline"
                             size="sm"
                           >
@@ -321,6 +339,7 @@ export default function CategorySettingsPage() {
                         <Button
                           type="button"
                           onClick={() => handleStartEdit(category)}
+                          disabled={isLocked}
                           variant="outline"
                           size="sm"
                           className="h-8"
@@ -330,14 +349,14 @@ export default function CategorySettingsPage() {
                         <Button
                           type="button"
                           onClick={() => handleDelete(category.id)}
+                          disabled={isLocked || category.isUsed}
                           variant="outline"
                           size="sm"
                           className={`h-8 ${
-                            category.isUsed
+                            category.isUsed || isLocked
                               ? "text-gray-400 cursor-not-allowed"
                               : "text-[#EF4444] hover:text-[#EF4444]"
                           }`}
-                          disabled={category.isUsed}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

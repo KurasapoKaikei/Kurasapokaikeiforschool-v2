@@ -18,6 +18,7 @@ import {
   type Member,
   type CollectionSchedule,
 } from "@/utils/localStorage"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 const THEME_COLOR = "#D99529"
 const FISCAL_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
@@ -65,6 +66,16 @@ export default function CollectionSettingsPage() {
   const [memberModalOpen, setMemberModalOpen] = useState(false)
   const [memberGradeTab, setMemberGradeTab] = useState<number | "all">("all")
   const [memberIdsSnapshot, setMemberIdsSnapshot] = useState<string[]>([])
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const resetForm = useCallback(() => {
     setName("")
@@ -239,6 +250,7 @@ export default function CollectionSettingsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
     if (!canSubmit) return
 
     const catName = categories.find((c) => c.id === categoryId)?.name ?? ""
@@ -346,6 +358,7 @@ export default function CollectionSettingsPage() {
         <p className="text-sm text-[#6B7280] mt-0.5">
           {userInfo.organizationName}　{userInfo.fiscalPeriod}
         </p>
+        <SettlementLockAlert isLocked={isLocked} className="mt-3" />
       </div>
 
       {/* 操作バー */}
@@ -554,7 +567,7 @@ export default function CollectionSettingsPage() {
                     type="submit"
                     className="text-white px-8 py-2.5 rounded-lg text-sm"
                     style={{ backgroundColor: THEME_COLOR }}
-                    disabled={!canSubmit}
+                    disabled={!canSubmit || isLocked}
                   >
                     集金を編集する
                   </Button>
@@ -572,7 +585,7 @@ export default function CollectionSettingsPage() {
                   type="submit"
                   className="text-white px-8 py-2.5 rounded-lg text-sm"
                   style={{ backgroundColor: THEME_COLOR }}
-                  disabled={!canSubmit}
+                  disabled={!canSubmit || isLocked}
                 >
                   集金を登録する
                 </Button>

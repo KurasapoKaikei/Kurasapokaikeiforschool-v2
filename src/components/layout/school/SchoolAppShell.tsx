@@ -8,6 +8,7 @@ import { SchoolClubGroupsProvider } from "@/contexts/SchoolClubGroupsContext"
 import { SchoolClubsProvider } from "@/contexts/SchoolClubsContext"
 import { SchoolSidebar } from "@/components/layout/school/SchoolSidebar"
 import { SchoolHeader } from "@/components/layout/school/SchoolHeader"
+import { PortalFiscalYearProvider } from "@/contexts/PortalFiscalYearContext"
 
 /** 学校管理者向け（/school 配下）のサイドバー＋ヘッダー枠 */
 export function SchoolAppShell({ children }: { children: ReactNode }) {
@@ -33,6 +34,7 @@ export function SchoolAppShell({ children }: { children: ReactNode }) {
   }, [])
 
   return (
+    <PortalFiscalYearProvider>
     <SchoolClubGroupsProvider>
       <SchoolClubsProvider>
         <div className="flex min-h-screen bg-[#F5F5F0]">
@@ -44,5 +46,6 @@ export function SchoolAppShell({ children }: { children: ReactNode }) {
         </div>
       </SchoolClubsProvider>
     </SchoolClubGroupsProvider>
+    </PortalFiscalYearProvider>
   )
 }

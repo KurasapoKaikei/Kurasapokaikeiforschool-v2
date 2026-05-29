@@ -10,6 +10,7 @@ import {
   getMembers,
   type CollectionSchedule,
 } from "@/utils/localStorage"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 
 const THEME_COLOR = "#D99529"
 const FISCAL_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
@@ -48,6 +49,16 @@ export default function CollectionSchedulePage() {
   const { userInfo } = useUserInfo()
   const router = useRouter()
   const [schedules, setSchedules] = useState<CollectionSchedule[]>([])
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    try {
+      const savedLocked = localStorage.getItem("is_club_settlement_locked")
+      if (savedLocked === "true") {
+        setIsLocked(true)
+      }
+    } catch (e) {}
+  }, [])
 
   const loadData = useCallback(() => {
     setSchedules(getCollectionSchedules())
@@ -123,16 +134,18 @@ export default function CollectionSchedulePage() {
   const grandTotal = useMemo(() => rows.reduce((s, r) => s + r.lineTotal, 0), [rows])
 
   const handleDelete = useCallback((row: ScheduleRow) => {
+    if (isLocked) return
     if (!window.confirm(`「${row.name}」（${row.monthLabel}）の集金予定を削除しますか？\n関連する集金実績データも削除されます。`)) {
       return
     }
     deleteCollectionSchedule(row.id)
     setSchedules(getCollectionSchedules())
-  }, [])
+  }, [isLocked])
 
   const handleEdit = useCallback((row: ScheduleRow) => {
+    if (isLocked) return
     router.push(`/club/collection/settings?edit=${row.id}`)
-  }, [router])
+  }, [router, isLocked])
 
   return (
     <div className="px-6 py-8 min-h-screen bg-[#F5F5F0]">
@@ -147,6 +160,7 @@ export default function CollectionSchedulePage() {
         <p className="text-sm text-[#6B7280] mt-0.5">
           {userInfo.organizationName}　{userInfo.fiscalPeriod}
         </p>
+        <SettlementLockAlert isLocked={isLocked} className="mt-3" />
       </div>
 
       {/* 操作バー */}
@@ -229,7 +243,8 @@ export default function CollectionSchedulePage() {
                           <button
                             type="button"
                             title="編集"
-                            className="relative z-10 p-1.5 rounded hover:bg-gray-100 text-[#6B7280] hover:text-[#D99529] transition-colors cursor-pointer"
+                            disabled={isLocked}
+                            className="relative z-10 p-1.5 rounded hover:bg-gray-100 text-[#6B7280] hover:text-[#D99529] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#6B7280] disabled:hover:bg-transparent"
                             onClick={() => handleEdit(r)}
                           >
                             <Pencil className="h-4 w-4" />
@@ -237,7 +252,8 @@ export default function CollectionSchedulePage() {
                           <button
                             type="button"
                             title="削除"
-                            className="relative z-10 p-1.5 rounded hover:bg-red-50 text-[#6B7280] hover:text-red-600 transition-colors cursor-pointer"
+                            disabled={isLocked}
+                            className="relative z-10 p-1.5 rounded hover:bg-red-50 text-[#6B7280] hover:text-red-600 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#6B7280] disabled:hover:bg-transparent"
                             onClick={() => handleDelete(r)}
                           >
                             <Trash2 className="h-4 w-4" />
