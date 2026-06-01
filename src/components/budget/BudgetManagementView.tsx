@@ -18,6 +18,7 @@ import {
   type Transaction,
 } from "@/utils/localStorage"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 const AUTO_COL_BG = "bg-gray-50"
 
@@ -61,16 +62,7 @@ const formatRate = (base: number, current: number) => {
 }
 
 export function BudgetManagementView({ mode }: { mode: ViewMode }) {
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   const canEditBudgetFields = !isLocked
 

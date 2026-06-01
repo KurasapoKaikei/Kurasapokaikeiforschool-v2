@@ -16,6 +16,7 @@ import {
 } from "@/utils/localStorage"
 import { getEditUrl, isCsvLinkedTransaction } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -79,16 +80,7 @@ export default function LedgerSubjectPage() {
   const [subjectId, setSubjectId] = useState<string>("")
   const [startDate, setStartDate] = useState<string>(getFiscalYearStart())
   const [endDate, setEndDate] = useState<string>(getTodayString())
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   const refreshTransactions = () => setTransactions(getTransactions())
 

@@ -20,6 +20,7 @@ import {
   type CollectionRecord,
 } from "@/utils/localStorage"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -128,7 +129,7 @@ export default function SummaryPage() {
   const [openingCarryover, setOpeningCarryover] = useState(0)
   const fiscalYear = getCurrentFiscalYear()
   const [selectedMonth, setSelectedMonth] = useState<number>(getCurrentMonth())
-  const [isLocked, setIsLocked] = useState(false)
+  const isLocked = useClubSettlementLock()
   const categoryOrderMap = useMemo(
     () => new Map(categories.map((c) => [c.id, c.order])),
     [categories]
@@ -153,15 +154,6 @@ export default function SummaryPage() {
   useEffect(() => {
     refreshAll()
   }, [refreshAll])
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
 
   useEffect(() => {
     const interval = setInterval(refreshAll, 500)

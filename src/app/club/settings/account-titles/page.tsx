@@ -19,6 +19,7 @@ import {
 } from "@/utils/localStorage"
 import { isDuplicateName } from "@/utils/nameNormalize"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 /**
  * データ整合性メッセージ（v2.9 §6.5 / §6.6「整合性チェック」準拠。§6.5 では仕訳に加え集金設定も参照）。
@@ -81,16 +82,7 @@ export default function AccountTitlesPage() {
   const [openingCarryoverInput, setOpeningCarryoverInput] = useState("")
   const [openingCarryoverLocked, setOpeningCarryoverLocked] = useState(false)
   const [yearRolloverCompletedAt, setYearRolloverCompletedAt] = useState<string | null>(null)
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   const showToast = (message: string) => {
     setToastMessage(message)

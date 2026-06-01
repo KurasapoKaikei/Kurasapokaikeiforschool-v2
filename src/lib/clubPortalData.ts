@@ -1,7 +1,7 @@
 /**
  * クラブポータル：ログインクラブごとのデータ参照
  * - 学校登録クラブで未使用 → 空の初期状態
- * - セッションなし → 従来のグローバルデモデータ（ラグビー部など）
+ * - セッションなし → 空配列（既存セッションの誤上書きを防止）
  */
 
 import {
@@ -14,11 +14,6 @@ import {
 import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeClubSession"
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 import type { AccountTitle, Member, Transaction } from "@/utils/localStorage"
-import {
-  getAccountTitles,
-  getMembers,
-  getTransactions,
-} from "@/utils/localStorage"
 
 const BASE_KEYS = {
   TRANSACTIONS: "classapo_transactions",
@@ -78,7 +73,7 @@ export function getPortalTransactions(
   active: ActiveClubSession | null
 ): Transaction[] {
   if (isEmptyPortalForClub(active)) return []
-  if (isLegacyGlobalPortal(active)) return getTransactions()
+  if (isLegacyGlobalPortal(active)) return []
   return readStorageJson(
     scopedKey(BASE_KEYS.TRANSACTIONS, active!.id),
     []
@@ -89,7 +84,7 @@ export function getPortalAccountTitles(
   active: ActiveClubSession | null
 ): AccountTitle[] {
   if (isEmptyPortalForClub(active)) return []
-  if (isLegacyGlobalPortal(active)) return getAccountTitles()
+  if (isLegacyGlobalPortal(active)) return []
   return readStorageJson(
     scopedKey(BASE_KEYS.ACCOUNT_TITLES, active!.id),
     []
@@ -98,7 +93,7 @@ export function getPortalAccountTitles(
 
 export function getPortalMembers(active: ActiveClubSession | null): Member[] {
   if (isEmptyPortalForClub(active)) return []
-  if (isLegacyGlobalPortal(active)) return getMembers()
+  if (isLegacyGlobalPortal(active)) return []
   return readStorageJson(scopedKey(BASE_KEYS.MEMBERS, active!.id), [])
 }
 

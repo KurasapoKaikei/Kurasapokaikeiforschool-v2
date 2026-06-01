@@ -11,6 +11,7 @@ import {
 } from "@/utils/localStorage"
 import { isDuplicateName } from "@/utils/nameNormalize"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 /** v2.9 §6.6 整合性チェック：名称重複禁止のメッセージ */
 const MSG_CATEGORY_DUPLICATE =
@@ -41,16 +42,7 @@ export default function CategorySettingsPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [addToast, setAddToast] = useState(false)
   const [toastMessage, setToastMessage] = useState("")
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   const showToast = (message: string) => {
     setToastMessage(message)

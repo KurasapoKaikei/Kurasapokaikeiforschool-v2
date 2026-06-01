@@ -3,7 +3,7 @@
 import { AlertTriangle } from "lucide-react"
 
 const LOCK_MESSAGE =
-  "当年度の決算は提出済のため、登録、編集、削除はできません。ロックを解除したい場合は監査人から差戻しをしてもらってください。"
+  "当年度の決算は提出済のため、登録、編集、削除はできません。ロックを解除するには監査人から差戻しをしてもらう必要があります。"
 
 type SettlementLockAlertProps = {
   isLocked: boolean

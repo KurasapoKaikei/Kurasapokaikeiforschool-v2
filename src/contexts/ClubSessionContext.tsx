@@ -14,7 +14,6 @@ import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeCl
 import { isEmptyPortalForClub, isLegacyGlobalPortal } from "@/lib/clubPortalData"
 import { clearImpersonatedClub } from "@/lib/schoolClubSession"
 import { useUserInfo } from "@/contexts/UserInfoContext"
-import { mockUserInfo } from "@/constants/userInfo"
 
 type ClubSessionContextValue = {
   activeClub: ActiveClubSession | null
@@ -46,9 +45,10 @@ export function ClubSessionProvider({ children }: { children: ReactNode }) {
     const legacy = isLegacyGlobalPortal(active)
     setIsEmptyPortal((prev) => (prev === empty ? prev : empty))
     setIsLegacy((prev) => (prev === legacy ? prev : legacy))
-    updateOrganizationName(
-      active ? active.name : mockUserInfo.organizationName
-    )
+    // active が一瞬 null になっても表示名をデフォルト値へ巻き戻さない。
+    if (active) {
+      updateOrganizationName(active.name)
+    }
   }, [updateOrganizationName])
 
   useEffect(() => {

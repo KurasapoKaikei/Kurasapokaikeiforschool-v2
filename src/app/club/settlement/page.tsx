@@ -1,115 +1,73 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import Link from "next/link"
+import { useState, useEffect, useCallback } from "react"
 import { ArrowRight, RotateCcw, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-// ステータスの型定義
-type HistoryStatus = "PREPARING" | "SUBMITTED" | "REJECTED" | "APPROVED"
-
-interface StepItem {
-  id: string
-  label: string
-  status: HistoryStatus
-}
-
-const DEFAULT_FLOW: StepItem[] = [
-  { id: "1", label: "作成中", status: "PREPARING" },
-  { id: "2", label: "提出済", status: "SUBMITTED" },
-  { id: "3", label: "承認済", status: "APPROVED" },
-]
+import {
+  applyClubSettlementSubmit,
+  CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT,
+  CLUB_SETTLEMENT_LOCK_CHANGED_EVENT,
+  loadSettlementHistoryFlow,
+  type SettlementHistoryStep,
+} from "@/lib/clubSettlementPortalSync"
+import { useClubSession } from "@/contexts/ClubSessionContext"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import { setClubSettlementStatus, submitClubSettlement } from "@/lib/schoolClubSettlement"
+import { clubPath } from "@/lib/routes"
 
 export default function ClubSettlementPage() {
-  const [flowSteps, setFlowSteps] = useState<StepItem[]>(DEFAULT_FLOW)
+  const { activeClub } = useClubSession()
+  const clubId = activeClub?.id
+  const [flowSteps, setFlowSteps] = useState<SettlementHistoryStep[]>([])
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
-  const [isLocked, setIsLocked] = useState(false)
+  const isLocked = useClubSettlementLock()
   const [auditorInfo] = useState("財務部 山田太郎 様")
 
+  const syncFromStorage = useCallback(() => {
+    if (!clubId) return
+    const flow = loadSettlementHistoryFlow(clubId)
+    setFlowSteps(flow.steps)
+    setCurrentStepIndex(flow.currentIndex)
+  }, [clubId])
+
   useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      const savedHistory = localStorage.getItem("club_settlement_history_flow")
-
-      if (savedHistory) {
-        const parsed = JSON.parse(savedHistory) as {
-          steps: StepItem[]
-          currentIndex: number
-        }
-        if (Array.isArray(parsed.steps) && parsed.steps.length > 0) {
-          setFlowSteps(parsed.steps)
-          setCurrentStepIndex(
-            typeof parsed.currentIndex === "number" ? parsed.currentIndex : 0
-          )
-        }
-      } else if (savedLocked === "true") {
-        setCurrentStepIndex(1)
-      }
-
-      setIsLocked(savedLocked === "true")
-    } catch {
-      // エラー時は初期フローを維持
+    syncFromStorage()
+    const onSync = () => syncFromStorage()
+    window.addEventListener(CLUB_SETTLEMENT_LOCK_CHANGED_EVENT, onSync)
+    window.addEventListener(CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT, onSync)
+    window.addEventListener("storage", onSync)
+    return () => {
+      window.removeEventListener(CLUB_SETTLEMENT_LOCK_CHANGED_EVENT, onSync)
+      window.removeEventListener(CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT, onSync)
+      window.removeEventListener("storage", onSync)
     }
-  }, [])
+  }, [syncFromStorage])
 
   const handleSubmit = () => {
     if (
-      confirm(
+      !confirm(
         "決算データを学校へ提出しますか？提出後はすべての操作がロックされます。"
       )
     ) {
-      try {
-        let nextIndex = currentStepIndex + 1
-        if (nextIndex > flowSteps.length - 1) nextIndex = flowSteps.length - 1
-
-        setCurrentStepIndex(nextIndex)
-        setIsLocked(true)
-
-        localStorage.setItem("is_club_settlement_locked", "true")
-
-        const historyData = {
-          steps: flowSteps,
-          currentIndex: nextIndex,
-        }
-        localStorage.setItem(
-          "club_settlement_history_flow",
-          JSON.stringify(historyData)
-        )
-
-        alert("決算データを提出しました。各機能にロックがかかります。")
-        window.location.reload()
-      } catch {
-        setCurrentStepIndex(1)
-        setIsLocked(true)
-      }
+      return
     }
-  }
-
-  const handleSimulateReject = () => {
     try {
-      const newSteps: StepItem[] = [
-        ...flowSteps.slice(0, flowSteps.length - 1),
-        { id: `rej-${Date.now()}`, label: "差戻し", status: "REJECTED" },
-        { id: `sub-${Date.now()}`, label: "提出済", status: "SUBMITTED" },
-        { id: "approved-end", label: "承認済", status: "APPROVED" },
-      ]
-
-      const rejectIndex = newSteps.length - 3
-
-      setFlowSteps(newSteps)
-      setCurrentStepIndex(rejectIndex)
-      setIsLocked(false)
-      localStorage.setItem("is_club_settlement_locked", "false")
-
-      const historyData = { steps: newSteps, currentIndex: rejectIndex }
-      localStorage.setItem(
-        "club_settlement_history_flow",
-        JSON.stringify(historyData)
-      )
-      alert(
-        "【デモ機能】監査人から差し戻されました。フローに歴史が追加され、ロックが解除されました。"
-      )
+      if (activeClub) {
+        if (!submitClubSettlement(activeClub.id)) {
+          setClubSettlementStatus(activeClub.id, "submitted")
+        }
+      }
+      if (activeClub) {
+        applyClubSettlementSubmit(activeClub.id)
+      }
+      alert("決算データを提出しました。各機能にロックがかかります。")
+      syncFromStorage()
     } catch {
-      // エラー時は状態を維持
+      if (activeClub) {
+        applyClubSettlementSubmit(activeClub.id)
+      }
+      syncFromStorage()
     }
   }
 
@@ -171,6 +129,14 @@ export default function ClubSettlementPage() {
             )
           })}
         </div>
+        <div className="pt-1">
+          <Link
+            href={clubPath("/messages")}
+            className="inline-flex items-center text-sm font-medium text-sky-500 transition-colors hover:text-sky-600"
+          >
+            メッセージBOXへ ➔
+          </Link>
+        </div>
       </div>
 
       {/* 決算データを提出する ボタン */}
@@ -189,7 +155,9 @@ export default function ClubSettlementPage() {
             disabled={isLocked}
             style={!isLocked ? { backgroundColor: navyColor, color: "white" } : {}}
             className={`px-6 py-2.5 font-medium rounded-lg text-sm transition-opacity hover:opacity-90 ${
-              isLocked ? "bg-gray-100 text-gray-400 cursor-not-allowed" : ""
+              isLocked
+                ? "bg-gray-300 text-gray-600 cursor-not-allowed disabled:opacity-100"
+                : ""
             }`}
           >
             {isLocked ? "決算データ提出済み" : "決算データを提出する"}
@@ -199,15 +167,6 @@ export default function ClubSettlementPage() {
             <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
               ※現在、差し戻し中（修正可能状態）です
             </span>
-          )}
-          {isLocked && (
-            <Button
-              variant="outline"
-              onClick={handleSimulateReject}
-              className="text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
-            >
-              【デモ】監査人から差し戻しを受ける
-            </Button>
           )}
         </div>
       </div>

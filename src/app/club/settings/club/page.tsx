@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ClubPasswordChangeSection } from "@/components/club/ClubPasswordChangeSection"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 
 export default function ClubSettingsPage() {
@@ -30,16 +31,7 @@ export default function ClubSettingsPage() {
     email: "rugby@example.com",
   })
 
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   // userInfoが変更されたらformDataを更新
   useEffect(() => {

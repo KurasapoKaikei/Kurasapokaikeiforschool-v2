@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { X } from "lucide-react"
-import { isSchoolImpersonatingClub } from "@/lib/clubPortalAccess"
+import {
+  isSchoolImpersonatingClub,
+  resolveClubPortalDashboardBackHref,
+} from "@/lib/clubPortalAccess"
 import { CLUB_PORTAL_SESSION_CHANGED_EVENT } from "@/lib/clubPortalSessionEvents"
 import {
-  clearImpersonatedClub,
   getImpersonatedClub,
   type ImpersonatedClub,
 } from "@/lib/schoolClubSession"
-import { SCHOOL_PAGE_TITLES, SCHOOL_ROUTES } from "@/lib/schoolTheme"
+import { SCHOOL_PAGE_TITLES } from "@/lib/schoolTheme"
 
-/** 学校管理者がクラブポータルを閲覧中のバナー（通常のクラブログイン時は非表示） */
+/** 学校管理者・監査人がクラブポータルを閲覧中のバナー（通常のクラブログイン時は非表示） */
 export function ClubImpersonationBanner() {
   const [club, setClub] = useState<ImpersonatedClub | null>(null)
 
@@ -31,37 +32,44 @@ export function ClubImpersonationBanner() {
 
   if (!club) return null
 
-  const handleEnd = () => {
-    clearImpersonatedClub()
-    setClub(null)
-    window.location.href = SCHOOL_ROUTES.clubList
-  }
+  const isAuditor = club.viewer === "auditor"
+  const backHref = resolveClubPortalDashboardBackHref()
+  const backLabel = isAuditor
+    ? "ダッシュボードへ戻る"
+    : `${SCHOOL_PAGE_TITLES.clubList}に戻る`
 
   return (
-    <div className="border-b border-[#005088]/30 bg-[#005088]/10 px-6 py-2.5">
+    <div
+      className={
+        isAuditor
+          ? "shrink-0 border-b border-orange-200 bg-orange-50 px-6 py-2.5"
+          : "shrink-0 border-b border-[#005088]/30 bg-[#005088]/10 px-6 py-2.5"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[#374151]">
         <p>
-          <span className="font-medium text-[#005088]">管理者閲覧モード</span>
+          <span
+            className={
+              isAuditor
+                ? "font-medium text-orange-700"
+                : "font-medium text-[#005088]"
+            }
+          >
+            {isAuditor ? "監査人閲覧モード" : "管理者閲覧モード"}
+          </span>
           <span className="mx-2 text-[#9CA3AF]">|</span>
           クラブ「{club.name}」（{club.id}）のポータルを表示中
         </p>
-        <div className="flex items-center gap-3">
-          <Link
-            href={SCHOOL_ROUTES.clubList}
-            className="font-medium text-[#005088] hover:underline"
-          >
-            {SCHOOL_PAGE_TITLES.clubList}に戻る
-          </Link>
-          <button
-            type="button"
-            onClick={handleEnd}
-            className="inline-flex items-center gap-1 text-[#6B7280] hover:text-[#374151]"
-            aria-label="閲覧モードを終了"
-          >
-            <X className="h-4 w-4" />
-            終了
-          </button>
-        </div>
+        <Link
+          href={backHref}
+          className={
+            isAuditor
+              ? "font-medium text-orange-700 hover:underline"
+              : "font-medium text-[#005088] hover:underline"
+          }
+        >
+          {backLabel}
+        </Link>
       </div>
     </div>
   )

@@ -14,6 +14,8 @@ import {
 } from "@/lib/clubPortalData"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
+import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import type { ClubPortalMessageView } from "@/lib/portalMessages"
 import { type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
 
@@ -24,6 +26,7 @@ export default function DashboardPage() {
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [messages, setMessages] = useState<ClubPortalMessageView[]>([])
+  const isLocked = useClubSettlementLock()
   const loadPortalData = useCallback(() => {
     setTransactions(getPortalTransactions(activeClub))
     setAccountTitles(getPortalAccountTitles(activeClub))
@@ -183,6 +186,9 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col bg-[#F5F5F0]">
+      <div className="px-6 pt-2">
+        <SettlementLockAlert isLocked={isLocked} />
+      </div>
       {/* ダッシュボード本体のみ 67vh（サイドバーには適用しない） */}
       <div className="flex h-[67vh] max-h-[67vh] min-h-0 flex-col overflow-hidden px-6 pb-3 pt-2">
         <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-3">

@@ -11,6 +11,7 @@ import {
   type CollectionSchedule,
 } from "@/utils/localStorage"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 const THEME_COLOR = "#D99529"
 const FISCAL_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
@@ -49,16 +50,7 @@ export default function CollectionSchedulePage() {
   const { userInfo } = useUserInfo()
   const router = useRouter()
   const [schedules, setSchedules] = useState<CollectionSchedule[]>([])
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   const loadData = useCallback(() => {
     setSchedules(getCollectionSchedules())

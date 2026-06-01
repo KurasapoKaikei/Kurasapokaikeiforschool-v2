@@ -1,24 +1,36 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { useClubSettlementLocked } from "@/components/audit/useClubSettlementLocked"
+import { useAuditorSettlementState } from "@/components/audit/useAuditorSettlementState"
 import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettlementReviewDialog"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { getClubMemberCount } from "@/lib/auditorClubDashboard"
+import { clearCurrentClub } from "@/lib/clubLoginSession"
 import { cn } from "@/lib/utils"
 import { loadCurrentAuditor } from "@/lib/currentAuditor"
-import { AUDIT_BRAND_ORANGE, AUDIT_ROUTES } from "@/lib/auditorTheme"
+import { AUDIT_ROUTES } from "@/lib/auditorTheme"
+import { setImpersonatedClub } from "@/lib/schoolClubSession"
+import { CLUB_BRAND_PINK, CLUB_PORTAL_DASHBOARD } from "@/lib/schoolTheme"
 
 type AuditorClubReviewViewProps = {
   clubId: string
 }
 
 export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
+  const router = useRouter()
   const { sortedClubs, isLoaded } = useSchoolClubs()
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const isClubSubmitted = useClubSettlementLocked()
+  const [reviewMode, setReviewMode] = useState<"approve" | "reject" | null>(
+    null
+  )
+  const {
+    isClubSubmitted,
+    auditLabel,
+    auditBadgeVariant,
+    canReview,
+  } = useAuditorSettlementState(clubId)
 
   const session = loadCurrentAuditor()
   const club = sortedClubs.find((c) => c.id === clubId)
@@ -56,8 +68,10 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
       <SchoolSettlementReviewDialog
         clubId={club.id}
         clubName={club.name}
-        open={reviewOpen}
-        onClose={() => setReviewOpen(false)}
+        mode={reviewMode ?? "approve"}
+        reviewSource="auditor"
+        open={reviewMode != null}
+        onClose={() => setReviewMode(null)}
       />
       <div className="mb-4">
         <Button asChild variant="outline" size="sm">
@@ -95,28 +109,63 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
               <span
                 className={cn(
                   "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                  isClubSubmitted
-                    ? "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]"
-                    : "border-gray-200 bg-gray-100 text-[#6B7280]"
+                  (auditBadgeVariant === "navy" ||
+                    auditBadgeVariant === "approved") &&
+                    "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]",
+                  auditBadgeVariant === "rejected" &&
+                    "border-amber-200 bg-amber-100 text-amber-800",
+                  auditBadgeVariant === "muted" &&
+                    "border-gray-200 bg-gray-100 text-[#6B7280]"
                 )}
               >
-                {isClubSubmitted ? "監査中" : "未着手"}
+                {auditLabel}
               </span>
             </dd>
           </div>
         </dl>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Button
-            type="button"
-            className="rounded-lg text-white hover:opacity-90"
-            style={{ backgroundColor: AUDIT_BRAND_ORANGE }}
-            onClick={() => setReviewOpen(true)}
-            disabled={!isClubSubmitted}
-          >
-            決算データを確認・承認・差戻し
-          </Button>
-          {!isClubSubmitted ? (
-            <p className="w-full text-xs text-[#6B7280]">
+        <div className="mt-8">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              className="h-11 min-w-0 flex-[2] rounded-lg border-0 text-sm font-semibold text-white shadow-none hover:opacity-90"
+              style={{ backgroundColor: CLUB_BRAND_PINK }}
+              onClick={() => {
+                clearCurrentClub()
+                setImpersonatedClub({ id: club.id, name: club.name, viewer: "auditor" })
+                router.push(CLUB_PORTAL_DASHBOARD)
+              }}
+            >
+              クラブページへ
+            </Button>
+            <Button
+              type="button"
+              disabled={!canReview}
+              className={cn(
+                "h-11 min-w-0 flex-1 rounded-lg text-sm font-semibold text-white",
+                canReview
+                  ? "bg-blue-600 hover:bg-blue-700"
+                  : "cursor-not-allowed bg-blue-600/40 text-white/90"
+              )}
+              onClick={() => setReviewMode("approve")}
+            >
+              承認
+            </Button>
+            <Button
+              type="button"
+              disabled={!canReview}
+              className={cn(
+                "h-11 min-w-0 flex-1 rounded-lg border text-sm font-semibold",
+                canReview
+                  ? "border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-200"
+                  : "cursor-not-allowed border-amber-200/60 bg-amber-50 text-amber-800/50"
+              )}
+              onClick={() => setReviewMode("reject")}
+            >
+              差戻
+            </Button>
+          </div>
+          {!canReview ? (
+            <p className="mt-2 text-xs text-[#6B7280]">
               クラブから決算が「提出済」になると、承認・差戻しが可能になります。
             </p>
           ) : null}

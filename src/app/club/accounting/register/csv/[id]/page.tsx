@@ -22,6 +22,7 @@ import {
 } from "@/utils/transactionEditPath"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 const THEME_COLOR = "#A3BC68"
 
@@ -62,15 +63,6 @@ export default function CsvImportDetailPage() {
   const [draftRows, setDraftRows] = useState<DraftRow[]>([])
   const [notFound, setNotFound] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),

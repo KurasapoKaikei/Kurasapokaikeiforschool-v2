@@ -33,6 +33,7 @@ import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { BankCsvImportSection } from "@/components/accounting/BankCsvImportSection"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import {
   formatAmountInputDisplay,
   isAllowedSignedIntegerTyping,
@@ -345,7 +346,7 @@ export default function NewRegisterPage() {
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [activeTab, setActiveTab] = useState<TabType>("income")
-  const [isLocked, setIsLocked] = useState(false)
+  const isLocked = useClubSettlementLock()
   const [ocrLoading, setOcrLoading] = useState(false)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -445,15 +446,6 @@ export default function NewRegisterPage() {
   const memberRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
   const deepLinkInitDoneRef = useRef(false)
   const deepLinkScrollDoneRef = useRef(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
 
   const reloadCollectionData = useCallback(() => {
     syncAllCollectionRecords()

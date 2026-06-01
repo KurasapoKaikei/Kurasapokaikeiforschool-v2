@@ -13,6 +13,7 @@ import {
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 import { formatDateDisplay } from "@/utils/dateDisplay"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 type Tab = "all" | "csv"
 
@@ -99,15 +100,6 @@ export default function RegisterHistoryPage() {
   const [isLocked, setIsLocked] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [batches, setBatches] = useState<CsvImportBatch[]>([])
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
 
   const refresh = () => {
     setTransactions(getTransactions())

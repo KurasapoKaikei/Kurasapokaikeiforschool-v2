@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
+import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
 const MAX_STAFF = 5
 
@@ -13,16 +14,7 @@ export default function StaffSettingsPage() {
     Array.from({ length: MAX_STAFF }, (_, i) => userInfo.staffNames[i] ?? "")
   )
   const [staff1Error, setStaff1Error] = useState<string | null>(null)
-  const [isLocked, setIsLocked] = useState(false)
-
-  useEffect(() => {
-    try {
-      const savedLocked = localStorage.getItem("is_club_settlement_locked")
-      if (savedLocked === "true") {
-        setIsLocked(true)
-      }
-    } catch (e) {}
-  }, [])
+  const isLocked = useClubSettlementLock()
 
   useEffect(() => {
     setFields(Array.from({ length: MAX_STAFF }, (_, i) => userInfo.staffNames[i] ?? ""))

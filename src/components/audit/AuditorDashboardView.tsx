@@ -17,6 +17,7 @@ export function AuditorDashboardView() {
   const [reviewClub, setReviewClub] = useState<{
     id: string
     name: string
+    mode: "approve" | "reject"
   } | null>(null)
 
   const refreshSession = useCallback(() => {
@@ -72,6 +73,8 @@ export function AuditorDashboardView() {
         <SchoolSettlementReviewDialog
           clubId={reviewClub.id}
           clubName={reviewClub.name}
+          mode={reviewClub.mode}
+          reviewSource="auditor"
           open
           onClose={() => setReviewClub(null)}
         />
@@ -109,10 +112,18 @@ export function AuditorDashboardView() {
               <AuditorClubDashboardCard
                 key={club.id}
                 club={club}
-                onReview={() =>
+                onApprove={() =>
                   setReviewClub({
                     id: club.id,
                     name: club.name ?? club.id,
+                    mode: "approve",
+                  })
+                }
+                onReject={() =>
+                  setReviewClub({
+                    id: club.id,
+                    name: club.name ?? club.id,
+                    mode: "reject",
                   })
                 }
               />

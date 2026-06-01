@@ -1,8 +1,8 @@
 # クラサポ会計 for school 全システム統合グランドマスター仕様書
 
 ■ 文書名：クラサポ会計 for school 全システム統合グランドマスター仕様書
-■ 版：2.0.1（全機能網羅・科目マスタ／監査人／保護者追補完結版）
-■ 改訂日：2026年5月29日
+■ 版：2.0.2（最新UI刷新・クラブ別データ分離・セッション固定反映版）
+■ 改訂日：2026年6月1日
 
 本書は、クラサポ会計における「学校管理者」「クラブ」「監査人」「保護者」のすべての組織階層、役割定義、初期導入、認証、および本日確定した「ヘッダー3段構造」「全域ロック機構」「監査人連動」のすべての正解仕様を網羅した、システム全体の最高位設計図（シングル・オブ・ソース）である。
 
@@ -100,22 +100,29 @@
 画面全体の美しさと一貫性を整えるため、縦の並び順およびカードデザインを以下の通りに完全統一する。
 1. **小タイトル**: 「決算」（先頭左側にネイビーの縦ラインのアクセント）
 2. **■ 担当監査人**: 薄グレーの背景（`bg-gray-50`）、角丸（`rounded-xl`）、薄い枠線（`border border-gray-100`）で包まれた独立したカード。見出し文字は上品な炭黒（`text-gray-700 font-semibold`）。
-3. **■ 決算ステータス**: 上記の「担当監査人」と**全く同じサイズ、背景色、角丸、枠線、余白（パディング）、および見出し文言トーン**で作成されたカード。内部に後述の「双六UI（ステップフロー）」を内包する。
-4. **決算データ提出エリア**: 「決算データを提出する」アクションボタンおよび注意書き。
+3. **■ 決算ステータス**: 上記の「担当監査人」と**全く同じサイズ、背景色、角丸、枠線、余白（パディング）、および見出し文言トーン**で作成されたカード。内部に後述の「双六UI（ステップフロー）」を内包する。  
+   双六UIの直下には、クラブ担当者が即時確認できる導線として **「メッセージBOXへ ➔」** リンクを配置し、`/club/messages` へ遷移させる。色調はメッセージBOX系アクセントに合わせた水色（`text-sky-500` / hover `text-sky-600`）を採用する。
+4. **決算データ提出エリア**: 「決算データを提出する」アクションボタンおよび注意書き。提出済ロック時はボタン文言を「決算データ提出済み」に切り替え、`disabled` で非活性化する。視認性のため `disabled:bg-gray-300`・`disabled:text-gray-600`・`disabled:opacity-100`（基底コンポーネントの `disabled:opacity-50` を上書き）を適用し、押せない状態でも文字がはっきり読めるようにする。動作確認用のデモボタン（差し戻しシミュレーション等）は削除済みで、差し戻し・ロック解除は監査人ポータル側の本番フローに委ねる。
 
-### 5.2 履歴対応型ステップフロー（双六UI）のロジック
+### 5.2 履歴対応型ステップフロー（双六UI）
 「作成中 ➔ 提出済 ➔ 承認済」という基本フェーズの表示に加え、監査人からの「差し戻し」が発生した歴史をユーザーがすべて追えるよう、動的な履歴追跡構造を持つ。
-- **動的蓄積仕様**: 監査人側からの差し戻し（REJECTED）が実行されるたびに、フローの末尾に「差戻し」「提出済」のステップが動的に追加され、プロセスの歴史が無限に蓄積・可視化される。（例: 作成中 ➔ 提出済 ➔ 差戻し ➔ 提出済 ➔ 承認済）
+
+- **永続化キー**: `club_settlement_history_flow_${clubId}`（JSON: `{ steps, currentIndex }`）。API: `src/lib/clubSettlementPortalSync.ts` の `loadSettlementHistoryFlow(clubId)` / `saveSettlementHistoryFlow(clubId, ...)` / `applyAuditorRejectToHistory(clubId)` / `applyAuditorApproveToHistory(clubId)`。
+- **クラブ提出時**: `applyClubSettlementSubmit(clubId)` が `currentIndex` を進め、`is_club_settlement_locked_${clubId} = "true"` と `club_auditor_audit_status_${clubId} = "in_review"` を設定する。
+- **動的蓄積仕様**: 監査人が差戻（`auditorRejectSettlement`）すると、現在地が「提出済」のとき、履歴に **「差戻し」→「提出済」→「承認済」** の3ステップを挿入し、現在地を「差戻し」へ移す。クラブが再提出すると再び「提出済」へ進み、監査人承認で「承認済」へ到達する。繰り返すたびに同パターンが末尾に追加され、**作成中 ➔ 提出済 ➔ 差戻し ➔ 提出済 ➔ 承認済** … と歴史が連鎖する。
 - **カラー制御**: 現在地（最新のステップ）はネイビーで強調。通過した過去のステップは通常色（またはチェックマーク）、差し戻し位置は薄赤の警告色、未達のステップは薄グレーで表現する。
+- **メッセージ導線**: 双六UI直下（または同カード内下部）には、メッセージBOXテーマと同期した水色装飾の固定リンク **「メッセージBOXへ ➔」** を常設し、クラブ担当者が `/club/messages` へ滑らかに遷移できるようにする。
+
+※ **構造原則（完全分離）**: フラグ／履歴はすべて `_${clubId}` を末尾に付与した個別キーで管理し、他クラブのデータと混ざらないよう完全分離する。
 
 ### 5.3 提出アクションと全域ロック制限
-クラブ管理者が「決算データを提出する」ボタンをクリックし、確認ダイアログを承認すると、システムはブラウザ共通領域に `is_club_settlement_locked = "true"` を保存する。
+クラブ管理者が「決算データを提出する」ボタンをクリックし、確認ダイアログを承認すると、システムは `localStorage` に `is_club_settlement_locked_${clubId} = "true"` を保存する。
 
-このフラグが `true` になっている間、クラブポータル内の特定5機能（**①入出金登録、②集計・帳簿、③集金管理、④予実管理、⑤設定**）のすべてのトップ画面、一覧、および入力フォームにおいて、以下の制限が強制発動する。
+このフラグが `true` になっている間、クラブポータル内の**ポータルトップ（ダッシュボード `/club/dashboard`）**および特定5機能（**①入出金登録、②集計・帳簿、③集金管理、④予実管理、⑤設定**）のすべてのトップ画面、一覧、および入力フォームにおいて、以下の制限が強制発動する。
 
 1. **画面最上部への赤文字警告表示**:
-   メインコンテンツの最上部（タイトルのすぐ下）に、以下の警告アラート枠を表示する。
-   - **文言**: 「当年度の決算は提出済のため、登録、編集、削除はできません。ロックを解除したい場合は監査人から差戻しをしてもらってください。」
+   メインコンテンツの最上部（タイトルのすぐ下）に、以下の警告アラート枠を表示する。ポータルトップ（ダッシュボード）では、メインコンテンツ領域の最上部に同一デザインのアラートを表示する。
+   - **文言**: 「当年度の決算は提出済のため、登録、編集、削除はできません。ロックを解除するには監査人から差戻しをしてもらう必要があります。」
    - **デザイン**: 背景が薄い赤（`bg-red-50`）、文字が濃い赤（`text-red-600`）、丸角（`rounded-lg`）、境界線（`border border-red-200`）、左側に注意アイコン（`AlertTriangle` など）を配置した目立つアラートコンポーネント。
 2. **すべてのアクションボタンの非活性化（disabled）**:
    画面内にある「登録する」「保存する」「新規追加」「編集」「削除」などのあらゆるデータ書き込みボタンに対し、`disabled={isLocked}` を適用し、クリックできない状態にする。
@@ -124,7 +131,7 @@
 
 ## 6. 監査人ポータルへのリアルタイム状態連動
 
-クラブポータルでの決算提出アクション（`is_club_settlement_locked === "true"`）は、監査人ポータルのダッシュボードに対して、サーバーレス環境下（localStorage共有）でもリアルタイムに表示を同期させる。
+クラブポータルでの決算提出アクション（`is_club_settlement_locked_${clubId} === "true"`）は、監査人ポータルのダッシュボードに対して、サーバーレス環境下（localStorage内で clubId 末尾キーにより完全分離）でもリアルタイムに表示を同期させる。
 
 ### 6.1 旧コンポーネントの完全廃止
 - 画面上の混乱や仕様の衝突を防ぐため、従来の古い「決算ワークフロー」などのステータス記述やコンポーネントは、監査人ダッシュボードおよび監査画面から完全に削除する。
@@ -134,8 +141,58 @@
 - クラブ提出後 (`true`): **`提出済`** (ネイビーまたは青系のハイライトバッジ表示)
 
 ### 6.3 「監査ステータス」の自動遷移
-- クラブ提出前 (`false`): `未着手` などの初期状態
-- クラブ提出後 (`true`): **`監査中`** (ネイビー、またはシステム標準のステータスカラー表示)
+正本キー: **`club_auditor_audit_status_${clubId}`**（`not_started` / `in_review` / `approved` / `rejected`）。フック: `useAuditorSettlementState(clubId)`（`src/components/audit/useAuditorSettlementState.ts`）。
+
+| 条件 | バッジ表示 | 色 |
+|------|------------|-----|
+| ロックなし・未操作 | **未着手** | グレー |
+| ロックあり・監査中 | **監査中** | 提出済と同じネイビー系 |
+| 監査人承認後 | **承認済** | 提出済と同じネイビー系（`#001e43` / `#E6ECF5`） |
+| 監査人差戻後（ロック解除） | **差戻** | 優しい黄色（`bg-amber-100 text-amber-800 border-amber-200`） |
+
+同期: `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` および `storage`・`focus`・`visibilitychange`。
+
+### 6.4 カード下部アクション（3分割横並び構成）と操作制限
+担当クラブカード（`AuditorClubDashboardCard`）および監査詳細（`AuditorClubReviewView`）の下部は、**[左 50%] [中央 25%] [右 25%]** の3ボタン横並びとする。
+
+**活性化の原則（承認・差戻のみ）**
+
+```ts
+const canReview = canAuditorActOnSettlement(clubId)
+// ≡ localStorage.is_club_settlement_locked_${clubId} === "true"
+//   && club_auditor_audit_status_${clubId} === "in_review"
+```
+
+- **提出前**（ロック `false`）: 承認・差戻は `disabled`（`cursor-not-allowed`・半透明）。**「クラブページへ」は常時活性。**
+- **提出済・監査中**（ロック `true` かつ `in_review`）: 承認・差戻が活性。
+- **承認済**（`approved`）: 承認・差戻は非活性。カード背景のみ `bg-gray-50`（文字・バッジは減衰しない）。
+- **差戻後**（ロック `false`・`rejected`）: 承認・差戻は非活性（再提出待ち）。
+
+| 位置 | ラベル | 色 | 活性 | 動作 |
+|------|--------|-----|------|------|
+| **左 50%** | クラブページへ | クラブテーマ **くすみピンク** `CLUB_BRAND_PINK`（`#E66A84`）・白文字 | **常時** | `clearCurrentClub()` → `setImpersonatedClub({ id, name })` → `/club/dashboard`（監査人閲覧モード） |
+| **中央 25%** | **承認** | 青 `bg-blue-600`（非活性 `bg-blue-600/40`） | **`canReview` のみ** | モーダル → `window.confirm` 最終確認 → `auditorApproveSettlement(clubId)` |
+| **右 25%** | **差戻** | 黄 `bg-amber-100`（非活性 `bg-amber-50/50`） | **`canReview` のみ** | モーダルで理由入力 → `window.confirm` → `auditorRejectSettlement(clubId, reason)` |
+
+**承認 OK 時の連動**（`auditorApproveSettlement`）:
+
+1. 監査ステータス → `approved`（バッジ「承認済」・ネイビー系）
+2. `is_club_settlement_locked_${clubId}` は **`true` のまま**（クラブ側編集ロック・赤警告アラート維持）
+3. 双六 UI の `currentIndex` を次の「承認済」ステップへ
+4. 学校側決算ステータス（`kurasaokaikei-school-club-settlement-status`）を `approved` に同期
+
+**差戻 OK 時の連動**（`auditorRejectSettlement`）:
+
+1. 監査ステータス → `rejected`（バッジ「差戻」・優しい黄色）
+2. `is_club_settlement_locked_${clubId}` → **`false`**（`CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` でクラブ全画面の `useClubSettlementLock` が即時反映）
+3. クラブ側赤警告アラート消滅・書き込みボタン再活性
+4. 双六 UI に「差戻し」履歴ステップを追加（§5.2）
+5. 学校側ステータスを `rejected` に同期
+6. 本版では、差戻し理由のメッセージBOX自動投稿連動は採用しない（見送り）。監査人操作は決算ステータス遷移とロック制御に限定する。
+
+実装: `SchoolSettlementReviewDialog` に `reviewSource="auditor"` を指定。学校ポータルは従来 API（`reviewSource="school"` 既定）。
+
+レイアウト：`flex gap-2` 内で左ボタン `flex-[2]`、承認・差戻に `flex-1` を付与（2:1:1＝50%:25%:25%）。旧「承認・差戻」統合ボタンは **廃止**。
 
 ---
 
@@ -196,11 +253,27 @@
 ### 10.2 セッションの優先順位
 1. 学校管理者のなりすまし（`sessionStorage`: `kurasaokaikei-school-impersonate-club`）— 「クラブページへ」ボタン
 2. クラブログイン（`localStorage`: `kurasaokaikei-current-club`）
+3. 直前に有効だったクラブコンテキストの復元（`localStorage`: `kurasaokaikei-last-active-club-session`）
+
+**セッション固定化ガード（必須）**
+
+- `/club/dashboard` では、リロード・ホットリロード・コード差し替え時も `kurasaokaikei-current-club`（および `kurasaokaikei-last-active-club-session`）を最優先で復元する。
+- 一時的にクラブ情報が未解決でも、既存の有効セッションがある限り、デフォルトクラブ（例: ラグビー部）へ自動フォールバックしない。
+- セッション未確定状態での初期描画は「空状態」で待機し、既存のクラブ別キーを初期値で上書きしない。
 
 ### 10.3 動的表示・初期状態（空データ）
 - ヘッダー・ダッシュボードでログイン中クラブ名を反映（例：「吹奏楽部 ポータル」）。
 - **学校登録直後のクラブ**（活動データ未作成）は、予算・残高・部員・お知らせを **0円／空** で表示。決算ステータスは **「作成中」**（グレー）から開始。
-- ログインなしで `/club/dashboard` を直接開いた場合は、従来のグローバルデモデータ（例：ラグビー部）を表示。
+- リロード／ホットリロード時は、一時的にセッション読込が空でも **直前の有効クラブセッションを優先復元** し、表示クラブを切り替えない。
+- ログイン情報が完全に空のまま `/club/dashboard` を直接開いた場合は、クラブ別データは **空状態** とし、既存セッションキーやクラブ別キー（`_${clubId}`）をデフォルト値で上書きしない。
+- クラブ別保存キーとアクティブクラブIDは常に一致させ、別クラブデータ（例：ラグビー部デモ）へ自動フォールバックしない。
+
+### 10.4 各クラブごとのデータ完全分離（個別キー原則）
+
+- localStorage の正本キーは、状態の種類ごとに必ず `_${clubId}` を末尾に動的付与する（例: `is_club_settlement_locked_club-0001`, `audit_status_club-0001`）。
+- 読み込み・保存・更新・同期イベントのすべてで、**現在操作中の `clubId` と同一末尾キーのみ** を対象にする。
+- 禁止事項: グローバルキー（clubId 非依存キー）による状態共有、別クラブキーの一括更新、ログインクラブと不一致なキーへの書き込み。
+- この原則により、1クラブの提出・承認・差戻し・表示更新が他クラブに波及する競合バグを防止する。
 
 ---
 
@@ -376,50 +449,54 @@
 | ラベル | 表示ロジック |
 |--------|----------------|
 | 部員数 | `getClubMemberCount(clubId)` |
-| **当期の決算提出状況** | `is_club_settlement_locked === "true"` → バッジ **提出済**（ネイビー系 `variant="navy"`）／それ以外は **未提出**（グレー `muted`） |
-| **監査ステータス** | 提出済 → **監査中**（ネイビー）／未提出 → **未着手**（グレー） |
+| **当期の決算提出状況** | `is_club_settlement_locked_${clubId} === "true"` → バッジ **提出済**（ネイビー系）／それ以外は **未提出**（グレー） |
+| **監査ステータス** | `club_auditor_audit_status_${clubId}` に応じ **未着手 / 監査中 / 承認済 / 差戻**（§6.3） |
 
 **リアルタイム同期**（第6章と整合）:
 
-- フック: `useClubSettlementLocked` — キー `is_club_settlement_locked`
-- `storage`・`focus`・`visibilitychange` で再読込（同一ブラウザ・デモ環境）
+- フック: `useAuditorSettlementState(clubId)` — ロック `is_club_settlement_locked_${clubId}` ＋ 監査 `club_auditor_audit_status_${clubId}`
+- ボタン活性: `canAuditorActOnSettlement(clubId)`（提出ロックかつ `in_review` のときのみ承認・差戻可）
+- イベント: `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` および `storage`・`focus`・`visibilitychange`
 
 **廃止 UI**（確定）:
 
 - 旧「決算ワークフロー」専用の重複進捗セクションは **表示しない**。
 - カード内の旧「進捗状況」ブロックは削除済み。
 
-**カード下部アクション**
+**カード下部アクション**（§6.4 と同一 — 3分割横並び）
 
-| 要素 | 仕様 |
-|------|------|
-| ボタン文言 | `決算データを確認・承認・差戻し` |
-| 色 | オレンジ `bg-orange-500`（活性時） |
-| 活性条件 | **`isClubSubmitted === true`（提出済）のみ** |
-| 非活性 | `bg-orange-500/40`・クリック不可 |
-| クリック | `SchoolSettlementReviewDialog` を開く |
+| 位置 | ラベル | 色 | 活性 | 動作 |
+|------|--------|-----|------|------|
+| **左 50%** | クラブページへ | `CLUB_BRAND_PINK`（`#E66A84`）・白文字 | 常時 | 監査人閲覧モードで `/club/dashboard` へ |
+| **中央 25%** | **承認** | `bg-blue-600`・白文字 | `canReview` のみ | モーダル＋`confirm` → `auditorApproveSettlement` |
+| **右 25%** | **差戻** | `bg-amber-100 text-amber-800 border-amber-200` | `canReview` のみ | 理由入力モーダル＋`confirm` → `auditorRejectSettlement` |
+
+旧統合ボタン「承認・差戻」は廃止。補足文「クラブから決算が「提出済」になると…」はボタン行の下に表示。
 
 **ダッシュボード上部バナー**: ログイン監査人の氏名・ID・部署、担当クラブ件数（オレンジ枠 `border-orange-200 bg-orange-50`）。
 
-### 13.5 承認・差戻しとワークフロー正本
+### 13.5 承認・差戻しと localStorage 正本
 
-デモ環境では **二系統** が併存する。統合時は第9章（旧版グランドマスター）の統合方針に従い、提出時に A+B を同時更新すること。
+デモ環境の正本 API: **`src/lib/clubSettlementPortalSync.ts`**
 
-| 系統 | キー / API | 用途 |
-|------|------------|------|
-| **A: 提出ロック** | `is_club_settlement_locked` | クラブ編集ロック・監査人「提出済」表示 |
-| **B: ワークフロー** | `club_workflow_status` — `setClubWorkflowStatus()` | `EDITING` / `SUBMITTED` / `REJECTED` / `APPROVED` |
+| キー | 値 | 用途 |
+|------|-----|------|
+| `is_club_settlement_locked_${clubId}` | `"true"` / `"false"` | クラブ編集ロック・監査人「提出済」表示 |
+| `club_auditor_audit_status_${clubId}` | `not_started` / `in_review` / `approved` / `rejected` | 監査人バッジ・承認差戻ボタン活性 |
+| `club_settlement_history_flow_${clubId}` | `{ steps, currentIndex }` | 双六 UI 履歴（§5.2） |
 
-**監査人操作**（`SUBMITTED` のときのみボタン活性 — `canAuditorActOnClubWorkflow`）:
+**監査人操作**（`canAuditorActOnSettlement()` が true のときのみ活性）:
 
-| 操作 | 確認ダイアログ | 遷移後 `club_workflow_status` | クラブ側効果 |
-|------|----------------|------------------------------|--------------|
-| **承認** | 「このクラブの決算データを承認しますか？」 | `APPROVED` | 全域編集ロック・承認済警告（灰系） |
-| **差戻** | 「…差し戻しますか？クラブ側は再編集が可能になります」 | `REJECTED` + `hadRejection` | ロック解除・双六 UI に差戻し履歴追加 |
+| 操作 | 確認 | 関数 | クラブ側効果 |
+|------|------|------|--------------|
+| **承認** | モーダル＋ `window.confirm` | `auditorApproveSettlement` | ロック維持・監査「承認済」・双六を承認済へ |
+| **差戻** | 理由必須＋ `window.confirm` | `auditorRejectSettlement` | ロック解除・アラート消滅・双六に差戻し追加・編集再開 |
+
+学校側決算マップ（`kurasaokaikei-school-club-settlement-status`）も併せて更新する。学校ポータルの審査 UI は `SchoolSettlementReviewDialog`（`reviewSource="school"`）で従来 API を使用。
 
 **承認済カードのビジュアル**: 背景のみ `bg-gray-50`。文字・バッジ・ボタンは **opacity で減衰させない**（視認性維持）。
 
-**詳細画面**（`/audit/clubs/[clubId]`）: 帳票確認・メッセージ・なりすまし導線を提供。承認／差戻はダイアログまたはカード経由で同一 API を呼ぶ。
+**詳細画面**（`/audit/clubs/[clubId]`）: `AuditorClubReviewView` — 承認／差戻は `reviewSource="auditor"` の同一ダイアログ。
 
 ### 13.6 なりすまし（監査人閲覧モード）
 
@@ -575,6 +652,7 @@
 |----|------|------|
 | 2.0 | 2026-05-29 | Ver 1.0 全体仕様と本日確定 UI（3段ヘッダー・ロック・監査人連動）の統合 |
 | 2.0.1 | 2026-05-29 | 第12章 科目マスタ配布、第13章 監査人詳細、第14章 保護者トークン URL を追補 |
+| 2.0.2 | 2026-06-01 | 4.2/5.1/5.2/6/10/13 を最新UI・操作制限・クラブ別キー分離・セッション固定仕様へ更新。差戻しメッセージBOX自動連動の記述を見送り方針へ修正 |
 
 ---
 

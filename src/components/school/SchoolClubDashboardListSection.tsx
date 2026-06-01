@@ -70,7 +70,7 @@ export function SchoolClubDashboardListSection() {
 
   const handlePortal = (club: { id: string; name: string }) => {
     clearCurrentClub()
-    setImpersonatedClub({ id: club.id, name: club.name })
+    setImpersonatedClub({ id: club.id, name: club.name, viewer: "school" })
     router.push(CLUB_PORTAL_DASHBOARD)
   }
 
