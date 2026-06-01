@@ -16,7 +16,7 @@ export function SchoolHeader() {
   return (
     <PortalUnifiedHeader
       portal="school"
-      portalTitle="管理者ポータル"
+      portalTitle="学校管理者ポータル"
       onLogout={handleLogout}
     />
   )

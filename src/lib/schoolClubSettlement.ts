@@ -24,20 +24,20 @@ export const CLUB_SETTLEMENT_STATUS_META: Record<
   { label: string; className: string }
 > = {
   draft: {
-    label: "作成中",
-    className: "bg-gray-100 text-gray-700 border border-gray-300",
+    label: "未提出",
+    className: "border-red-600/30 bg-red-500 text-white",
   },
   submitted: {
-    label: "提出済",
-    className: "bg-[#DBEAFE] text-[#1E40AF] border border-[#93C5FD]",
+    label: "監査中",
+    className: "border-green-600/30 bg-green-600 text-white",
   },
   approved: {
     label: "承認済",
-    className: "bg-[#D1FAE5] text-[#065F46] border border-[#6EE7B7]",
+    className: "border-blue-600/30 bg-blue-600 text-white",
   },
   rejected: {
     label: "差戻し",
-    className: "bg-[#FEE2E2] text-[#991B1B] border border-[#FCA5A5]",
+    className: "border-amber-200 bg-amber-100 text-amber-800",
   },
 }
 
@@ -200,7 +200,7 @@ export function getSettlementRejectReason(clubId: string): string | null {
   return loadRejectReasons()[clubId] ?? null
 }
 
-/** クラブ：作成中・差戻しのみ提出可能 */
+/** クラブ：未提出・差戻しのみ提出可能 */
 export function submitClubSettlement(clubId: string): boolean {
   const current = getClubSettlementStatus(clubId)
   if (current !== "draft" && current !== "rejected") return false

@@ -65,10 +65,10 @@ export function SchoolAuditorsListView() {
       <div className="w-full max-w-none">
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-[#374151]">
-            {SCHOOL_PAGE_TITLES.auditorList}
+            {SCHOOL_PAGE_TITLES.auditors}
           </h2>
           <p className="mt-1 text-sm text-[#6B7280]">
-            登録済みの監査担当者と担当クラブ・監査ステータスを確認できます
+            学内の監査人アカウント一覧と、各監査人の担当クラブ紐付け状況を俯瞰できます
           </p>
         </div>
         <SchoolAuditorsListSection

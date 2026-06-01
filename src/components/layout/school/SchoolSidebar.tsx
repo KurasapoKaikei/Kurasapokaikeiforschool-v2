@@ -55,18 +55,12 @@ interface MenuItem {
   parentKey?: "club" | "auditor" | "settings" | "messages"
 }
 
-const CLUB_PARENT_KEY = SCHOOL_ROUTES.clubsBase
+const CLUB_DASHBOARD_KEY = SCHOOL_ROUTES.clubList
 const AUDITORS_PARENT_KEY = SCHOOL_ROUTES.auditorsBase
 const SETTINGS_PARENT_KEY = SCHOOL_ROUTES.settingsBase
 const MESSAGES_PARENT_KEY = SCHOOL_ROUTES.messages
 
 function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
-  const clubSubItems: SubMenuItem[] = [
-    { title: SCHOOL_PAGE_TITLES.clubList, href: SCHOOL_ROUTES.clubList },
-    { title: SCHOOL_PAGE_TITLES.clubGroups, href: SCHOOL_ROUTES.clubGroups },
-    { title: SCHOOL_PAGE_TITLES.clubRegister, href: SCHOOL_ROUTES.clubRegister },
-  ]
-
   return [
     {
       title: "ポータルトップ",
@@ -75,11 +69,28 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
       match: (path) => path === SCHOOL_ROUTES.home,
     },
     {
-      title: SCHOOL_PAGE_TITLES.clubs,
-      href: CLUB_PARENT_KEY,
+      title: SCHOOL_PAGE_TITLES.clubList,
+      href: CLUB_DASHBOARD_KEY,
       icon: Users,
       parentKey: "club",
-      subItems: clubSubItems,
+      match: (path) =>
+        path === SCHOOL_ROUTES.clubList ||
+        path === SCHOOL_ROUTES.clubGroups ||
+        path.startsWith(`${SCHOOL_ROUTES.clubGroups}/`),
+      subItems: [
+        {
+          title: SCHOOL_PAGE_TITLES.clubGroups,
+          href: SCHOOL_ROUTES.clubGroups,
+        },
+      ],
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.clubRegister,
+      href: SCHOOL_ROUTES.clubRegister,
+      icon: Plus,
+      match: (path) =>
+        path === SCHOOL_ROUTES.clubRegister ||
+        path.startsWith(`${SCHOOL_ROUTES.clubRegister}/`),
     },
     ...(auditFlowEnabled
       ? ([
@@ -88,11 +99,8 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
             href: AUDITORS_PARENT_KEY,
             icon: ClipboardCheck,
             parentKey: "auditor",
+            match: (path) => isSchoolAuditorPath(path),
             subItems: [
-              {
-                title: SCHOOL_PAGE_TITLES.auditorList,
-                href: SCHOOL_ROUTES.auditors,
-              },
               {
                 title: SCHOOL_PAGE_TITLES.auditorRegister,
                 href: SCHOOL_ROUTES.auditorsRegister,
@@ -167,6 +175,12 @@ function subItemPathMatches(pathname: string, subHref: string): boolean {
   if (subHref === SCHOOL_ROUTES.clubList) {
     return pathname === SCHOOL_ROUTES.clubList
   }
+  if (subHref === SCHOOL_ROUTES.clubGroups) {
+    return (
+      pathname === SCHOOL_ROUTES.clubGroups ||
+      pathname.startsWith(`${SCHOOL_ROUTES.clubGroups}/`)
+    )
+  }
   if (subHref === SCHOOL_ROUTES.auditors) {
     return pathname === SCHOOL_ROUTES.auditors
   }
@@ -207,7 +221,13 @@ function getSubIcon(href: string): LucideIcon {
 }
 
 function isParentActive(item: MenuItem, pathname: string): boolean {
-  if (item.parentKey === "club") return isSchoolClubPath(pathname)
+  if (item.parentKey === "club") {
+    return (
+      pathname === SCHOOL_ROUTES.clubList ||
+      pathname === SCHOOL_ROUTES.clubGroups ||
+      pathname.startsWith(`${SCHOOL_ROUTES.clubGroups}/`)
+    )
+  }
   if (item.parentKey === "auditor") return isSchoolAuditorPath(pathname)
   if (item.parentKey === "settings") return isSchoolSettingsPath(pathname)
   if (item.parentKey === "messages") return isSchoolMessagesPath(pathname)
@@ -216,7 +236,13 @@ function isParentActive(item: MenuItem, pathname: string): boolean {
 
 function initialExpanded(pathname: string): string[] {
   const keys: string[] = []
-  if (isSchoolClubPath(pathname)) keys.push(CLUB_PARENT_KEY)
+  if (
+    pathname === SCHOOL_ROUTES.clubList ||
+    pathname === SCHOOL_ROUTES.clubGroups ||
+    pathname.startsWith(`${SCHOOL_ROUTES.clubGroups}/`)
+  ) {
+    keys.push(CLUB_DASHBOARD_KEY)
+  }
   if (isSchoolAuditorPath(pathname)) keys.push(AUDITORS_PARENT_KEY)
   if (isSchoolSettingsPath(pathname)) keys.push(SETTINGS_PARENT_KEY)
   if (isSchoolMessagesPath(pathname)) keys.push(MESSAGES_PARENT_KEY)
@@ -259,7 +285,13 @@ export function SchoolSidebar() {
   useEffect(() => {
     setExpandedItems((prev) => {
       const next = new Set(prev)
-      if (isSchoolClubPath(pathname)) next.add(CLUB_PARENT_KEY)
+      if (
+        pathname === SCHOOL_ROUTES.clubList ||
+        pathname === SCHOOL_ROUTES.clubGroups ||
+        pathname.startsWith(`${SCHOOL_ROUTES.clubGroups}/`)
+      ) {
+        next.add(CLUB_DASHBOARD_KEY)
+      }
       if (isSchoolAuditorPath(pathname)) next.add(AUDITORS_PARENT_KEY)
       if (isSchoolSettingsPath(pathname)) next.add(SETTINGS_PARENT_KEY)
       if (isSchoolMessagesPath(pathname)) next.add(MESSAGES_PARENT_KEY)

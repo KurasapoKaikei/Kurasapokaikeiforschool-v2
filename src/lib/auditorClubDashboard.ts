@@ -20,7 +20,7 @@ export function getClubMemberCount(clubId: string): number {
 export function getClubSettlementSubmissionLabel(
   status: ClubSettlementStatus
 ): string {
-  if (status === "submitted" || status === "approved") return "提出済"
+  if (status === "submitted" || status === "approved") return "監査中"
   return "未提出"
 }
 

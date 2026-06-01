@@ -1,10 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo } from "react"
-import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
+import { useEffect, useMemo, useState } from "react"
+import { SchoolAuditProgressSummary } from "@/components/school/SchoolAuditProgressSummary"
 import { usePortalFiscalYear } from "@/contexts/PortalFiscalYearContext"
 import { cn } from "@/lib/utils"
+import {
+  loadSchoolUseAuditFlow,
+  SCHOOL_AUDIT_FLOW_CHANGED_EVENT,
+} from "@/lib/schoolAuditFlow"
 import {
   SCHOOL_PAGE_TITLES,
   SCHOOL_ROUTES,
@@ -14,40 +18,64 @@ import { DEFAULT_PORTAL_FISCAL_YEAR } from "@/lib/portalBrand"
 import {
   BookOpen,
   Building2,
+  ClipboardCheck,
   FileText,
   Mail,
   Plus,
   Users,
+  type LucideIcon,
 } from "lucide-react"
 
-type SummaryCard = {
+type PortalCard = {
   title: string
-  icon: typeof Users
+  icon: LucideIcon
   href: string
   accent: string
   lines?: string[]
-  /** クラブ一覧カードなど：ラベル＋強調数字 */
-  metric?: { label: string; value: number | null }
+  requiresAuditFlow?: boolean
 }
 
 export function SchoolMypageView() {
-  const { clubs, isLoaded } = useSchoolClubs()
   const { selectedYear } = usePortalFiscalYear()
   const isCurrentYear = selectedYear === DEFAULT_PORTAL_FISCAL_YEAR
+  const [auditFlowEnabled, setAuditFlowEnabled] = useState(true)
 
-  const registeredClubCount = clubs.length
+  useEffect(() => {
+    const sync = () => {
+      try {
+        setAuditFlowEnabled(loadSchoolUseAuditFlow())
+      } catch {
+        setAuditFlowEnabled(true)
+      }
+    }
+    sync()
+    window.addEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
+    window.addEventListener("storage", sync)
+    return () => {
+      window.removeEventListener(SCHOOL_AUDIT_FLOW_CHANGED_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
 
-  const summaryCards: SummaryCard[] = useMemo(
+  const portalCards: PortalCard[] = useMemo(
     () => [
       {
         title: SCHOOL_PAGE_TITLES.clubList,
         icon: Users,
         href: SCHOOL_ROUTES.clubList,
         accent: SCHOOL_THEME.navy,
-        metric: {
-          label: "登録クラブ数",
-          value: isLoaded ? registeredClubCount : null,
-        },
+        lines: ["全クラブの決算状況の確認、メッセージ、ポータル閲覧"],
+      },
+      {
+        title: SCHOOL_PAGE_TITLES.auditors,
+        icon: ClipboardCheck,
+        href: SCHOOL_ROUTES.auditors,
+        accent: "#ea580c",
+        lines: [
+          "監査人アカウントの一覧",
+          "担当クラブの紐付け状況を俯瞰",
+        ],
+        requiresAuditFlow: true,
       },
       {
         title: SCHOOL_PAGE_TITLES.clubRegister,
@@ -78,7 +106,11 @@ export function SchoolMypageView() {
         accent: SCHOOL_THEME.navyLight,
       },
     ],
-    [isLoaded, registeredClubCount]
+    [],
+  )
+
+  const visibleCards = portalCards.filter(
+    (card) => !card.requiresAuditFlow || auditFlowEnabled,
   )
 
   return (
@@ -86,61 +118,62 @@ export function SchoolMypageView() {
       <div className="px-6 py-6">
         {!isCurrentYear ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center shadow-sm">
-            <Building2 className="mx-auto mb-3 h-10 w-10 text-slate-400" strokeWidth={1.5} />
+            <Building2
+              className="mx-auto mb-3 h-10 w-10 text-slate-400"
+              strokeWidth={1.5}
+            />
             <p className="text-sm font-medium text-[#374151]">
               （過去年度のデータはありません）
             </p>
-            <p className="mt-1 text-xs text-[#6B7280]">{selectedYear}の表示はデモでは未対応です</p>
+            <p className="mt-1 text-xs text-[#6B7280]">
+              {selectedYear}の表示はデモでは未対応です
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {summaryCards.map((card) => {
-              const Icon = card.icon
-              return (
-                <Link
-                  key={card.title}
-                  href={card.href}
-                  className="group flex flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-blue-200 hover:shadow-md"
-                  style={{ borderLeftWidth: 5, borderLeftColor: card.accent }}
-                >
-                  <div className="mb-3 flex items-center gap-2">
-                    <Icon
-                      className="h-5 w-5 flex-shrink-0"
-                      style={{ color: card.accent, strokeWidth: 2.5 }}
-                    />
-                    <h3 className="text-lg font-semibold text-indigo-950 group-hover:text-blue-950">
-                      {card.title}
-                    </h3>
-                  </div>
-                  {card.metric ? (
-                    <div className="mt-auto pt-1">
-                      <p className="text-xs font-medium tracking-wide text-[#6B7280]">
-                        {card.metric.label}
-                      </p>
-                      <p
-                        className="mt-1 text-4xl font-bold leading-none tabular-nums tracking-tight md:text-5xl"
-                        style={{ color: card.accent }}
-                        aria-live="polite"
-                      >
-                        {card.metric.value === null ? "—" : card.metric.value}
-                      </p>
+          <>
+            <SchoolAuditProgressSummary />
+
+            <h2 className="mb-3 text-sm font-semibold text-[#6B7280]">
+              メインメニュー
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleCards.map((card) => {
+                const Icon = card.icon
+                return (
+                  <Link
+                    key={card.title}
+                    href={card.href}
+                    className={cn(
+                      "group flex flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-blue-200 hover:shadow-md",
+                    )}
+                    style={{ borderLeftWidth: 5, borderLeftColor: card.accent }}
+                  >
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon
+                        className="h-5 w-5 flex-shrink-0"
+                        style={{ color: card.accent, strokeWidth: 2.5 }}
+                      />
+                      <h3 className="text-lg font-semibold text-indigo-950 group-hover:text-blue-950">
+                        {card.title}
+                      </h3>
                     </div>
-                  ) : card.lines && card.lines.length > 0 ? (
-                    <ul className="mt-auto space-y-2">
-                      {card.lines.map((line) => (
-                        <li
-                          key={line}
-                          className="text-sm text-[#6B7280] leading-relaxed"
-                        >
-                          {line}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </Link>
-              )
-            })}
-          </div>
+                    {card.lines && card.lines.length > 0 ? (
+                      <ul className="mt-auto space-y-2">
+                        {card.lines.map((line) => (
+                          <li
+                            key={line}
+                            className="text-sm leading-relaxed text-[#6B7280]"
+                          >
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </Link>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

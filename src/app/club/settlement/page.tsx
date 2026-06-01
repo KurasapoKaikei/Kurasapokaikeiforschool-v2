@@ -71,12 +71,38 @@ export default function ClubSettlementPage() {
     }
   }
 
-  const navyColor = "#001e43"
+  const stepColor = (status: SettlementHistoryStep["status"], isCurrent: boolean, isPassed: boolean) => {
+    if (isCurrent) {
+      switch (status) {
+        case "PREPARING":
+          return "bg-red-500 text-white border-transparent"
+        case "SUBMITTED":
+          return "bg-green-600 text-white border-transparent"
+        case "APPROVED":
+          return "bg-blue-600 text-white border-transparent"
+        case "REJECTED":
+          return "bg-amber-100 text-amber-800 border-amber-200"
+      }
+    }
+    if (isPassed) {
+      switch (status) {
+        case "PREPARING":
+          return "bg-red-50 text-red-600 border-red-200"
+        case "SUBMITTED":
+          return "bg-green-50 text-green-700 border-green-200"
+        case "APPROVED":
+          return "bg-blue-50 text-blue-700 border-blue-200"
+        case "REJECTED":
+          return "bg-amber-50 text-amber-700 border-amber-200"
+      }
+    }
+    return "bg-gray-100 text-gray-400 border-gray-200"
+  }
 
   return (
     <div className="w-full p-6 space-y-8 text-left bg-white rounded-xl">
       {/* 小タイトル（ネイビーの縦ライン） */}
-      <div className="border-l-4 pl-4" style={{ borderColor: navyColor }}>
+      <div className="border-l-4 pl-4 border-[#001e43]">
         <h1 className="text-xl font-semibold text-gray-800">決算</h1>
         <p className="text-sm text-gray-500 mt-1">
           年度末の決算データの確認と学校への提出を行います。
@@ -97,21 +123,11 @@ export default function ClubSettlementPage() {
             const isCurrent = index === currentStepIndex
             const isPassed = index < currentStepIndex
 
-            let badgeStyle = "bg-gray-100 text-gray-400 border-gray-200"
-            if (isCurrent) {
-              badgeStyle = "text-white border-transparent"
-            } else if (isPassed) {
-              if (step.status === "REJECTED") {
-                badgeStyle = "bg-red-50 text-red-600 border-red-200"
-              } else {
-                badgeStyle = "bg-blue-50 text-blue-700 border-blue-200"
-              }
-            }
+            const badgeStyle = stepColor(step.status, isCurrent, isPassed)
 
             return (
               <div key={step.id} className="flex items-center gap-2">
                 <span
-                  style={isCurrent ? { backgroundColor: navyColor } : {}}
                   className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border ${badgeStyle}`}
                 >
                   {isPassed && step.status !== "REJECTED" && (
@@ -153,14 +169,13 @@ export default function ClubSettlementPage() {
           <Button
             onClick={handleSubmit}
             disabled={isLocked}
-            style={!isLocked ? { backgroundColor: navyColor, color: "white" } : {}}
             className={`px-6 py-2.5 font-medium rounded-lg text-sm transition-opacity hover:opacity-90 ${
               isLocked
                 ? "bg-gray-300 text-gray-600 cursor-not-allowed disabled:opacity-100"
-                : ""
+                : "bg-[#001e43] text-white"
             }`}
           >
-            {isLocked ? "決算データ提出済み" : "決算データを提出する"}
+            {isLocked ? "決算データ提出済み（監査中）" : "決算データを提出する"}
           </Button>
 
           {!isLocked && flowSteps.length > 3 && (

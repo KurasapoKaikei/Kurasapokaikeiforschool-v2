@@ -16,13 +16,15 @@ import { getClubMemberCount } from "@/lib/auditorClubDashboard"
 import { clearCurrentClub } from "@/lib/clubLoginSession"
 import type { SchoolClub } from "@/lib/schoolClubs"
 import { setImpersonatedClub } from "@/lib/schoolClubSession"
-import { CLUB_BRAND_PINK, CLUB_PORTAL_DASHBOARD } from "@/lib/schoolTheme"
+import {
+  CLUB_BRAND_PINK,
+  CLUB_PORTAL_DASHBOARD,
+  schoolClubMessagesPath,
+} from "@/lib/schoolTheme"
 import { cn } from "@/lib/utils"
 
-type AuditorClubDashboardCardProps = {
+type SchoolClubDashboardCardProps = {
   club: SchoolClub
-  onApprove: () => void
-  onReject: () => void
 }
 
 function DataRow({
@@ -62,17 +64,12 @@ function StatusBadge({
   )
 }
 
-export function AuditorClubDashboardCard({
-  club,
-  onApprove,
-  onReject,
-}: AuditorClubDashboardCardProps) {
+export function SchoolClubDashboardCard({ club }: SchoolClubDashboardCardProps) {
   const router = useRouter()
   const {
     isClubSubmitted,
     auditLabel,
     auditBadgeVariant,
-    canReview,
     isApproved,
   } = useAuditorSettlementState(club?.id ?? "")
   const memberCount = getClubMemberCount(club?.id ?? "")
@@ -82,8 +79,13 @@ export function AuditorClubDashboardCard({
   const handleNavigateToClub = () => {
     if (!club?.id) return
     clearCurrentClub()
-    setImpersonatedClub({ id: club.id, name: clubName, viewer: "auditor" })
+    setImpersonatedClub({ id: club.id, name: clubName, viewer: "school" })
     router.push(CLUB_PORTAL_DASHBOARD)
+  }
+
+  const handleNavigateToMessages = () => {
+    if (!club?.id) return
+    router.push(schoolClubMessagesPath(club.id))
   }
 
   return (
@@ -126,7 +128,7 @@ export function AuditorClubDashboardCard({
         <div className="flex gap-2">
           <Button
             type="button"
-            className="h-11 min-w-0 flex-[2] rounded-lg border-0 text-sm font-semibold text-white shadow-none hover:opacity-90"
+            className="h-11 min-w-0 flex-1 rounded-lg border-0 text-sm font-semibold text-white shadow-none hover:opacity-90"
             style={{ backgroundColor: CLUB_BRAND_PINK }}
             onClick={handleNavigateToClub}
           >
@@ -134,34 +136,12 @@ export function AuditorClubDashboardCard({
           </Button>
           <Button
             type="button"
-            disabled={!canReview}
-            className={cn(
-              "h-11 min-w-0 flex-1 rounded-lg text-sm font-semibold text-white",
-              canReview
-                ? "bg-blue-600 hover:bg-blue-700"
-                : "cursor-not-allowed bg-blue-600/40 text-white/90"
-            )}
-            onClick={onApprove}
+            className="h-11 min-w-0 flex-1 rounded-lg border-0 bg-sky-500 text-sm font-semibold text-white shadow-none hover:bg-sky-600"
+            onClick={handleNavigateToMessages}
           >
-            承認
-          </Button>
-          <Button
-            type="button"
-            disabled={!canReview}
-            className={cn(
-              "h-11 min-w-0 flex-1 rounded-lg border text-sm font-semibold",
-              canReview
-                ? "border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-200"
-                : "cursor-not-allowed border-amber-200/60 bg-amber-50 text-amber-800/50"
-            )}
-            onClick={onReject}
-          >
-            差戻
+            メッセージBOX
           </Button>
         </div>
-        <p className="mt-2 text-center text-xs leading-relaxed text-[#9CA3AF]">
-          クラブから決算が「監査中」になると、承認・差戻しが可能になります。
-        </p>
       </div>
     </article>
   )

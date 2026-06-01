@@ -28,7 +28,7 @@ type SchoolSettlementReviewDialogProps = {
   reviewSource?: "auditor" | "school"
 }
 
-/** 提出済クラブの承認・差戻し */
+/** 監査中クラブの承認・差戻し */
 export function SchoolSettlementReviewDialog({
   clubId,
   clubName,
@@ -66,12 +66,12 @@ export function SchoolSettlementReviewDialog({
       }
       if (!auditorApproveSettlement(clubId)) {
         setError(
-          "承認できません。クラブが決算を「提出済」にしていること（ロック中・監査中）を確認してください。"
+          "承認できません。クラブが決算を「監査中」にしていること（ロック中）を確認してください。"
         )
         return
       }
     } else if (!approveClubSettlement(clubId)) {
-      setError("承認できません。ステータスが「提出済」であることを確認してください。")
+      setError("承認できません。ステータスが「監査中」であることを確認してください。")
       return
     }
     notifyChange()
@@ -94,12 +94,12 @@ export function SchoolSettlementReviewDialog({
       }
       if (!auditorRejectSettlement(clubId, trimmed)) {
         setError(
-          "差戻しできません。クラブが決算を「提出済」にしていること（ロック中・監査中）を確認してください。"
+          "差戻しできません。クラブが決算を「監査中」にしていること（ロック中）を確認してください。"
         )
         return
       }
     } else if (!rejectClubSettlement(clubId, trimmed)) {
-      setError("差戻しできません。ステータスが「提出済」であることを確認してください。")
+      setError("差戻しできません。ステータスが「監査中」であることを確認してください。")
       return
     }
     notifyChange()
@@ -254,7 +254,7 @@ export function SchoolSettlementReviewDialog({
                 ? "このクラブは承認済みです。"
                 : status === "rejected"
                   ? "差戻し済みです。クラブ側で再提出を待っています。"
-                  : "提出済のクラブのみ審査できます。"}
+                  : "監査中のクラブのみ審査できます。"}
             </p>
             {existingReason ? (
               <div className="mt-3 rounded-lg bg-[#FEE2E2]/50 px-3 py-2 text-sm text-[#991B1B]">

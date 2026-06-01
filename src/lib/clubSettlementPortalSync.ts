@@ -42,8 +42,8 @@ export type SettlementHistoryFlow = {
 }
 
 const DEFAULT_FLOW: SettlementHistoryStep[] = [
-  { id: "1", label: "作成中", status: "PREPARING" },
-  { id: "2", label: "提出済", status: "SUBMITTED" },
+  { id: "1", label: "未提出", status: "PREPARING" },
+  { id: "2", label: "監査中", status: "SUBMITTED" },
   { id: "3", label: "承認済", status: "APPROVED" },
 ]
 
@@ -215,7 +215,7 @@ export function applyAuditorRejectToHistory(clubId: string): void {
   }
   const resubmitStep: SettlementHistoryStep = {
     id: genStepId(),
-    label: "提出済",
+    label: "監査中",
     status: "SUBMITTED",
   }
   const approvedStep: SettlementHistoryStep = {
@@ -267,6 +267,8 @@ export function auditorApproveSettlement(clubId: string): boolean {
   if (!canAuditorActOnSettlement(clubId)) return false
   applyAuditorApproveToHistory(clubId)
   setAuditorAuditStatus(clubId, "approved")
+  // 承認後も編集ロックを完全維持（差戻しまで true 固定）
+  setClubSettlementLocked(clubId, true)
   const current = getClubSettlementStatus(clubId)
   if (current !== "submitted") {
     setClubSettlementStatus(clubId, "submitted")
@@ -325,10 +327,29 @@ export function getAuditorAuditStatusLabel(
   if (status === "approved") return "承認済"
   if (status === "rejected") return "差戻"
   if (status === "in_review" || isSubmitted) return "監査中"
-  return "未着手"
+  return "未提出"
 }
 
 export type AuditorAuditBadgeVariant = "muted" | "navy" | "rejected" | "approved"
+
+/** 未提出（旧作成中） */
+export const SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES =
+  "border-red-600/30 bg-red-500 text-white"
+
+/** 監査中（旧提出済） */
+export const SETTLEMENT_IN_AUDIT_BADGE_CLASSES =
+  "border-green-600/30 bg-green-600 text-white"
+
+/** 差戻 */
+export const SETTLEMENT_REJECTED_BADGE_CLASSES =
+  "border-amber-200 bg-amber-100 text-amber-800"
+
+/** 監査人ダッシュボード：承認済バッジ（承認ボタンと同色の青） */
+export const AUDITOR_APPROVED_BADGE_CLASSES =
+  "border-blue-600/30 bg-blue-600 text-white"
+
+/** 監査人ダッシュボード：承認済カード背景（文字・バッジの opacity は下げない） */
+export const AUDITOR_APPROVED_CARD_CLASSES = "bg-gray-50"
 
 export function getAuditorAuditStatusBadgeVariant(
   status: AuditorAuditStatusValue,

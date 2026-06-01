@@ -138,7 +138,7 @@ export function ClubSettlementView() {
                     決算データを学校へ提出する
                   </button>
                   <p className="mt-2 text-xs text-[#6B7280]">
-                    「作成中」または「差戻し」のときのみ提出できます
+                    「未提出」または「差戻し」のときのみ提出できます
                   </p>
                 </div>
               ) : null}

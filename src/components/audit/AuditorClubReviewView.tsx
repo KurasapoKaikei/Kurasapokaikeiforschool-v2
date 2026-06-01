@@ -9,6 +9,13 @@ import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettleme
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import { getClubMemberCount } from "@/lib/auditorClubDashboard"
 import { clearCurrentClub } from "@/lib/clubLoginSession"
+import {
+  AUDITOR_APPROVED_BADGE_CLASSES,
+  AUDITOR_APPROVED_CARD_CLASSES,
+  SETTLEMENT_IN_AUDIT_BADGE_CLASSES,
+  SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES,
+  SETTLEMENT_REJECTED_BADGE_CLASSES,
+} from "@/lib/clubSettlementPortalSync"
 import { cn } from "@/lib/utils"
 import { loadCurrentAuditor } from "@/lib/currentAuditor"
 import { AUDIT_ROUTES } from "@/lib/auditorTheme"
@@ -30,6 +37,7 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
     auditLabel,
     auditBadgeVariant,
     canReview,
+    isApproved,
   } = useAuditorSettlementState(clubId)
 
   const session = loadCurrentAuditor()
@@ -78,7 +86,12 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
           <Link href={AUDIT_ROUTES.home}>← ポータルトップへ戻る</Link>
         </Button>
       </div>
-      <div className="max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <div
+        className={cn(
+          "max-w-2xl rounded-lg border border-gray-200 p-6 shadow-sm",
+          isApproved ? AUDITOR_APPROVED_CARD_CLASSES : "bg-white"
+        )}
+      >
         <h2 className="text-xl font-semibold text-[#374151]">{club.name}</h2>
         <p className="mt-1 text-sm text-[#6B7280]">クラブID: {club.id}</p>
         <dl className="mt-6 space-y-4 text-sm">
@@ -95,11 +108,11 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
                 className={cn(
                   "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
                   isClubSubmitted
-                    ? "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]"
-                    : "border-gray-200 bg-gray-100 text-[#6B7280]"
+                    ? SETTLEMENT_IN_AUDIT_BADGE_CLASSES
+                    : SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES
                 )}
               >
-                {isClubSubmitted ? "提出済" : "未提出"}
+                {isClubSubmitted ? "監査中" : "未提出"}
               </span>
             </dd>
           </div>
@@ -109,13 +122,10 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
               <span
                 className={cn(
                   "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                  (auditBadgeVariant === "navy" ||
-                    auditBadgeVariant === "approved") &&
-                    "border-[#001e43]/25 bg-[#E6ECF5] text-[#001e43]",
-                  auditBadgeVariant === "rejected" &&
-                    "border-amber-200 bg-amber-100 text-amber-800",
-                  auditBadgeVariant === "muted" &&
-                    "border-gray-200 bg-gray-100 text-[#6B7280]"
+                  auditBadgeVariant === "navy" && SETTLEMENT_IN_AUDIT_BADGE_CLASSES,
+                  auditBadgeVariant === "approved" && AUDITOR_APPROVED_BADGE_CLASSES,
+                  auditBadgeVariant === "rejected" && SETTLEMENT_REJECTED_BADGE_CLASSES,
+                  auditBadgeVariant === "muted" && SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES
                 )}
               >
                 {auditLabel}
@@ -166,7 +176,7 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
           </div>
           {!canReview ? (
             <p className="mt-2 text-xs text-[#6B7280]">
-              クラブから決算が「提出済」になると、承認・差戻しが可能になります。
+              クラブから決算が「監査中」になると、承認・差戻しが可能になります。
             </p>
           ) : null}
         </div>
