@@ -1,8 +1,8 @@
 # クラサポ会計 for school 全システム統合グランドマスター仕様書
 
 ■ 文書名：クラサポ会計 for school 全システム統合グランドマスター仕様書
-■ 版：2.2.0（学校管理者ポータルUI刷新・ステータス名称・4色カラーパレット全域統一版）
-■ 改訂日：2026年6月1日
+■ 版：2.3.0（学校ポータル監査人一覧ダッシュボード・カードUI刷新版）
+■ 改訂日：2026年6月5日
 
 本書は、クラサポ会計における「学校管理者」「クラブ」「監査人」「保護者」のすべての組織階層、役割定義、初期導入、認証、および本日確定した「ヘッダー3段構造」「全域ロック機構」「監査人連動」のすべての正解仕様を網羅した、システム全体の最高位設計図（シングル・オブ・ソース）である。
 
@@ -452,6 +452,78 @@ const canReview = canAuditorActOnSettlement(clubId)
 
 **監査フロー有効化**: `/school/settings/audit-flow` — 学校契約プラン（`SCHOOL_CONTRACT_DEMO` 等）に応じ、監査人メニューの表示 ON/OFF。画面からフロー自体を変更することはできない（`SchoolAuditFlowSettingsView`）。
 
+### 13.1.1 学校ポータル：監査人一覧ダッシュボード（カードUI刷新）
+
+学校管理者ポータル「監査人管理」配下の一覧画面を、**監査人1名＝1カード**のグリッドダッシュボードとして再設計する。旧来の表形式・簡易リスト表示は廃止し、担当クラブごとの決算監査進捗をカード内で即時把握できる構成とする。
+
+| 項目 | 仕様 |
+|------|------|
+| **画面パス** | `/school/clubs/auditors` |
+| **ページ実装** | `src/app/school/clubs/auditors/page.tsx` → `SchoolAuditorsListView` |
+| **一覧コンテナ** | `SchoolAuditorsListSection` — レスポンシブグリッド（1列 / `md:2` / `lg:3`） |
+| **カードコンポーネント** | `SchoolAuditorDashboardCard` |
+| **進捗サマリー** | `AuditorAssignedClubProgressSummary` |
+| **集計ロジック** | `aggregateAssignedClubAuditProgress`（`src/lib/auditorAssignedClubProgress.ts`）— 分類は §7.0 と同一の `classifyClubAuditProgress` |
+
+#### カード内レイアウト（上からの配置順）
+
+各カード（`article`）は白背景・角丸 `rounded-xl`・枠線 `border-gray-200`・シャドウ `shadow-md`、ホバー時に軽い浮き上がり（`hover:-translate-y-0.5`）を適用する。縦方向は **flex カラム** とし、フッター操作ボタンはカード最下部に固定する。
+
+1. **【ヘッダー】氏名・監査人ID**
+   - 氏名: `text-lg font-bold text-[#374151]`
+   - 監査人ID: 同一行右側、モノスペース `font-mono text-xs text-[#9CA3AF]`（例: `AUD-0001`）
+   - 下境界: `border-b border-blue-100`
+
+2. **【基本情報】部署・電話番号・メールアドレス**
+   - ラベル左 / 値右の2列レイアウト（`text-sm`）
+   - 部署・電話・メールは未入力時 **「—」** を表示
+   - メールは `truncate` + `title` 属性で全文ツールチップ
+   - 下境界: `border-b border-gray-100`
+
+3. **【サマリー】監査進捗サマリー**
+   - 見出し: **「監査進捗サマリー」**（`text-sm font-semibold text-indigo-950`）
+   - **§7.0 トップページ**（`SchoolAuditProgressSummary`）と **同一デザイン言語** の4色横並びミニカード（`grid grid-cols-4 gap-2`）＋各セル下部に **カラーバー付き進捗バー**（担当クラブ件数に対する比率）
+   - 集計対象: 当該監査人の `assignedClubIds` のみ（学校全クラブではない）
+   - 担当クラブ未割当（`total === 0`）時は破線枠のプレースホルダ「担当クラブ未割当」を表示
+
+| 内部バケット | 表示名称 | 集計キー（`AuditorAssignedClubProgressCounts`） | カード色（背景/値/バー） |
+|--------------|----------|-----------------------------------------------|---------------------------|
+| `preparing` | **未提出** | `preparing` | 赤系 `border-red-200 bg-red-50` / `text-red-700` / `bg-red-500` |
+| `in_audit` | **監査中** | `inAudit` | 緑系 `border-green-200 bg-green-50` / `text-green-700` / `bg-green-600` |
+| `rejected` | **差戻し** | `rejected` | 黄系 `border-amber-200 bg-amber-50` / `text-amber-800` / `bg-amber-400` |
+| `approved` | **承認済** | `approved` | 青系 `border-blue-600/25 bg-blue-50` / `text-blue-700` / `bg-blue-600` |
+
+分類正本: `classifyClubAuditProgress(clubId)`（`src/lib/schoolAuditProgressSummary.ts`）— `club_auditor_audit_status_${clubId}` と `is_club_settlement_locked_${clubId}` の組み合わせで相互排他に1バケットへ振り分け（§4.4.1・§7.0 と整合）。
+
+4. **【担当クラブ】**
+   - 見出し: **「担当クラブ」**
+   - 件数: **「{N}クラブ」**（件数部分 `font-semibold text-indigo-950`、単位 `text-xs text-[#9CA3AF]`）
+   - クラブ名: チップ一覧（`bg-[#EFF6FF] text-[#1E40AF]`、`rounded`、複数行 `flex-wrap`）
+   - 未割当時: 「未割当」テキスト
+   - クラブ名の並びは `assignedClubIds` 順（`SchoolClubsContext.sortedClubs` から ID 解決）
+
+5. **【フッター】操作ボタン**
+   - 右寄せ横並び（`border-t border-gray-100` 上に配置）
+   - **メッセージ**: アウトライン、`Mail` アイコン（オレンジ `#EA580C`）→ `schoolAuditorComposeMessagePath(auditorId)` へ遷移
+   - **編集**: アウトライン、`Edit2` アイコン → 親の `onEdit(auditor)`（登録フォームを編集モードで開く）
+   - **削除**: 赤枠・赤文字、`Trash2` アイコン → `ActionConfirmDialog` 経由で `deleteSchoolAuditor`
+
+#### データ連携・リアルタイム同期
+
+監査人マスタ（`school_auditors`）の変更に加え、**各担当クラブの決算・監査状態**（localStorage）をカード内で自動集計・同期する。
+
+| 種別 | 内容 |
+|------|------|
+| **監査人マスタ** | `loadSchoolAuditors()` / イベント `kurasaokaikei-school-auditors-changed`（`SCHOOL_AUDITORS_CHANGED_EVENT`）および `storage` |
+| **クラブ監査状態の正本キー** | `is_club_settlement_locked_${clubId}` / `club_auditor_audit_status_${clubId}`（§13.5） |
+| **カスタムイベント購読** | `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` / `SETTLEMENT_CHANGED_EVENT`（`clubSettlementPortalSync.ts`・`schoolClubSettlement.ts`） |
+| **タブ間・復帰** | `window` の `storage`（上記キープレフィックス一致時）、`focus`、`visibilitychange`（visible 時に再集計） |
+| **再描画トリガ** | `SchoolAuditorDashboardCard` 内の `refreshKey` をインクリメント → `useMemo` で `aggregateAssignedClubAuditProgress(assignedClubIds)` を再実行 |
+
+これにより、クラブポータルでの決算提出・監査人ポータルでの承認／差戻しが発生すると、学校ポータルの監査人カード上の **4色サマリー件数がページリロードなしで更新** される（サーバーレス／localStorage デモ環境の正しい挙動）。
+
+**廃止・非推奨**: 監査人カード内に旧「決算ワークフロー」専用の重複進捗 UI や、マスタ上の参考フィールド `auditProgress`（`before` / `in_progress` / `completed`）のみに依存した表示は行わない。進捗表示の正本は **担当クラブの localStorage 集計** とする。
+
 ### 13.2 認証・セッション・ログイン経路
 
 | 経路 | URL / 条件 | 成功後遷移 | セッションキー |
@@ -709,6 +781,7 @@ const canReview = canAuditorActOnSettlement(clubId)
 | 2.0.1 | 2026-05-29 | 第12章 科目マスタ配布、第13章 監査人詳細、第14章 保護者トークン URL を追補 |
 | 2.0.2 | 2026-06-01 | 4.2/5.1/5.2/6/10/13 を最新UI・操作制限・クラブ別キー分離・セッション固定仕様へ更新。差戻しメッセージBOX自動連動の記述を見送り方針へ修正 |
 | 2.2.0 | 2026-06-01 | **学校管理者ポータルのUI刷新**を反映。§4.4 決算・監査ステータス名称（未提出/監査中/差戻/承認済）および4色カラーパレット（赤/緑/黄/青）の全域統一。ヘッダー第2段を「学校管理者ポータル」に改称。§7.0 リアルタイム監査進捗サマリー（総クラブ数の強調表示・進捗並び順）を追記。双六UI・ロック警告文言を新名称へ更新 |
+| 2.3.0 | 2026-06-05 | **§13.1.1** 学校ポータル `/school/clubs/auditors` の監査人ダッシュボード・カードUI刷新を追記。5段レイアウト（ヘッダー／基本情報／4色監査進捗サマリー／担当クラブチップ／フッター操作）、`SchoolAuditorDashboardCard`・`AuditorAssignedClubProgressSummary`・localStorage イベント購読によるリアルタイム集計仕様を正文化 |
 
 ---
 
