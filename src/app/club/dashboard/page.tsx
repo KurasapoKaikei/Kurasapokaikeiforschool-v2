@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertTriangle } from "lucide-react"
 import { clubPath } from "@/lib/routes"
 import { useClubSession } from "@/contexts/ClubSessionContext"
 import {
@@ -13,6 +12,8 @@ import {
   getPortalTransactions,
 } from "@/lib/clubPortalData"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
+import { ClubDashboardSettlementSummary } from "@/components/club/ClubDashboardSettlementSummary"
+import { ClubDashboardVoucherStats } from "@/components/club/ClubDashboardVoucherStats"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
@@ -139,11 +140,6 @@ export default function DashboardPage() {
   // 次期繰越金 = 現金預金合計 + 資産合計 - 負債合計
   const carryOverAmount = cashDepositTotal + assetTotal - liabilityTotal
 
-  // アラート件数を計算（証憑なしの支出取引）
-  const alertCount = transactions.filter(
-    (t) => t.type === "expense" && !t.receiptUrl
-  ).length
-
   // 部員統計（在籍中のみ）
   const activeMembers = useMemo(() => members.filter((m) => m.status === "active"), [members])
   const memberCountsByGrade = useMemo(() => {
@@ -191,7 +187,7 @@ export default function DashboardPage() {
       </div>
       {/* ダッシュボード本体のみ 67vh（サイドバーには適用しない） */}
       <div className="flex h-[67vh] max-h-[67vh] min-h-0 flex-col overflow-hidden px-6 pb-3 pt-2">
-        <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="grid h-full min-h-0 grid-cols-1 gap-6 lg:grid-cols-3">
           {/* 左ブロック: 現在の残高（科目多数時はこのカード内のみスクロール） */}
           <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#E66A84] bg-white p-3 shadow-sm">
             <div className="mb-2 flex shrink-0 items-center justify-between">
@@ -316,28 +312,28 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 中央ブロック: メッセージBOX */}
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white p-3 shadow-sm">
-            <div className="mb-2 flex shrink-0 items-center justify-between gap-2 border-b-2 border-[#4A90E2] pb-1">
-              <h2 className="text-base font-semibold text-[#4A90E2]">メッセージBOX</h2>
-              <Link
-                href={clubPath("/messages")}
-                className="shrink-0 text-xs font-medium text-[#4A90E2] transition-colors hover:text-[#3A7BC8] hover:underline"
-              >
-                一覧はこちら ➔
-              </Link>
-            </div>
-            <ClubMessageInboxList
-              messages={messages}
-              variant="compact"
-              showUnreadSummary={unreadMessageCount > 0}
-              className="min-h-0 flex-1"
-            />
-          </div>
-
-          {/* 右ブロック: 部員数（上）→ エラー通知（下） */}
+          {/* 中央ブロック: メッセージBOX（上）→ 現在の部員数（下） */}
           <div className="flex min-h-0 flex-col gap-3">
-            <div className="flex min-h-0 flex-[1.15] flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#9D8CC3] bg-white p-3 shadow-sm">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white p-3 shadow-sm">
+              <div className="mb-2 flex shrink-0 items-center justify-between gap-2 border-b-2 border-[#4A90E2] pb-1">
+                <h2 className="text-base font-semibold text-[#4A90E2]">メッセージBOX</h2>
+                <Link
+                  href={clubPath("/messages")}
+                  className="shrink-0 text-xs font-medium text-[#4A90E2] transition-colors hover:text-[#3A7BC8] hover:underline"
+                >
+                  一覧はこちら ➔
+                </Link>
+              </div>
+              <ClubMessageInboxList
+                messages={messages}
+                variant="compact"
+                maxItems={5}
+                showUnreadSummary={unreadMessageCount > 0}
+                className="min-h-0 flex-1"
+              />
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#9D8CC3] bg-white p-3 shadow-sm">
               <div className="mb-2 shrink-0">
                 <div className="mb-1 flex items-center justify-between">
                   <h2 className="border-b-2 border-[#9D8CC3] pb-1 text-base font-semibold text-[#9D8CC3]">
@@ -376,24 +372,15 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+          </div>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#FF0000] bg-white p-3 shadow-sm">
-              <div className="mb-2 flex shrink-0 items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-[#FF0000]" strokeWidth={2.5} />
-                <h2 className="border-b-2 border-[#FF0000] pb-1 text-base font-semibold text-[#FF0000]">
-                  重要：未処理・エラー通知
-                </h2>
-              </div>
-              <div className="flex flex-1 flex-col justify-center">
-                <p className="mb-2 text-xs text-[#6B7280]">監査警告件数</p>
-                <p className="text-xl font-bold text-[#FF0000]">
-                  {isEmptyPortal ? "0" : alertCount}件
-                </p>
-                {!isEmptyPortal && alertCount > 0 && (
-                  <p className="mt-1 text-xs font-medium text-[#FF0000]">至急確認が必要です</p>
-                )}
-              </div>
-            </div>
+          {/* 右ブロック: 決算ステータス（上）→ 証憑未登録数（下） */}
+          <div className="flex min-h-0 flex-col gap-3">
+            <ClubDashboardSettlementSummary />
+            <ClubDashboardVoucherStats
+              transactions={transactions}
+              isEmptyPortal={isEmptyPortal}
+            />
           </div>
         </div>
       </div>

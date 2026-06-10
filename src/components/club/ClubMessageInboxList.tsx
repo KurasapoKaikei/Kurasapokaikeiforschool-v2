@@ -11,6 +11,7 @@ import { clubPath } from "@/lib/routes"
 type ClubMessageInboxListProps = {
   messages: ClubPortalMessageView[]
   variant?: "compact" | "default"
+  maxItems?: number
   selectedId?: string | null
   onSelect?: (message: ClubPortalMessageView) => void
   showUnreadSummary?: boolean
@@ -22,6 +23,7 @@ type ClubMessageInboxListProps = {
 export function ClubMessageInboxList({
   messages,
   variant = "default",
+  maxItems,
   selectedId = null,
   onSelect,
   showUnreadSummary = false,
@@ -30,6 +32,8 @@ export function ClubMessageInboxList({
 }: ClubMessageInboxListProps) {
   const unreadCount = messages.filter((m) => !m.isRead).length
   const isCompact = variant === "compact"
+  const displayMessages =
+    maxItems != null ? messages.slice(0, maxItems) : messages
 
   if (messages.length === 0) {
     return (
@@ -46,11 +50,11 @@ export function ClubMessageInboxList({
       <ul
         className={
           isCompact
-            ? "min-h-0 flex-1 space-y-0.5 overflow-hidden"
+            ? "min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain"
             : "min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto"
         }
       >
-        {messages.map((message) => (
+        {displayMessages.map((message) => (
           <li key={message.id}>
             {onSelect ? (
               <ClubMessageListItem

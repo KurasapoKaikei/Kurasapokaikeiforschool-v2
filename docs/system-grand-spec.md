@@ -1,796 +1,701 @@
-# クラサポ会計 for school 全システム統合グランドマスター仕様書
+# クラサポ会計 for school — システム全体総合仕様書（グランドスペック）
 
-■ 文書名：クラサポ会計 for school 全システム統合グランドマスター仕様書
-■ 版：2.3.0（学校ポータル監査人一覧ダッシュボード・カードUI刷新版）
-■ 改訂日：2026年6月5日
+| 項目 | 内容 |
+|------|------|
+| **文書名** | クラサポ会計 for school 全システム統合グランドマスター仕様書 |
+| **版** | **3.0.0**（学校トップ 1:1 グリッド・監査進捗サマリー UI 統一・クラブ 3 列ダッシュボード刷新版） |
+| **改訂日** | 2026年6月10日 |
+| **対象リポジトリ** | `kurasaokaikei`（Next.js 14 App Router） |
+| **正本の優先順位** | 本書 → ソースコード → その他 `docs/*.md` |
 
-本書は、クラサポ会計における「学校管理者」「クラブ」「監査人」「保護者」のすべての組織階層、役割定義、初期導入、認証、および本日確定した「ヘッダー3段構造」「全域ロック機構」「監査人連動」のすべての正解仕様を網羅した、システム全体の最高位設計図（シングル・オブ・ソース）である。
-
----
-
-## 1. システムコンセプトと組織構造
-
-本システムは、クラサポ会計（運営）、学校、クラブ、保護者の四層からなるプラットフォームである。上から下へ、契約と統制、学内の横断ルール、現場の会計実務、家庭への閲覧と決済が重なり、会計上の誰が何を扱い、何を見るかの境界を一貫して示す。
-
-### 第1層 クラサポ会計（運営社・サービス提供側）
-契約、料金、提供可否、基盤、サポートの起点。学校との法人契約、利用規約、障害とセキュリティの一元的方針を担い、一学校あたりの利用領域（いわばテナント）の開設、最上位識別子の与え、監査用の閲覧方針の定めに関わる。ID 発行の源泉の一つとする。
-
-### 第2層 学校
-複数のクラブを束ね、運営との契約主体である。会計年度、クラブ枠、全校共通の科目ルール、承認手順を学校ダッシュボードで握り、どの会計行がどのクラブのものかという境界のルールの出発点となる。学校管理者用の独立した**学校管理者ポータル**（`/school`・ログインとパスワード再設定）を想定する。UI 表記の旧称「マイページ」「マイポータル」「管理者ポータル」は非推奨。
-
-### 第3層 クラブ
-入出金、予算、部員、集金、帳表、学校への報告の実務主体。学校配下でクラブ管理者（会計責任者）が操作する。割り当て枠内で自クラブ専用の**クラブポータル**（`/club/dashboard`）を持ち、自部の帳表・部員・集金にのみ手が届く、閉じた帳尻を徹底する。UI 表記の旧称「マイページ」は非推奨。
-
-### 第4層 保護者
-子ども（部員）に紐づく閲覧、納入、将来の決済、お知らせの受信の一般利用者。学内会計の全体、他児童の帳表には入らない。専用マイページ（専用URL 又はID とパスワード）を持つ。専用識別子の発行は主に部員登録に伴いクラブが行い、学校一括の運用も将来の設計上の余地を残す。
-
-### ID の与え方
-上位から下位へ、入場券のように与える。運営が学校の契約枠を切り、学校がクラブの枠とクラブ管理者の初期招待、クラブが部員登録の結果に基づき保護者用識別子を生成する。各層に独立のマイページと再設定導線を与え、他層の金庫（他部、他児）に同じ鍵では入れない、という分離を前提にする。
+本書は、システムが完全に損壊した場合でも **ゼロから同一システムを 100% 復元できる** ことを目的とした、設計・UI・データ・コンポーネントの **シングル・オブ・ソース（最高位設計図）** である。学校管理者・監査人・クラブ・部員の四層構造、決算監査ワークフロー、localStorage 正本、画面レイアウト、コンポーネント対応表を網羅する。
 
 ---
 
-## 2. ユーザー別役割と権限定義
+## システム全体の組織構造とポータル間連携
 
-### ① クラサポ会計（運営）
-新規校の導入、契約の有効化、利用停止、全テナントに関わる障害周知。一般の大学・部管理者に見えない基盤・バックオフィス的導線を、権限定義のうえで想定する。
+### 四層組織構造
 
-### ② 学校（契約主体）
-契約窓口であると同時に、学内会計のルールの番人。クラブ枠（何部まで、新部開設、枠の割当、名称・所属の一貫）。for school 契約では、全校共通の会計の型を各クラブが崩さないよう、クラブ名等の固定や承認制の変更を取る。会計年度の一括定義、学校として採用する勘定科目マスタ（共通・必須、階層）の展開、カテゴリーの雛形の一括配布。クラブが提出した会計の年度単位の束（報告と提出）の受付、承認・却下・差戻し。承認済年度はデータロック（後追いの手直し原則禁止）とすり合わせる。
+本システムは、次の **4 つの階層** からなるプラットフォームである。上位から下位へ、契約・統制、学内横断ルール、現場会計実務、個人部費の閲覧・申請が重なる。
 
-### ③ クラブ（実務主体）
-日々の入出金、証憑、帳、予算と実績、部員、集金、顧問・学内向け説明、学校への年度報告の提出と指摘対応。操作は自クラブのデータに限定し、他部・学務全体・他児の領域に触れない。
+| 階層 | 主体 | ポータル URL | 権限の要点 |
+|------|------|--------------|------------|
+| **第1層 学校管理者** | 契約主体・学内統括 | `/school` | 全クラブ・全監査人の統括、契約、共通マスタ配布、最終ロック |
+| **第2層 監査人** | 外部/内部監査担当 | `/audit` | 担当クラブ（複数可）の査読、承認/差戻、メッセージ、閲覧のみ |
+| **第3層 クラブ** | 部活動会計実務 | `/club` | 入出金・帳簿・集金・予実・決算提出・証憑管理（自クラブのみ） |
+| **第4層 部員** | 個人利用者 | `/member`（将来） | 部費納入状況確認、入退部・精算申請ワークフロー（デモ: 準備中） |
 
-### ④ 保護者（利用者）
-自児に関する閲覧、納入、将来のオンライン決済、学校・クラブからのお知らせ。他児、帳簿の秘匿、部内協議にはアクセスしない。専用URL からの閲覧方式から、専用 ID と初回パスワード再設定、という段階的な導入を想定し、保護者ページは原則「個人の閲覧と決済（将来）のみ」に限定する権限設計を前提とする。
+**ID の与え方**: 学校 → クラブ → 部員（保護者連携）の順に識別子を発行。各層は独立ログイン・独立セッションを持ち、他層のデータ領域には同一鍵では入れない。
 
----
+### ポータル間連携（決算監査フロー）
 
-## 3. 初期導入フロー（セットアップ）
-
-### 3.1 学校の申し込みから学校用ダッシュボードが使えるまで
-学校担当者は公式ランディングページ（採用・契約導線）から申し込み。運営が契約締結、手続、学校用管理者の初期招請又は仮 ID 付与。メール等での本人確認、利用規約の合意。学校テナントの開通後、初回ログイン、パスワード設定、学内用ダッシュボード（全校横断）が使える。
-
-### 3.2 学校側：クラブ数と共通会計ルール
-学校管理画面で、当年度用の会計期間、認めるクラブ数、必要ならクラブ枠のプリセット。共通勘定のマスタ、カテゴリーの雛形を一括登録。既存部からの引継ぎ要否、科目の必須化の範囲を決め、下位のクラブに配布可能な形にする。
-
-### 3.3 各クラブへの ID 付与と、クラブの詳細設定
-学校が各クラブの管理者用アカウントの発行、又は初回招請リンクを各部に配る。クラブポータルで、科目の利用可否に応じた初期残高・前期繰越金、部員名簿、集金スケジュール、予算方針の下書を登録。ここで初めて日々の入出金と予実が一貫する。
-
-### 3.4 部員登録に伴う保護者用マイページの生成
-部員行を学校又はクラブの担当が登録する。保護者の連絡先と紐づけ。システムは、児（童）一人又は保護者一人あたりの専用識別子（閲覧用 URL トークン、又は専用ログイン）を発行。保護者に初回案内。保護者はパスワードを設定し、以後、当該児の納入状況とお知らせのみにアクセス。他児を横断する画面は出さない。
-
----
-
-## 4. 画面共通ヘッダー（統一3段構造仕様）
-
-ユーザーの迷子や誤操作を防ぎ、教育機関としての公式性と信頼性を担保するため、全ポータル（管理者・クラブ・監査人）の画面上部には、以下の統一された「3段構造ヘッダー」を固定（sticky）配置する。
-
-### 4.1 第1段：学校環境（コンテキスト層）
-- **背景色**: 非常に薄いグレー（または白）
-- **左側**: 学校名「クラクラサポサポ大学」を表示。
-  - **最重要仕様**: 視認性と公式感の強化のため、フォントサイズを**従来の2倍（`text-xl` または `text-lg`、かつ `font-bold`）**とする。
-  - 学校名の右側に、小さく「2026.4.1 〜 2027.3.31」という期間を控えめなグレースケールでインライン表示する。
-
-### 4.2 第2段：ポータル・アイデンティティ帯（カラーブランディング層）
-- **背景色**: 各ポータルのテーマカラーを全面に適用し、白抜き文字で視覚的セグメンテーションを行う。
-  - **学校管理者ポータル**: ネイビー（`#001e43`）── 統制と構造の安定性を表現
-  - **監査人ポータル**: オレンジ（`#ff9800`）── 厳格な検証と透明性を表現
-  - **クラブポータル**: **優しいピンク（くすみピンク）** ── 画面のトガりや浮きを無くすため、原色（マゼンタ等）を完全に排除し、**サイドメニューのポータルトップボタンのアクティブ色と100%シンクロしたマイルドで上品なトーン**を適用する。
-- **左側（白抜き文字）**: ポータル名を表示。
-  - 学校管理者: 「**学校管理者ポータル**」（実装: `SchoolHeader` → `PortalUnifiedHeader` の `portalTitle`）
-  - 監査人: 「監査人ポータル」
-  - クラブ: 「●●●（ログイン中クラブの動的名称）ポータル」
-- **右側（白抜き表示・Flexbox配置）**:
-  - `会計期間 : 2026.4.1 〜 2027.3.31` というテキスト。
-  - その右側に、白枠・白文字でデザインされた「ログアウト」ボタン（`LogOut` アイコン付き）を配置。
-  - **ログアウト時の挙動**: クリック時にセッションおよびlocalStorageの該当データを安全にクリアし、**統合ログインハブのトップページ（ `http://localhost:3000/` ）へ確実にリダイレクト（遷移）** させる。
-
-### 4.3 第3段：年度切替コントロール（操作層）
-- **背景色**: 白（または非常に薄いブルー）
-- **内容**: 「年度切替:」というラベルの横に、 pill（丸角）型の年度ボタン（2024年度、2025年度、2026年度）を配置。
-- **デザイン**: 現在選択中の年度ボタンを、各ポータルのテーマカラーでハイライト表示する。
-
----
-
-## 4.4 決算・監査ステータス名称と4色カラーパレット（全ポータル共通）
-
-学校管理者・クラブ・監査人の**すべてのポータル**において、決算／監査ステータスの表示名称とバッジカラーを以下に完全統一する。旧称「作成中」「提出済」は**廃止**し、以降使用しない。
-
-### 4.4.1 ステータス名称（4段階）
-
-| 内部値（例） | 表示名称 | 旧称（廃止） |
-|--------------|----------|--------------|
-| `draft` / ロックなし・未操作 | **未提出** | 作成中 |
-| `submitted` / `in_review` / ロックあり | **監査中** | 提出済 |
-| `rejected` | **差戻**（差戻し） | （変更なし） |
-| `approved` | **承認済** | （変更なし） |
-
-正本定義:
-- 学校側決算マップ: `CLUB_SETTLEMENT_STATUS_META`（`src/lib/schoolClubSettlement.ts`）
-- 監査人バッジ・ラベル: `getAuditorAuditStatusLabel` / `getAuditorAuditStatusBadgeVariant`（`src/lib/clubSettlementPortalSync.ts`）
-- 双六UI 既定ステップ: `DEFAULT_FLOW`（同ファイル）— **未提出 ➔ 監査中 ➔ 承認済**
-
-### 4.4.2 バッジカラー（4色パレット）
-
-| ステータス | 背景・文字色（Tailwind） | 定数（`clubSettlementPortalSync.ts`） |
-|------------|--------------------------|----------------------------------------|
-| **未提出** | 赤 `border-red-600/30 bg-red-500 text-white` | `SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES` |
-| **監査中** | 緑 `border-green-600/30 bg-green-600 text-white` | `SETTLEMENT_IN_AUDIT_BADGE_CLASSES` |
-| **差戻** | 黄（優しい黄色）`border-amber-200 bg-amber-100 text-amber-800` | `SETTLEMENT_REJECTED_BADGE_CLASSES` |
-| **承認済** | 青（承認ボタンと同色）`border-blue-600/30 bg-blue-600 text-white` | `AUDITOR_APPROVED_BADGE_CLASSES` |
-
-適用箇所: 学校管理者カード（`SchoolClubDashboardCard`）、監査人カード（`AuditorClubDashboardCard`）、監査詳細（`AuditorClubReviewView`）、クラブ決算バッジ（`SchoolClubSettlementBadge`）、双六UI（`/club/settlement`）の各ステップ。
-
-**承認済の追加ビジュアル**（維持）:
-- カード背景のみ `bg-gray-50`（`AUDITOR_APPROVED_CARD_CLASSES`）— うっすらグレーの網掛け
-- クラブ側は編集ロック完全維持（`is_club_settlement_locked_${clubId} = "true"` 固定）
-
----
-
-## 5. クラブ決算提出フローと全域ロック機構
-
-クラブが年度決算を提出した後のデータの完全性を絶対的に担保するため、ローカルストレージ（localStorage）のフラグを活用した強力な機能制限システムを実装する。
-
-### 5.1 クラブポータル決算ページのレイアウト順序
-画面全体の美しさと一貫性を整えるため、縦の並び順およびカードデザインを以下の通りに完全統一する。
-1. **小タイトル**: 「決算」（先頭左側にネイビーの縦ラインのアクセント）
-2. **■ 担当監査人**: 薄グレーの背景（`bg-gray-50`）、角丸（`rounded-xl`）、薄い枠線（`border border-gray-100`）で包まれた独立したカード。見出し文字は上品な炭黒（`text-gray-700 font-semibold`）。
-3. **■ 決算ステータス**: 上記の「担当監査人」と**全く同じサイズ、背景色、角丸、枠線、余白（パディング）、および見出し文言トーン**で作成されたカード。内部に後述の「双六UI（ステップフロー）」を内包する。  
-   双六UIの直下には、クラブ担当者が即時確認できる導線として **「メッセージBOXへ ➔」** リンクを配置し、`/club/messages` へ遷移させる。色調はメッセージBOX系アクセントに合わせた水色（`text-sky-500` / hover `text-sky-600`）を採用する。
-4. **決算データ提出エリア**: 「決算データを提出する」アクションボタンおよび注意書き。提出済ロック時はボタン文言を「**決算データ提出済み（監査中）**」に切り替え、`disabled` で非活性化する。視認性のため `disabled:bg-gray-300`・`disabled:text-gray-600`・`disabled:opacity-100`（基底コンポーネントの `disabled:opacity-50` を上書き）を適用し、押せない状態でも文字がはっきり読めるようにする。動作確認用のデモボタン（差し戻しシミュレーション等）は削除済みで、差し戻し・ロック解除は監査人ポータル側の本番フローに委ねる。
-
-### 5.2 履歴対応型ステップフロー（双六UI）
-「**未提出 ➔ 監査中 ➔ 承認済**」という基本フェーズの表示に加え、監査人からの「差し戻し」が発生した歴史をユーザーがすべて追えるよう、動的な履歴追跡構造を持つ。
-
-- **永続化キー**: `club_settlement_history_flow_${clubId}`（JSON: `{ steps, currentIndex }`）。API: `src/lib/clubSettlementPortalSync.ts` の `loadSettlementHistoryFlow(clubId)` / `saveSettlementHistoryFlow(clubId, ...)` / `applyAuditorRejectToHistory(clubId)` / `applyAuditorApproveToHistory(clubId)`。
-- **クラブ提出時**: `applyClubSettlementSubmit(clubId)` が `currentIndex` を進め、`is_club_settlement_locked_${clubId} = "true"` と `club_auditor_audit_status_${clubId} = "in_review"` を設定する。
-- **動的蓄積仕様**: 監査人が差戻（`auditorRejectSettlement`）すると、現在地が「監査中」のとき、履歴に **「差戻し」→「監査中」→「承認済」** の3ステップを挿入し、現在地を「差戻し」へ移す。クラブが再提出すると再び「監査中」へ進み、監査人承認で「承認済」へ到達する。繰り返すたびに同パターンが末尾に追加され、**未提出 ➔ 監査中 ➔ 差戻し ➔ 監査中 ➔ 承認済** … と歴史が連鎖する。
-- **カラー制御**（§4.4.2 と整合）: 現在地（最新のステップ）はステータス別カラーで強調（未提出＝赤、監査中＝緑、承認済＝青、差戻し＝黄）。通過した過去のステップは各ステータスの薄色版（チェックマーク付き）、未達のステップは薄グレーで表現する。
-- **メッセージ導線**: 双六UI直下（または同カード内下部）には、メッセージBOXテーマと同期した水色装飾の固定リンク **「メッセージBOXへ ➔」** を常設し、クラブ担当者が `/club/messages` へ滑らかに遷移できるようにする。
-
-※ **構造原則（完全分離）**: フラグ／履歴はすべて `_${clubId}` を末尾に付与した個別キーで管理し、他クラブのデータと混ざらないよう完全分離する。
-
-### 5.3 提出アクションと全域ロック制限
-クラブ管理者が「決算データを提出する」ボタンをクリックし、確認ダイアログを承認すると、システムは `localStorage` に `is_club_settlement_locked_${clubId} = "true"` を保存する。
-
-このフラグが `true` になっている間、クラブポータル内の**ポータルトップ（ダッシュボード `/club/dashboard`）**および特定5機能（**①入出金登録、②集計・帳簿、③集金管理、④予実管理、⑤設定**）のすべてのトップ画面、一覧、および入力フォームにおいて、以下の制限が強制発動する。
-
-1. **画面最上部への赤文字警告表示**:
-   メインコンテンツの最上部（タイトルのすぐ下）に、以下の警告アラート枠を表示する。ポータルトップ（ダッシュボード）では、メインコンテンツ領域の最上部に同一デザインのアラートを表示する。
-   - **文言**: 「当年度の決算は**監査中**のため、登録、編集、削除はできません。ロックを解除するには監査人から差戻しをしてもらう必要があります。」
-   - **デザイン**: 背景が薄い赤（`bg-red-50`）、文字が濃い赤（`text-red-600`）、丸角（`rounded-lg`）、境界線（`border border-red-200`）、左側に注意アイコン（`AlertTriangle` など）を配置した目立つアラートコンポーネント。
-2. **すべてのアクションボタンの非活性化（disabled）**:
-   画面内にある「登録する」「保存する」「新規追加」「編集」「削除」などのあらゆるデータ書き込みボタンに対し、`disabled={isLocked}` を適用し、クリックできない状態にする。
-
----
-
-## 6. 監査人ポータルへのリアルタイム状態連動
-
-クラブポータルでの決算提出アクション（`is_club_settlement_locked_${clubId} === "true"`）は、監査人ポータルのダッシュボードに対して、サーバーレス環境下（localStorage内で clubId 末尾キーにより完全分離）でもリアルタイムに表示を同期させる。
-
-### 6.1 旧コンポーネントの完全廃止
-- 画面上の混乱や仕様の衝突を防ぐため、従来の古い「決算ワークフロー」などのステータス記述やコンポーネントは、監査人ダッシュボードおよび監査画面から完全に削除する。
-
-### 6.2 ダッシュボード「当期の決算提出状況」の連動
-- クラブ提出前 (`false`): バッジ **未提出**（赤 — §4.4.2）
-- クラブ提出後 (`true`): バッジ **監査中**（緑 — §4.4.2）
-
-### 6.3 「監査ステータス」の自動遷移
-正本キー: **`club_auditor_audit_status_${clubId}`**（`not_started` / `in_review` / `approved` / `rejected`）。フック: `useAuditorSettlementState(clubId)`（`src/components/audit/useAuditorSettlementState.ts`）。
-
-| 条件 | バッジ表示 | 色 |
-|------|------------|-----|
-| ロックなし・未操作 | **未提出** | 赤 `bg-red-500 text-white` |
-| ロックあり・監査中 | **監査中** | 緑 `bg-green-600 text-white` |
-| 監査人承認後 | **承認済** | 青 `bg-blue-600 text-white`（`AUDITOR_APPROVED_BADGE_CLASSES`） |
-| 監査人差戻後（ロック解除） | **差戻** | 優しい黄色 `bg-amber-100 text-amber-800 border-amber-200` |
-
-同期: `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` および `storage`・`focus`・`visibilitychange`。
-
-### 6.4 カード下部アクション（3分割横並び構成）と操作制限
-担当クラブカード（`AuditorClubDashboardCard`）および監査詳細（`AuditorClubReviewView`）の下部は、**[左 50%] [中央 25%] [右 25%]** の3ボタン横並びとする。
-
-**活性化の原則（承認・差戻のみ）**
-
-```ts
-const canReview = canAuditorActOnSettlement(clubId)
-// ≡ localStorage.is_club_settlement_locked_${clubId} === "true"
-//   && club_auditor_audit_status_${clubId} === "in_review"
+```
+[クラブ] 決算データ提出
+    ↓ is_club_settlement_locked_{clubId} = "true"
+    ↓ club_auditor_audit_status_{clubId} = "in_review"
+[監査人] 査読 → 承認 or 差戻
+    ↓ 承認: approved + ロック維持
+    ↓ 差戻: rejected + ロック解除
+[学校管理者] 全校俯瞰（監査進捗サマリー）・最終完全ロック（承認済年度）
 ```
 
-- **提出前**（ロック `false`）: 承認・差戻は `disabled`（`cursor-not-allowed`・半透明）。**「クラブページへ」は常時活性。**
-- **監査中**（ロック `true` かつ `in_review`）: 承認・差戻が活性。
-- **承認済**（`approved`）: 承認・差戻は非活性。監査ステータスバッジは青（`AUDITOR_APPROVED_BADGE_CLASSES`）。カード背景のみ `bg-gray-50`（`AUDITOR_APPROVED_CARD_CLASSES` — 文字・バッジは opacity で減衰しない）。
-- **差戻後**（ロック `false`・`rejected`）: 承認・差戻は非活性（再提出待ち）。
+**ポータル間セッション分離**（`src/lib/portalSessionStorage.ts`）:
+- 監査人ログイン時に学校/クラブの localStorage を削除しない
+- なりすまし閲覧時に `clearCurrentClub()` を呼ばない
+- ログアウトは当該ポータルキーのみ削除（`localStorage.clear()` 禁止）
 
-| 位置 | ラベル | 色 | 活性 | 動作 |
-|------|--------|-----|------|------|
-| **左 50%** | クラブページへ | クラブテーマ **くすみピンク** `CLUB_BRAND_PINK`（`#E66A84`）・白文字 | **常時** | `clearCurrentClub()` → `setImpersonatedClub({ id, name })` → `/club/dashboard`（監査人閲覧モード） |
-| **中央 25%** | **承認** | 青 `bg-blue-600`（非活性 `bg-blue-600/40`） | **`canReview` のみ** | モーダル → `window.confirm` 最終確認 → `auditorApproveSettlement(clubId)` |
-| **右 25%** | **差戻** | 黄 `bg-amber-100`（非活性 `bg-amber-50/50`） | **`canReview` のみ** | モーダルで理由入力 → `window.confirm` → `auditorRejectSettlement(clubId, reason)` |
+### 共通データモデル：4 つの監査ステータス（厳密定義）
 
-**承認 OK 時の連動**（`auditorApproveSettlement`）:
+全ポータルで表示名称・色・集計バケットを統一する。**旧称「作成中」「提出済」は廃止**。
 
-1. 監査ステータス → `approved`（バッジ「承認済」・青 `bg-blue-600 text-white`）
-2. `is_club_settlement_locked_${clubId}` は **`"true"` のまま完全固定**（`auditorApproveSettlement` 内で `setClubSettlementLocked(clubId, true)` を明示 — クラブ側編集ロック・赤警告アラート維持）
-3. 双六 UI の `currentIndex` を次の「承認済」ステップへ
-4. 学校側決算ステータス（`kurasaokaikei-school-club-settlement-status`）を `approved` に同期
+| 内部バケット | 表示名称 | localStorage 正本の判定 | クラブ側データロック | 意味 |
+|--------------|----------|------------------------|---------------------|------|
+| **`preparing`** | **未提出** | `club_auditor_audit_status` が `not_started`（または未設定）かつ `is_club_settlement_locked` が `false` | なし | クラブが編集・提出可能 |
+| **`in_audit`** | **監査中** | ロック `true` または監査状態 `in_review` | **一次ロック**（入出金・集金・予実・設定等の書き込み不可） | 提出済み、監査人審査中 |
+| **`rejected`** | **差戻し** | 監査状態 `rejected`（ロックは `false`） | 解除（修正・再提出可能） | 監査人コメント付きでクラブへ通知（メッセージ BOX 経由） |
+| **`approved`** | **承認済** | 監査状態 `approved`（ロック `true` 維持） | **監査完了ロック**（学校管理者が年度単位で最終完全ロック） | 監査人承認済。編集原則禁止 |
 
-**差戻 OK 時の連動**（`auditorRejectSettlement`）:
+**分類関数（正本）**: `classifyClubAuditProgress(clubId)` / `classifyFromState(auditStatus, locked)` — `src/lib/schoolAuditProgressSummary.ts`
 
-1. 監査ステータス → `rejected`（バッジ「差戻」・優しい黄色）
-2. `is_club_settlement_locked_${clubId}` → **`false`**（`CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` でクラブ全画面の `useClubSettlementLock` が即時反映）
-3. クラブ側赤警告アラート消滅・書き込みボタン再活性
-4. 双六 UI に「差戻し」履歴ステップを追加（§5.2）
-5. 学校側ステータスを `rejected` に同期
-6. 本版では、差戻し理由のメッセージBOX自動投稿連動は採用しない（見送り）。監査人操作は決算ステータス遷移とロック制御に限定する。
-
-実装: `SchoolSettlementReviewDialog` に `reviewSource="auditor"` を指定。学校ポータルは従来 API（`reviewSource="school"` 既定）。
-
-レイアウト：`flex gap-2` 内で左ボタン `flex-[2]`、承認・差戻に `flex-1` を付与（2:1:1＝50%:25%:25%）。旧「承認・差戻」統合ボタンは **廃止**。
-
----
-
-## 7. 学校ポータル「クラブ管理」（デモ実装仕様）
-
-学校管理者ポータル（`/school`）のサイドメニュー「クラブ管理」配下に、次の3画面を設ける。デモではブラウザの localStorage と React Context でデータを共有・永続化する。
-
-### 7.0 リアルタイム監査進捗サマリー（`/school` トップ）
-
-学校管理者ポータルトップ（`SchoolMypageView`）の最上部に、全クラブの決算提出・監査ステータスを localStorage から自動集計して表示する **「リアルタイム監査進捗サマリー」** を配置する。
-
-**コンポーネント**: `SchoolAuditProgressSummary`（`src/components/school/SchoolAuditProgressSummary.tsx`）  
-**集計ロジック**: `aggregateSchoolAuditProgress(clubIds)`（`src/lib/schoolAuditProgressSummary.ts`）
-
-**レイアウト仕様**:
-
-| 要素 | 仕様 |
-|------|------|
-| **右上「総クラブ数」** | サマリーヘッダー右端に大きく目立つ表示。数字部分 `text-3xl font-extrabold text-gray-800`、ラベル「総クラブ数:」は `text-sm font-medium text-gray-500`。形式例: `総クラブ数: 114 クラブ` |
-| **進捗カウント並び（左→右）** | 業務フロー順。**未提出（赤）➔ 監査中（緑）➔ 差戻（黄）➔ 承認済（青・右端ゴール）**。配列 `STAT_CARDS` の順序で制御 |
-| **各カウントカード** | 2×2（モバイル）／4列（`lg:grid-cols-4`）グリッド。ステータス別背景色・プログレスバー付き |
-| **リアルタイム更新** | `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` / `SETTLEMENT_CHANGED_EVENT` および `storage`・`focus`・`visibilitychange` |
-
-### 7.1 グループ作成（`/school/clubs/groups`）
-部活の大分類（例：運動部、文化部）を登録・編集・削除・並び替えする。登録したグループはクラブ登録画面の選択肢およびクラブ一覧のタブフィルタに反映される。
-
-### 7.2 クラブ登録（`/school/clubs/register`）
-- **役割**：クラブの追加とメンテナンス（編集・削除）。
-- 上部「新規登録」：グループをラジオで1つ選択、クラブ名を入力し「登録する」。
-- 登録時に **クラブID**（`club-` + 4桁数字）と **初期パスワード**（英数字6桁）を自動発行し、localStorage に保存する。
-- 下部「登録済みクラブ」：タブ（すべて／各グループ）付き一覧。列は順序、クラブ名、クラブID、初期PW、所属グループ、登録日、操作（編集・削除）。
-- 「アカウント情報を印刷」：クラブ名・クラブID・初期パスワードの配布用一覧をモーダル表示し、ブラウザ印刷に対応。
-
-### 7.3 クラブ一覧（`/school/clubs`）
-- **役割**：全クラブの決算状況の監視ダッシュボード（編集・削除は行わない）。
-- 列：順序（連番）、クラブ名、所属グループ、決算状況バッジ（**未提出／監査中／差戻／承認済** — §4.4）、アクション。
-- アクション：個別メッセージ（`/school/clubs/{clubId}/messages`）、「クラブページへ」で当該クラブのクラブポータル（`/club/dashboard`）へ管理者閲覧モードで遷移。
-
-### 7.4 クラブ側パスワード変更（`/club/settings/club`）
-クラブポータル「設定＞クラブ設定」にパスワード変更フォームを配置。現在のパスワード・新しいパスワード・確認用を入力し、変更後は localStorage 上の当該クラブの `password` を更新する（`initialPassword` は配布記録として保持）。
-
----
-
-## 8. 統合ログインハブ（URL: `/`）
-
-全ユーザー（学校管理者・クラブ・部員）の玄関口として、中央に3つの大型カードボタンを配置する。
-
-| ボタン | カラー | 遷移・挙動 |
-|--------|--------|------------|
-| 学校ログイン | ネイビー `#005088` | `/school/login` へ遷移 |
-| クラブログイン | ピンク | 同一画面内でクラブID・パスワードフォームを表示（`/club/login` でも同一UI） |
-| 部員ログイン | グレー系 | デモ用：モーダルで「部員ページは現在準備中です」 |
-
-実装：`LoginHubView`（`src/components/auth/LoginHubView.tsx`）。
-
----
-
-## 9. 学校ログイン（URL: `/school/login`）
-
-管理者専用のログイン画面。サイドバーなし（`SchoolLayoutGate` でシェルを除外）。
-- **デモ認証**：ID `admin` / PW `admin`、または ID・PW とも空欄でログイン成功。
-- **成功時**：`kurasaokaikei-school-admin-session` にセッションを保存し、`/school/clubs`（クラブ一覧）へ遷移。
-- 実装：`SchoolLoginView`（`src/lib/schoolLoginSession.ts`）。
-
----
-
-## 10. クラブログイン認証と動的データ出し分け
-
-### 10.1 認証
-- 学校のクラブ登録（§7.2）で発行した **クラブID** と **パスワード**（`kurasaokaikei-school-clubs`）を照合。
-- 成功時：`kurasaokaikei-current-club` にクラブ名・ID等を保存し、**共通URL** `/club/dashboard` へ遷移（URLにクラブIDを露出しない）。
-- 失敗時：「クラブIDまたはパスワードが正しくありません。」を表示。
-
-### 10.2 セッションの優先順位
-1. 学校管理者のなりすまし（`sessionStorage`: `kurasaokaikei-school-impersonate-club`）— 「クラブページへ」ボタン
-2. クラブログイン（`localStorage`: `kurasaokaikei-current-club`）
-3. 直前に有効だったクラブコンテキストの復元（`localStorage`: `kurasaokaikei-last-active-club-session`）
-
-**セッション固定化ガード（必須）**
-
-- `/club/dashboard` では、リロード・ホットリロード・コード差し替え時も `kurasaokaikei-current-club`（および `kurasaokaikei-last-active-club-session`）を最優先で復元する。
-- 一時的にクラブ情報が未解決でも、既存の有効セッションがある限り、デフォルトクラブ（例: ラグビー部）へ自動フォールバックしない。
-- セッション未確定状態での初期描画は「空状態」で待機し、既存のクラブ別キーを初期値で上書きしない。
-
-### 10.3 動的表示・初期状態（空データ）
-- ヘッダー・ダッシュボードでログイン中クラブ名を反映（例：「吹奏楽部 ポータル」）。
-- **学校登録直後のクラブ**（活動データ未作成）は、予算・残高・部員・お知らせを **0円／空** で表示。決算ステータスは **「未提出」**（赤バッジ — §4.4.2）から開始。
-- リロード／ホットリロード時は、一時的にセッション読込が空でも **直前の有効クラブセッションを優先復元** し、表示クラブを切り替えない。
-- ログイン情報が完全に空のまま `/club/dashboard` を直接開いた場合は、クラブ別データは **空状態** とし、既存セッションキーやクラブ別キー（`_${clubId}`）をデフォルト値で上書きしない。
-- クラブ別保存キーとアクティブクラブIDは常に一致させ、別クラブデータ（例：ラグビー部デモ）へ自動フォールバックしない。
-
-### 10.4 各クラブごとのデータ完全分離（個別キー原則）
-
-- localStorage の正本キーは、状態の種類ごとに必ず `_${clubId}` を末尾に動的付与する（例: `is_club_settlement_locked_club-0001`, `audit_status_club-0001`）。
-- 読み込み・保存・更新・同期イベントのすべてで、**現在操作中の `clubId` と同一末尾キーのみ** を対象にする。
-- 禁止事項: グローバルキー（clubId 非依存キー）による状態共有、別クラブキーの一括更新、ログインクラブと不一致なキーへの書き込み。
-- この原則により、1クラブの提出・承認・差戻し・表示更新が他クラブに波及する競合バグを防止する。
-
----
-
-## 12. 勘定科目マスタとカテゴリー雛形の配布ルール詳細
-
-学校（契約主体）が定める「全校共通の会計の型」を、配下クラブへ一方向に配布し、クラブが独自に崩せない範囲を for school 契約で制御する。本節は、マスタのデータ構造、配布タイミング、クラブ側の利用制約、およびデモ実装の画面・ストレージを定義する。
-
-### 12.1 設計上の二層マスタ
-
-| 層 | 管理者 | 役割 | 本番 DB モデル（目標） | デモ画面（学校ポータル） |
-|----|--------|------|------------------------|--------------------------|
-| **学校マスタ** | 学校管理者 | 全校共通のカテゴリー雛形・勘定科目（必須・推奨・階層）を定義し、クラブへ配布 | `Organization`（学校）配下の `Category` / `AccountTitle`（`isMaster: true`） | `/school/settings/category`・`/school/settings/account-titles` |
-| **クラブ実務マスタ** | クラブ管理者 | 学校配布を受けた科目の利用可否、期首残高・前期繰越、クラブ固有カテゴリー（許可時のみ） | クラブ `Organization` 配下の `Category` / `AccountTitle` | `/club/settings/category`・`/club/settings/account-titles` |
-
-**for school フラグ**（`Organization.isForSchool`）が `true` のテナントでは、次を原則とする。
-
-- 学校が配布した **科目名・グループ（収入／支出／現金預金等）・必須フラグ** はクラブが削除・改名できない（`isSystemRequired` / `isMaster` に相当）。
-- `allowCustomCategory` が `false` の場合、クラブは学校雛形外のカテゴリーを新規作成できない。
-- クラブ名・承認制など、契約上固定すべき項目は学校ポータル側で編集不可とする（UI ロックは製品フラグで切替）。
-
-### 12.2 勘定科目体系（グループと必須科目）
-
-すべての仕訳は **カテゴリー（部門）** と **勘定科目** の組で記録する。科目は次の **AccountGroup**（勘定グループ）に分類する。
-
-| グループ | 内容例 | クラブでの主用途 |
-|----------|--------|------------------|
-| **現金・預金（CASH_DEPOSIT）** | 現金、普通預金（複数口座可） | 入出金先・振替の両端、残高カードの基礎 |
-| **資産（ASSET）** | 未収入金、仮払金 | 繰延・精算、決算時の残高確認 |
-| **負債（LIABILITY）** | 仮受金（預り金）、未払金 | 集金預り金、未払費用 |
-| **収入（INCOME）** | 部費、寄付金、助成金、雑収入 | 入出金登録「収入」タブ |
-| **支出（EXPENSE）** | 消耗品費、大会参加費、遠征費、備品費 | 入出金登録「支出」タブ・証憑チェック対象 |
-
-**繰延処理用の固定4科目**（手動追加不可・`DeferredAccountType` で識別）:
-
-1. 未収入金（資産）
-2. 仮払金（資産）
-3. 未払金（負債）
-4. 仮受金（負債）
-
-年度末の繰延・次年度精算は、この4科目を経由して自動仕訳を生成する（`docs/spec.md` §6.1 参照）。
-
-### 12.3 カテゴリー（部門）雛形
-
-学校が配布するカテゴリー雛形の例:
-
-- 部会計（通常活動のデフォルト）
-- 合宿会計
-- 遠征費
-- その他、学校が定める活動区分
-
-**運用ルール**
-
-- すべての取引はいずれか1つのカテゴリーに必ず帰属する。
-- カテゴリーは `order` により表示順を制御し、ドラッグ＆ドロップで並べ替え可能（クラブ設定・学校設定それぞれ）。
-- カテゴリーと科目は **多対多**（`AccountTitleCategory`）で紐づく。入出金登録時は、選択中カテゴリーに紐づく科目のみプルダウンに表示する。
-- 学校側でカテゴリーを追加・改名・削除すると、配下クラブの選択肢へ **リアルタイム反映** する（デモ: 配布イベントまたは次回ログイン時のマージ）。
-
-### 12.4 配布フロー（年度・クラブ開設との関係）
-
-#### 12.4.1 学校側一括登録（導入 §3.2 と連動）
-
-1. 会計年度（例: 2026.4.1 〜 2027.3.31）を学校ダッシュボードで確定する。
-2. **共通カテゴリー雛形**を `/school/settings/category` で登録する（デモ: プレースホルダ画面。本番: CRUD + 並び替え）。
-3. **共通勘定科目マスタ**を `/school/settings/account-titles` で登録する（必須科目・推奨科目・階層 `parentId`）。
-4. 「配布」操作（本番）またはクラブ初回ログイン時の **マージジョブ**（デモ）で、各クラブのローカル／DB スコープへコピーする。
-
-#### 12.4.2 クラブ初回設定（導入 §3.3 と連動）
-
-クラブポータル初回ログイン後、クラブ管理者は次を行う。
-
-- 学校配布科目のうち、当部で使う科目にチェック（利用可否）。
-- **利用初年度のみ**、資産・負債・現金預金科目について **期首残高（残高）** および **前期繰越金** を入力（`docs/spec.md` §18.5）。入力値は資産合計・次期繰越金の算出に反映。
-- カテゴリー別予算の下書き（予実管理モジュール）を登録。
-
-#### 12.4.3 配布の粒度と変更管理
-
-| 変更種別 | 学校操作 | クラブへの影響 | 承認済年度 |
-|----------|----------|----------------|------------|
-| 必須科目の追加 | 即時配布 | 新科目が利用可能に。既存仕訳には影響なし | 追加のみ可。削除不可 |
-| 科目名・グループ変更 | 学校のみ可（for school） | 表示ラベル更新。過去仕訳は ID で整合 | 原則禁止（マスタ版本固定） |
-| カテゴリー削除 | 使用中は警告 | 当該カテゴリー紐づけ仕訳がある場合は削除ブロック | ロック年度は不可 |
-| クラブ独自カテゴリー | `allowCustomCategory` 依存 | 学校雛形と併存 | クラブ責任で運用 |
-
-**データ整合**: カテゴリー／科目削除時は、関連 `Transaction` の有無を検査し、使用中は削除禁止と警告を表示する（`docs/spec.md` 設定連動仕様）。
-
-### 12.5 クラブ側でのマスタ利用（入出金・帳簿との接続）
-
-- **入出金登録**: タブ（収入／支出／振替／集金）に応じ、科目グループでプルダウンをフィルタ。振替は現金・預金グループのみ。
-- **集金**: 集金設定の `categoryName`・`accountTitleName` を、集金入金時の `Transaction(type=collection)` に自動反映。
-- **帳簿**: 科目別台帳・現金預金出納帳は同一 `Transaction` ソースで整合。科目設定の期首残高は出納帳1行目に固定表示。
-- **予実管理**: 予算は「会計年度 × カテゴリー × 科目」の三組で保持。「すべて」タブはカテゴリー別予算の合算表示（直接編集不可・閲覧集計モード）。
-
-### 12.6 デモ実装の永続化キー（科目・カテゴリー関連）
-
-| キー／モジュール | 用途 |
-|------------------|------|
-| `utils/localStorage.ts` | クラブスコープの `ACCOUNT_TITLES`・`CATEGORIES`・取引 |
-| 学校ワークスペース | `readScopedWorkspace` / `writeScopedWorkspace` による学校 ID 単位の分離 |
-| `/school/settings/*` | 共通マスタ UI（2026-05 時点はプレースホルダ。仕様上の正しい配置先） |
-
-本番移行時は `prisma/schema.prisma` の `Category`・`AccountTitle`・`AccountTitleCategory` を正本とし、学校→クラブ配布はバッチまたはイベント駆動で実装する。
-
----
-
-## 13. 監査人詳細権限とダッシュボード仕様
-
-監査人は、学校が登録した担当者として **割当クラブの決算のみ** を審査する。学内会計の編集権限は持たず、閲覧（なりすまし）・承認・差戻し・メッセージに限定する。
-
-### 13.1 監査人マスタと ID 体系
-
-**登録画面**: `/school/clubs/auditors/register`（学校ポータル「監査人管理」配下）  
-**一覧・ダッシュボード**: `/school/clubs/auditors`  
-**実装**: `src/lib/schoolAuditors.ts`  
-**永続化キー**: `school_auditors`（学校ワークスペーススコープ。変更イベント: `kurasaokaikei-school-auditors-changed`）
-
-| フィールド | 仕様 |
-|------------|------|
-| **監査人 ID** | `AUD-` + 4桁連番（例: `AUD-0001`）。自動採番 |
-| **氏名** | 必須 |
-| **部署** | 必須（例: 教務課）。クラブ決算画面「担当監査人」に `部署　氏名` で表示 |
-| **電話・メール** | 必須。メールはログイン ID 代替としても利用 |
-| **初期パスワード** | 英数字6桁（クラブ ID 発行と同ルール `generateInitialAuditorPassword`） |
-| **担当クラブ** | `assignedClubIds: string[]` — 監査人ダッシュボードの表示対象を限定 |
-| **監査進捗（マスタ）** | `before`（ー）/ `in_progress`（監査中）/ `completed`（終了）— 学校一覧の参考表示用 |
-
-**監査フロー有効化**: `/school/settings/audit-flow` — 学校契約プラン（`SCHOOL_CONTRACT_DEMO` 等）に応じ、監査人メニューの表示 ON/OFF。画面からフロー自体を変更することはできない（`SchoolAuditFlowSettingsView`）。
-
-### 13.1.1 学校ポータル：監査人一覧ダッシュボード（カードUI刷新）
-
-学校管理者ポータル「監査人管理」配下の一覧画面を、**監査人1名＝1カード**のグリッドダッシュボードとして再設計する。旧来の表形式・簡易リスト表示は廃止し、担当クラブごとの決算監査進捗をカード内で即時把握できる構成とする。
-
-| 項目 | 仕様 |
-|------|------|
-| **画面パス** | `/school/clubs/auditors` |
-| **ページ実装** | `src/app/school/clubs/auditors/page.tsx` → `SchoolAuditorsListView` |
-| **一覧コンテナ** | `SchoolAuditorsListSection` — レスポンシブグリッド（1列 / `md:2` / `lg:3`） |
-| **カードコンポーネント** | `SchoolAuditorDashboardCard` |
-| **進捗サマリー** | `AuditorAssignedClubProgressSummary` |
-| **集計ロジック** | `aggregateAssignedClubAuditProgress`（`src/lib/auditorAssignedClubProgress.ts`）— 分類は §7.0 と同一の `classifyClubAuditProgress` |
-
-#### カード内レイアウト（上からの配置順）
-
-各カード（`article`）は白背景・角丸 `rounded-xl`・枠線 `border-gray-200`・シャドウ `shadow-md`、ホバー時に軽い浮き上がり（`hover:-translate-y-0.5`）を適用する。縦方向は **flex カラム** とし、フッター操作ボタンはカード最下部に固定する。
-
-1. **【ヘッダー】氏名・監査人ID**
-   - 氏名: `text-lg font-bold text-[#374151]`
-   - 監査人ID: 同一行右側、モノスペース `font-mono text-xs text-[#9CA3AF]`（例: `AUD-0001`）
-   - 下境界: `border-b border-blue-100`
-
-2. **【基本情報】部署・電話番号・メールアドレス**
-   - ラベル左 / 値右の2列レイアウト（`text-sm`）
-   - 部署・電話・メールは未入力時 **「—」** を表示
-   - メールは `truncate` + `title` 属性で全文ツールチップ
-   - 下境界: `border-b border-gray-100`
-
-3. **【サマリー】監査進捗サマリー**
-   - 見出し: **「監査進捗サマリー」**（`text-sm font-semibold text-indigo-950`）
-   - **§7.0 トップページ**（`SchoolAuditProgressSummary`）と **同一デザイン言語** の4色横並びミニカード（`grid grid-cols-4 gap-2`）＋各セル下部に **カラーバー付き進捗バー**（担当クラブ件数に対する比率）
-   - 集計対象: 当該監査人の `assignedClubIds` のみ（学校全クラブではない）
-   - 担当クラブ未割当（`total === 0`）時は破線枠のプレースホルダ「担当クラブ未割当」を表示
-
-| 内部バケット | 表示名称 | 集計キー（`AuditorAssignedClubProgressCounts`） | カード色（背景/値/バー） |
-|--------------|----------|-----------------------------------------------|---------------------------|
-| `preparing` | **未提出** | `preparing` | 赤系 `border-red-200 bg-red-50` / `text-red-700` / `bg-red-500` |
-| `in_audit` | **監査中** | `inAudit` | 緑系 `border-green-200 bg-green-50` / `text-green-700` / `bg-green-600` |
-| `rejected` | **差戻し** | `rejected` | 黄系 `border-amber-200 bg-amber-50` / `text-amber-800` / `bg-amber-400` |
-| `approved` | **承認済** | `approved` | 青系 `border-blue-600/25 bg-blue-50` / `text-blue-700` / `bg-blue-600` |
-
-分類正本: `classifyClubAuditProgress(clubId)`（`src/lib/schoolAuditProgressSummary.ts`）— `club_auditor_audit_status_${clubId}` と `is_club_settlement_locked_${clubId}` の組み合わせで相互排他に1バケットへ振り分け（§4.4.1・§7.0 と整合）。
-
-4. **【担当クラブ】**
-   - 見出し: **「担当クラブ」**
-   - 件数: **「{N}クラブ」**（件数部分 `font-semibold text-indigo-950`、単位 `text-xs text-[#9CA3AF]`）
-   - クラブ名: チップ一覧（`bg-[#EFF6FF] text-[#1E40AF]`、`rounded`、複数行 `flex-wrap`）
-   - 未割当時: 「未割当」テキスト
-   - クラブ名の並びは `assignedClubIds` 順（`SchoolClubsContext.sortedClubs` から ID 解決）
-
-5. **【フッター】操作ボタン**
-   - 右寄せ横並び（`border-t border-gray-100` 上に配置）
-   - **メッセージ**: アウトライン、`Mail` アイコン（オレンジ `#EA580C`）→ `schoolAuditorComposeMessagePath(auditorId)` へ遷移
-   - **編集**: アウトライン、`Edit2` アイコン → 親の `onEdit(auditor)`（登録フォームを編集モードで開く）
-   - **削除**: 赤枠・赤文字、`Trash2` アイコン → `ActionConfirmDialog` 経由で `deleteSchoolAuditor`
-
-#### データ連携・リアルタイム同期
-
-監査人マスタ（`school_auditors`）の変更に加え、**各担当クラブの決算・監査状態**（localStorage）をカード内で自動集計・同期する。
-
-| 種別 | 内容 |
-|------|------|
-| **監査人マスタ** | `loadSchoolAuditors()` / イベント `kurasaokaikei-school-auditors-changed`（`SCHOOL_AUDITORS_CHANGED_EVENT`）および `storage` |
-| **クラブ監査状態の正本キー** | `is_club_settlement_locked_${clubId}` / `club_auditor_audit_status_${clubId}`（§13.5） |
-| **カスタムイベント購読** | `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` / `SETTLEMENT_CHANGED_EVENT`（`clubSettlementPortalSync.ts`・`schoolClubSettlement.ts`） |
-| **タブ間・復帰** | `window` の `storage`（上記キープレフィックス一致時）、`focus`、`visibilitychange`（visible 時に再集計） |
-| **再描画トリガ** | `SchoolAuditorDashboardCard` 内の `refreshKey` をインクリメント → `useMemo` で `aggregateAssignedClubAuditProgress(assignedClubIds)` を再実行 |
-
-これにより、クラブポータルでの決算提出・監査人ポータルでの承認／差戻しが発生すると、学校ポータルの監査人カード上の **4色サマリー件数がページリロードなしで更新** される（サーバーレス／localStorage デモ環境の正しい挙動）。
-
-**廃止・非推奨**: 監査人カード内に旧「決算ワークフロー」専用の重複進捗 UI や、マスタ上の参考フィールド `auditProgress`（`before` / `in_progress` / `completed`）のみに依存した表示は行わない。進捗表示の正本は **担当クラブの localStorage 集計** とする。
-
-### 13.2 認証・セッション・ログイン経路
-
-| 経路 | URL / 条件 | 成功後遷移 | セッションキー |
-|------|------------|------------|----------------|
-| 専用ログイン | `/audit/login` — `AuditorLoginView` | `/audit` | `auditor_current_session`（レガシー: `kurasaokaikei-current-auditor`） |
-| 学校ログインから | `/school/login` で ID が `AUD-*` | `establishAuditorLoginById` → `/audit` | 同上 |
-| 未ログイン保護 | `/audit/*`（login 除く） | `loadCurrentAuditor()` なし → `/audit/login` へ replace | `AuditorLayoutGate` |
-
-**ポータル間隔離**（`src/lib/portalSessionStorage.ts`）:
-
-- 監査人ログイン時に **学校管理者・クラブの localStorage を削除しない**。
-- クラブ「なりすまし」閲覧時に **`clearCurrentClub()` を呼ばない**（クラブ本人セッション破壊防止）。
-- ログアウトは当該ポータルキーのみ削除。`localStorage.clear()` は禁止。
-
-**パスワード UI**: `PasswordInput` — 👁 表示切替、`deferAutofillUntilFocus` 対応。
-
-### 13.3 監査人ポータル画面構成
-
-**ベース URL**: `/audit`  
-**テーマカラー**: オレンジ `#ff9800`（第2段ヘッダー・サイドメニュー）  
-**App Shell**: `AuditorLayoutGate` → `AuditorAppShell` → `AuditorHeader` → `PortalUnifiedHeader`（3段構造）
-
-| パス | 画面 | 概要 |
-|------|------|------|
-| `/audit/login` | ログイン | サイドバーなし |
-| `/audit` | 担当クラブ一覧 | `AuditorDashboardView` |
-| `/audit/clubs/[clubId]` | クラブ監査詳細 | `AuditorClubReviewView` |
-| `/audit/messages` | メッセージ BOX | 学校・クラブとの連絡 |
-| `/audit/messages/drafts` | 下書き | |
-| `/audit/guide` | 操作ガイド | |
-
-**サイドメニュー**（`AuditorSidebar`）: ダッシュボード、メッセージ、ガイド等。学校ポータルと同様、ログイン画面では Shell を出さない。
-
-### 13.4 ダッシュボード（`/audit`）カード仕様
-
-**コンポーネント**: `AuditorClubDashboardCard`  
-**表示対象**: `session.assignedClubIds` に含まれるクラブのみ（`SchoolClubsContext.sortedClubs` からフィルタ）
-
-**カード上部（ヘッダー）**
-
-- クラブ名（太字）
-- クラブ ID（モノスペース・グレー）
-
-**データ行**
-
-| ラベル | 表示ロジック |
-|--------|----------------|
-| 部員数 | `getClubMemberCount(clubId)` |
-| **当期の決算提出状況** | `is_club_settlement_locked_${clubId} === "true"` → バッジ **監査中**（緑）／それ以外は **未提出**（赤）（§4.4.2） |
-| **監査ステータス** | `club_auditor_audit_status_${clubId}` に応じ **未提出 / 監査中 / 承認済 / 差戻**（§6.3） |
-
-**リアルタイム同期**（第6章と整合）:
-
-- フック: `useAuditorSettlementState(clubId)` — ロック `is_club_settlement_locked_${clubId}` ＋ 監査 `club_auditor_audit_status_${clubId}`
-- ボタン活性: `canAuditorActOnSettlement(clubId)`（提出ロックかつ `in_review` のときのみ承認・差戻可）
-- イベント: `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` および `storage`・`focus`・`visibilitychange`
-
-**廃止 UI**（確定）:
-
-- 旧「決算ワークフロー」専用の重複進捗セクションは **表示しない**。
-- カード内の旧「進捗状況」ブロックは削除済み。
-
-**カード下部アクション**（§6.4 と同一 — 3分割横並び）
-
-| 位置 | ラベル | 色 | 活性 | 動作 |
-|------|--------|-----|------|------|
-| **左 50%** | クラブページへ | `CLUB_BRAND_PINK`（`#E66A84`）・白文字 | 常時 | 監査人閲覧モードで `/club/dashboard` へ |
-| **中央 25%** | **承認** | `bg-blue-600`・白文字 | `canReview` のみ | モーダル＋`confirm` → `auditorApproveSettlement` |
-| **右 25%** | **差戻** | `bg-amber-100 text-amber-800 border-amber-200` | `canReview` のみ | 理由入力モーダル＋`confirm` → `auditorRejectSettlement` |
-
-旧統合ボタン「承認・差戻」は廃止。補足文「クラブから決算が「**監査中**」になると…」はボタン行の下に表示。
-
-**ダッシュボード上部バナー**: ログイン監査人の氏名・ID・部署、担当クラブ件数（オレンジ枠 `border-orange-200 bg-orange-50`）。
-
-### 13.5 承認・差戻しと localStorage 正本
-
-デモ環境の正本 API: **`src/lib/clubSettlementPortalSync.ts`**
+**localStorage キー（クラブ ID 末尾で完全分離）**:
 
 | キー | 値 | 用途 |
 |------|-----|------|
-| `is_club_settlement_locked_${clubId}` | `"true"` / `"false"` | クラブ編集ロック・「監査中」バッジ表示 |
-| `club_auditor_audit_status_${clubId}` | `not_started` / `in_review` / `approved` / `rejected` | 監査人バッジ・承認差戻ボタン活性 |
-| `club_settlement_history_flow_${clubId}` | `{ steps, currentIndex }` | 双六 UI 履歴（§5.2） |
+| `is_club_settlement_locked_{clubId}` | `"true"` / `"false"` | 一次ロック・「監査中」表示 |
+| `club_auditor_audit_status_{clubId}` | `not_started` / `in_review` / `approved` / `rejected` | 監査バッジ・承認/差戻ボタン活性 |
+| `club_settlement_history_flow_{clubId}` | `{ steps, currentIndex }` | 双六 UI 履歴 |
+| `kurasaokaikei-school-club-settlement-status` | 学校側決算マップ | 学校ポータル一覧バッジ |
 
-**監査人操作**（`canAuditorActOnSettlement()` が true のときのみ活性）:
+**4 色バッジパレット**（`src/lib/clubSettlementPortalSync.ts`）:
 
-| 操作 | 確認 | 関数 | クラブ側効果 |
-|------|------|------|--------------|
-| **承認** | モーダル＋ `window.confirm` | `auditorApproveSettlement` | ロック維持・監査「承認済」・双六を承認済へ |
-| **差戻** | 理由必須＋ `window.confirm` | `auditorRejectSettlement` | ロック解除・アラート消滅・双六に差戻し追加・編集再開 |
+| ステータス | Tailwind クラス定数 |
+|------------|---------------------|
+| 未提出 | `SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES` — 赤 |
+| 監査中 | `SETTLEMENT_IN_AUDIT_BADGE_CLASSES` — 緑 |
+| 差戻し | `SETTLEMENT_REJECTED_BADGE_CLASSES` — 黄（amber） |
+| 承認済 | `AUDITOR_APPROVED_BADGE_CLASSES` — 青 |
 
-学校側決算マップ（`kurasaokaikei-school-club-settlement-status`）も併せて更新する。学校ポータルの審査 UI は `SchoolSettlementReviewDialog`（`reviewSource="school"`）で従来 API を使用。
+**変更通知イベント**: `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` / `SETTLEMENT_CHANGED_EVENT`
 
-**承認済のビジュアル**:
-- **監査ステータスバッジ**: 承認ボタンと同色の青（`AUDITOR_APPROVED_BADGE_CLASSES` = `border-blue-600/30 bg-blue-600 text-white`）。監査中（緑）・未提出（赤）とは色で明確に区別する。
-- **カード背景**: `AUDITOR_APPROVED_CARD_CLASSES` = `bg-gray-50` のみ。文字・バッジ・ボタンは **opacity で減衰させない**（視認性維持）。
+---
 
-**承認時のロック正本**: `auditorApproveSettlement` は `setClubSettlementLocked(clubId, true)` を呼び、`is_club_settlement_locked_${clubId}` を `"true"` に固定維持する（差戻し `auditorRejectSettlement` のみ `false` へ解除）。
+## 各ポータルの主要役割と画面・機能要件
 
-**詳細画面**（`/audit/clubs/[clubId]`）: `AuditorClubReviewView` — 承認／差戻は `reviewSource="auditor"` の同一ダイアログ。
+### 学校管理者ポータル（`/school`）
 
-### 13.6 なりすまし（監査人閲覧モード）
-
-| 項目 | 仕様 |
+| 項目 | 内容 |
 |------|------|
-| バナー | `ClubImpersonationBanner` — 「**監査人閲覧モード**」 |
-| 設定 | `setImpersonatedClub({ viewer: "auditor", clubId })` → **sessionStorage** `club_portal_impersonation` |
-| 遷移先 | `/club/dashboard`（ピンク「クラブページへ」— `CLUB_BRAND_PINK`） |
-| 戻る | 「ダッシュボードへ戻る」→ **`/audit`**（`resolveClubPortalDashboardBackHref`） |
-| 制約 | クラブ `localStorage` セッションは変更しない。終了時は `clearImpersonatedClub()` のみ |
+| **利用者** | 学生支援課・部活動統括係など |
+| **テーマカラー** | ネイビー `#172554` / `#005088` |
+| **主な役割** | 全クラブ・監査人の統括、契約状況管理、共通マスタ、メッセージ配信、監査進捗俯瞰 |
 
-### 13.7 監査人の権限境界（禁止事項）
+**主要画面**:
 
-- 他校・未割当クラブのデータ参照・編集。
-- クラブの入出金・集金・予実・設定の **直接編集**（閲覧のみ）。
-- 学校マスタ（科目・カテゴリー・契約）の変更。
-- 保護者・部員の個人情報の一括エクスポート（将来 API 実装時はロールで拒否）。
-- 承認済（`APPROVED`）決算の差戻しは **学校管理者の明示操作** が必要（監査人のみでは不可 — 本番ポリシー。デモでは要確認）。
+| パス | 画面 | コンポーネント |
+|------|------|----------------|
+| `/school` | トップ（SchoolTopView） | `SchoolMypageView` |
+| `/school/clubs` | クラブダッシュボード（決算状況一覧） | `SchoolClubDashboardListSection` |
+| `/school/clubs/register` | クラブ登録 | `SchoolClubRegisterView` |
+| `/school/clubs/groups` | グループ作成 | — |
+| `/school/clubs/auditors` | 監査人ダッシュボード | `SchoolAuditorsListView` |
+| `/school/clubs/auditors/register` | 監査人登録 | `SchoolAuditorsRegisterView` |
+| `/school/messages` | メッセージ BOX | — |
+| `/school/contract` | 契約状況詳細 | `SchoolContractView` |
+| `/school/settings/*` | 共通マスタ・監査運用設定 | — |
 
-### 13.8 クラブ決算画面との連動（担当監査人表示）
+**契約管理**: 契約プラン、オプション、金額、支払いサイクル（年払い/月払い）、お支払い日、お支払方法。デモデータ: `SCHOOL_CONTRACT_DEMO`（`src/lib/schoolTheme.ts`）、表示: `getSchoolContractDisplay()`。
 
-`/club/settlement` の「担当監査人」カードは、学校マスタ `getSchoolAuditorById` とクラブへの割当から **動的表示** する。
+### 監査人ポータル（`/audit`）
 
-- 表示形式: `部署　氏名`（大きく、オレンジ左縦線は旧仕様。Ver 2.0 カードは §5.1 のグレー統一カード）
-- 未割当時デモ表示: `教務課　山田太郎`（開発用フォールバック）
+| 項目 | 内容 |
+|------|------|
+| **利用者** | 学校登録の監査担当者（ID: `AUD-0001` 形式） |
+| **テーマカラー** | オレンジ `#ff9800` |
+| **主な役割** | 担当クラブ（`assignedClubIds` 複数可）の査読、差戻/承認、メッセージ、クラブ閲覧（なりすまし） |
+
+**操作制限**:
+- `canAuditorActOnSettlement(clubId)` ≡ ロック `true` かつ `in_review` のときのみ承認・差戻活性
+- 入出金・設定の直接編集は不可（閲覧のみ）
+
+**主要画面**: `/audit`（`AuditorDashboardView`）、`/audit/clubs/[clubId]`（`AuditorClubReviewView`）、`/audit/messages`
+
+### クラブポータル（`/club`）
+
+| 項目 | 内容 |
+|------|------|
+| **利用者** | 各部活動の会計担当 |
+| **テーマカラー** | くすみピンク `#E66A84`（`CLUB_BRAND_PINK`） |
+| **主な役割** | 決算書作成、証憑アップロード、提出・修正、入出金・帳簿・集金・予実 |
+
+**証憑未登録数の定義**（厳密）:
+- **分母**: 全支出仕訳数（振替片側 `isTransferLeg` は除外）
+- **分子**: 分母のうち `receiptUrl` 未設定の件数
+- **表示形式**: `{未登録} / {全支出仕訳数}`（例: `0/0`）
+- **集計**: `computeClubReceiptStats()` — `src/lib/clubReceiptStats.ts`
+- **帳簿連動**: 未登録行は科目別台帳・現金預金出納帳で **赤強調**（`bg-red-50 text-red-600`）
+
+**ロック対象機能**（監査中）: ダッシュボード、入出金登録、集計・帳簿、集金管理、予実管理、設定 — `SettlementLockAlert` + 全書き込みボタン `disabled`
+
+### 部員マイページ（`/member`）
+
+| 項目 | 内容 |
+|------|------|
+| **現状** | デモ準備中（ログインハブからモーダル表示） |
+| **目標機能** | 個人部費の納入ステータス確認、入退部・精算申請ワークフロー |
+| **将来** | 保護者トークン URL（`/parent/view?token=...`）との連携 — §14 参照 |
 
 ---
 
-## 14. 保護者専用マイページ・トークン URL の運用詳細
+## 【最新】学校管理者ポータル・トップ画面（SchoolTopView）のレイアウト仕様
 
-保護者は **会計責任者ではなく閲覧・納入・将来決済の利用者** である。学内会計の透明性を保ちつつ、他児童・帳簿全体・監査行には触れさせない。
+**URL**: `/school`  
+**実装**: `src/components/school/SchoolMypageView.tsx`（別名 **SchoolTopView**）  
+**年度**: 現在年度（`DEFAULT_PORTAL_FISCAL_YEAR`）のみ表示。過去年度はプレースホルダ。
 
-### 14.1 導入モデル（段階的）
+### 画面構成（上から下）
 
-| 段階 | 方式 | 状態 |
-|------|------|------|
-| **Phase 1（現行仕様・優先）** | **トークン付き専用 URL** — ログイン不要 | 部員登録時に発行。`docs/spec.md` §6.3 |
-| **Phase 2（将来）** | 保護者 ID + 初回パスワード設定 → 専用マイページログイン | `(parent)` ルートグループで拡張予定 |
-| **Phase 3（将来）** | オンライン決済・プッシュ通知（クラサポ会計ブランドアプリ連携） | `CollectionItem.paymentExternalId` 等で準備 |
+#### 1. 監査進捗サマリー（全幅）
 
-### 14.2 トークン発行タイミングとデータモデル
+コンポーネント: `SchoolAuditProgressSummary` — §「監査進捗サマリー共通 UI」参照。
 
-**トリガー**: 部員登録（§3.4）— 学校またはクラブ担当が部員行を登録し、保護者連絡先を紐づけた時点。
+#### 2. メインメニュー（1:1 グリッド）
 
-**本番 DB**（`prisma/schema.prisma`）:
+**グリッドクラス（必須）**:
 
-| モデル | フィールド | 説明 |
-|--------|------------|------|
-| `Member` | `parentViewToken` | 一意トークン（URL 用）。`@unique` |
-| `Member` | `parentEmail` / `parentPhone` | 連絡先（移行用フィールドあり） |
-| `Member` | `parentId` | `Parent` モデルへの FK（正の保護者实体） |
-| `Parent` | `email` / `name` / `phone` | 保護者単位のマスタ（複数児童を将来紐づけ可） |
-
-**トークン生成ルール（設計）**:
-
-- 推測困難なランダム文字列（UUID v4 または 32 文字以上の url-safe base64）。
-- 部員1人につき原則1トークン（兄弟で別部員なら別 URL）。
-- 再発行時は旧トークンを無効化（ワンタイム移行期間を設けてもよい）。
-
-**閲覧 URL 形式（設計・デモ）**:
-
-```text
-{origin}/parent/view?token={parentViewToken}
+```html
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
 ```
 
-または（レガシー互換の想定）:
+| 領域 | 幅（lg 以上） | 内容 |
+|------|---------------|------|
+| **左半分（50%）** | `lg:grid-cols-2` の第1列 | 3 等分メニューカード（縦一列） |
+| **右半分（50%）** | 第2列 | 契約状況カード（`h-full` で左と高さ同期） |
 
-```text
-{origin}/member?token={parentViewToken}
+### 【右半分（50%幅）】契約状況カード
+
+**コンポーネント**: `SchoolContractStatusSummaryCard`（`src/components/school/SchoolContractStatusSummaryCard.tsx`）
+
+| 仕様 | 値 |
+|------|-----|
+| 高さ | `h-full min-h-0 flex flex-col` — 左側 3 等分コンテナと **完全同期** |
+| 左アクセント | ネイビー 5px 縦線（`SCHOOL_THEME.navy`） |
+| ヘッダー | 「契約状況」+ 「詳細を見る」→ `/school/contract` |
+
+**表示項目**（縦等間隔 `flex-1 flex-col` + 各 `DataRow` が `flex-1 justify-center`）:
+
+1. 契約プラン
+2. オプション
+3. 金額
+4. 支払いサイクル（年払い / 月払い）
+5. お支払い日
+6. お支払方法
+
+### 【左半分（50%幅）】3 等分メニューカード
+
+右側契約状況の縦幅を **ぴったり 3 等分** した等高コンテナ。
+
+**コンテナクラス**（監査フロー有効時・3 枚）:
+
+```html
+<div class="flex min-h-0 flex-col gap-4 lg:grid lg:h-full lg:grid-rows-3">
 ```
 
-**デモ実装の現状**:
+**配置順（上→下）**:
 
-- `src/app/(parent)/parent/page.tsx` — 保護者ホーム（準備中プレースホルダ）
-- `src/app/member/page.tsx` — 部員・保護者マイページ（5/27 デモ用・未実装）
-- 部員一覧からの「保護者向け URL 生成・送信」は `docs/spec.md` §3.3 部員管理に定義（UI 実装は段階的）
+| 順 | カード | 遷移先 | アクセント色 | 条件 |
+|----|--------|--------|--------------|------|
+| 1 | **監査人ダッシュボード** | `/school/clubs/auditors` | オレンジ `#ea580c` | 監査フロー有効時のみ |
+| 2 | **クラブダッシュボード** | `/school/clubs` | ネイビー | 常時 |
+| 3 | **メッセージBOX** | `/school/messages` | 青 `#2563eb` | 常時 |
 
-### 14.3 保護者が閲覧できる情報（ホワイトリスト）
+監査フロー無効時（`loadSchoolUseAuditFlow() === false`）は 2 枚（クラブ + メッセージ）で `lg:grid-rows-2`。
 
-保護者は **ログイン不要** であっても、トークンに紐づく **当該部員に限定** し、次のみ表示可能とする。
+**カード共通**: `PortalMenuCard` — 白背景、`rounded-xl`、`border-left` 5px、`h-full min-h-0`。
 
-| 表示可 | 表示不可 |
-|--------|----------|
-| 対象児童の氏名（確認用） | 他児童の氏名・納入状況 |
-| 集金名・請求金額・納付期限 | クラブ全体の収支集計表・科目別台帳 |
-| 入金状況（済／未／滞納） | 部内会議メモ・監査コメント |
-| クラブ・学校からの当該児向けお知らせ（将来） | 入出金登録・編集・削除操作 |
-| 将来: オンライン決済ボタン（Phase 3） | 証憑画像・レシート原本 |
+---
 
-**アプリ層スコープ**（実装済ユーティリティ）:
+## 各ダッシュボード内における「監査進捗サマリー」の共通 UI 仕様
 
-- `src/services/memberScopeForParent.ts` — `memberIdsForParent(parentId)` で許可部員 ID を限定
-- `src/lib/parentScope.ts` — Prisma 向け `getMemberIdsForParentId` / `filterRowsByMemberAllowlist`
+### タイトル
 
-すべての API は `parentViewToken` または `parentId` から解決した **allowedMemberIds** でクエリをフィルタし、他児童の `CollectionItem` / `Transaction` を返さない。
+- **正式名称**: 「**監査進捗サマリー**」
+- **禁止**: タイトルに「リアルタイム」等の修飾語を付けない（旧仕様から削除済み）
+- 補助説明文（小さく）: 「学内全クラブの決算提出・監査ステータス（localStorage から自動集計）」
 
-### 14.4 集金・納入表示の業務ルール
+### 適用箇所
 
-- 集金予定は `CollectionItem`（集金名、金額、期限、status）を部員単位で一覧。
-- クラブが集金タブで「入金登録」すると `Transaction(type=collection)` が生成され、保護者画面の「済」表示と整合（`docs/spec.md` §18 集金連動）。
-- 保護者からは **入金の自己申告は不可**（閲覧のみ）。入金操作はクラブ会計担当のみ。
-- 滞納（`OVERDUE`）は将来、メール・LINE 等で通知（Phase 3）。
+| 画面 | コンポーネント | 集計対象 |
+|------|----------------|----------|
+| 学校トップ | `SchoolAuditProgressSummary` | 全登録クラブ |
+| 監査人カード内 | `AuditorAssignedClubProgressSummary` | 担当クラブのみ |
+| 監査人ポータル | 各 `AuditorClubDashboardCard` のバッジ | 個別クラブ |
 
-### 14.5 トークン URL の運用・セキュリティ
+### ステータス表示形式（学校トップ・4 列グリッド）
 
-| 項目 | 運用方針 |
+各ステータスセル（`items-start` 左寄せ）:
+
+1. **ステータス名**: 共通コンパーネント `SettlementAuditStatusBadge`（`src/components/school/SettlementAuditStatusBadge.tsx`）
+   - **3 文字幅に引き締めたコンパクトバッジ**: `w-16 shrink-0 rounded-full text-xs`
+   - クラブ/監査人ダッシュボードと **100% 同一デザイン**
+   - 配置: セル内 **左寄せ**（`flex flex-col items-start`）
+
+2. **件数（クラブ数）**: バッジの **外側・下** に配置
+   - フォント: **`text-3xl font-extrabold`（sm 以上で `text-4xl`）**
+   - 単位「クラブ」: `text-lg sm:text-xl text-[#9CA3AF]`
+   - 色: ステータス別（赤/緑/黄/青）
+
+3. **プログレスバー**: 各セル下部、総クラブ数に対する比率
+
+**並び順（左→右）**: 未提出（赤）→ 監査中（緑）→ 差戻し（黄）→ 承認済（青）
+
+**総クラブ数**: ヘッダー右端、`text-3xl font-extrabold`
+
+### データ同期仕様
+
+`localStorage` から各クラブの最新監査状態を **Event Listener** で購読し、**画面リロードなし** でカウント数とカラーバーを自動集計・完全同期する。
+
+**購読イベント**（`SchoolAuditProgressSummary`）:
+- `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT`
+- `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT`
+- `SETTLEMENT_CHANGED_EVENT`
+- `storage`（キーが `is_club_settlement_locked_*` / `club_auditor_audit_status_*`）
+- `focus` / `visibilitychange`（visible 時）
+
+**集計 API**: `aggregateSchoolAuditProgress(clubIds)` — `src/lib/schoolAuditProgressSummary.ts`
+
+---
+
+## 【最新】クラブポータル・トップ画面のレイアウト仕様
+
+**URL**: `/club/dashboard`  
+**実装**: `src/app/club/dashboard/page.tsx`
+
+### 削除した要素
+
+- **「重要：未処理・エラー通知」** セクション — **完全削除**（コードから除去済み）
+
+### 全体レイアウト
+
+| 要素 | 仕様 |
+|------|------|
+| 上部 | `SettlementLockAlert`（監査中のみ赤警告） |
+| 本体高さ | `h-[67vh] max-h-[67vh]`（サイドバーには適用しない） |
+| グリッド | `grid grid-cols-1 gap-6 lg:grid-cols-3`（3 列） |
+
+```
+┌─────────────────┬─────────────────┬─────────────────┐
+│  左列           │  中央列         │  右列           │
+│  現在の残高     │  メッセージBOX  │  決算ステータス │
+│  （スクロール） │  （上半分）     │  （上半分）     │
+│                 ├─────────────────┼─────────────────┤
+│                 │  現在の部員数   │  証憑未登録数   │
+│                 │  （下半分）     │  （下半分）     │
+└─────────────────┴─────────────────┴─────────────────┘
+```
+
+### 左列：現在の残高（従来維持）
+
+- 現金預金内訳・合計、入る予定（資産）、支払う予定（負債）、実質残高（次期繰越金）
+- データ: `getPortalTransactions`, `getPortalAccountTitles`
+- 左縦線: ピンク `#E66A84`
+- 科目行クリック → 現金預金出納帳
+
+### 中央列（上下 2 分割、`flex-1` ずつ）
+
+#### 上段 — メッセージBOX（縦幅を従来の半分に縮小）
+
+- `ClubMessageInboxList` — `maxItems={5}`, `variant="compact"`
+- 「一覧はこちら ➔」→ `/club/messages`
+- 左縦線: 青 `#4A90E2`
+
+#### 下段 — 現在の部員数（新設）
+
+- 4 学年別人数 + 合計（在籍 `active` のみ）
+- データ: `getPortalMembers(activeClub)`
+- 左縦線: 紫 `#9D8CC3`
+
+### 右列（上下 2 分割）
+
+#### 上段 — 決算ステータス
+
+- `ClubDashboardSettlementSummary`
+- 双六 UI（`ClubSettlementProgressSteps`）、スタッキングバー、現在ステータスバッジ
+- 通常: `[未提出] → [監査中] → [承認済]`
+- 差戻履歴あり: `[未提出] → [監査中] → [差戻] → [監査中(再)] → [承認済]`
+
+#### 下段 — 証憑未登録数
+
+- `ClubDashboardVoucherStats`
+- 表示: **`{未登録} / {全支出仕訳数}`**（未投入時 `0/0`）
+- 現金預金出納帳データと連動（同一 `transactions` ソース）
+- 「出納帳へ ➔」→ `/club/accounting/ledger/cash-bank`
+- 左縦線: 赤 `#EF4444`
+
+---
+
+## 技術スタックとプロジェクト構造
+
+### 技術スタック
+
+| 項目 | 版/内容 |
+|------|---------|
+| フレームワーク | Next.js **14.0.4**（App Router） |
+| UI | React 18、Tailwind CSS 3、Radix UI、lucide-react |
+| 型 | TypeScript 5 |
+| ORM（本番目標） | Prisma 5 + PostgreSQL |
+| デモ永続化 | ブラウザ `localStorage` + React Context |
+
+### ディレクトリ構造（復元用）
+
+```
+kurasaokaikei/
+├── docs/
+│   └── system-grand-spec.md      ← 本書（正本）
+├── prisma/
+│   └── schema.prisma             ← DB スキーマ（本番目標）
+├── src/
+│   ├── app/                      ← Next.js ページ（ルート = URL）
+│   │   ├── page.tsx              ← 統合ログインハブ /
+│   │   ├── school/               ← 学校管理者ポータル
+│   │   ├── club/                 ← クラブポータル
+│   │   ├── audit/                ← 監査人ポータル
+│   │   ├── member/               ← 部員（準備中）
+│   │   └── (parent)/             ← 保護者（将来）
+│   ├── components/
+│   │   ├── auth/                 ← ログイン UI
+│   │   ├── school/               ← 学校ポータル UI
+│   │   ├── club/                 ← クラブポータル UI
+│   │   ├── audit/                ← 監査人ポータル UI
+│   │   ├── layout/               ← App Shell・ヘッダー・サイドバー
+│   │   ├── shared/               ← 共通 UI
+│   │   └── ui/                   ← shadcn 系プリミティブ
+│   ├── contexts/                 ← React Context（ClubSession, SchoolClubs 等）
+│   ├── hooks/                    ← useClubSettlementLock 等
+│   ├── lib/                      ← ビジネスロジック・永続化 API
+│   ├── services/                 ← ドメインサービス
+│   ├── utils/                    ← localStorage 取引・科目ユーティリティ
+│   └── types/                    ← 共有型
+└── scripts/
+    └── list-routes.js            ← 全 URL 一覧出力
+```
+
+### コンポーネント階層（App Shell）
+
+| ポータル | Layout Gate | App Shell | Header | Sidebar |
+|----------|-------------|-----------|--------|---------|
+| 学校 | `SchoolLayoutGate` | `SchoolAppShell` | `SchoolHeader` → `PortalUnifiedHeader` | `SchoolSidebar` |
+| クラブ | `ClubLayoutGate` | `ClubAppShell` | `ClubPortalHeader` | `Sidebar` |
+| 監査人 | `AuditorLayoutGate` | `AuditorAppShell` | `AuditorHeader` | `AuditorSidebar` |
+
+**ログイン画面**: 各 Gate が login path のみ Shell を除外（サイドバーなし）。
+
+---
+
+## 画面共通ヘッダー（統一 3 段構造）
+
+全ポータル（学校・クラブ・監査人）の画面上部に **sticky 3 段ヘッダー** を固定配置。
+
+### 第1段：学校環境（コンテキスト層）
+
+- 左: 学校名（`text-xl font-bold` 2倍強調）+ 会計期間インライン
+- 背景: 薄グレー/白
+
+### 第2段：ポータル・アイデンティティ帯
+
+| ポータル | 背景色 | 表示名 |
+|----------|--------|--------|
+| 学校管理者 | ネイビー `#001e43` | 学校管理者ポータル |
+| 監査人 | オレンジ `#ff9800` | 監査人ポータル |
+| クラブ | くすみピンク `#E66A84` | `{クラブ名}ポータル` |
+
+右側: 会計期間テキスト + ログアウトボタン（白枠・白文字）  
+**ログアウト**: セッションクリア → `/`（統合ログインハブ）へリダイレクト
+
+### 第3段：年度切替
+
+- ラベル「年度切替:」+ pill 型年度ボタン（2024/2025/2026）
+- 選択中年度をポータルテーマ色でハイライト
+
+---
+
+## 認証・セッション・ログイン
+
+### 統合ログインハブ（`/`）
+
+`LoginHubView` — 3 大型カード: 学校（ネイビー）/ クラブ（ピンク）/ 部員（グレー・準備中モーダル）
+
+### 学校ログイン（`/school/login`）
+
+- デモ: ID/PW 空欄 or `admin`/`admin` → 成功
+- 成功: `kurasaokaikei-school-admin-session` → `/school`
+- ID が `AUD-*` → 監査人へ振り分け
+
+### クラブログイン（`/club/login`）
+
+- 学校登録クラブ ID + パスワード照合（`kurasaokaikei-school-clubs`）
+- 成功: `kurasaokaikei-current-club` → `/club/dashboard`
+- **セッション固定化**: リロード時デフォルトクラブへフォールバック禁止
+
+### 監査人ログイン（`/audit/login`）
+
+- セッション: `auditor_current_session`
+- 未ログイン `/audit/*` → `/audit/login` へ replace
+
+### なりすまし（閲覧モード）
+
+| 操作者 | バナー | sessionStorage キー | 戻り先 |
+|--------|--------|---------------------|--------|
+| 学校管理者 | `ClubImpersonationBanner` | `kurasaokaikei-school-impersonate-club` | `/school/clubs` |
+| 監査人 | 同上（監査人閲覧モード） | `club_portal_impersonation` | `/audit` |
+
+---
+
+## 決算提出フローと全域ロック機構
+
+### クラブ決算ページ（`/club/settlement`）
+
+`ClubSettlementView` — 縦並び:
+1. 小タイトル「決算」
+2. 担当監査人カード（`bg-gray-50 rounded-xl`）
+3. 決算ステータスカード（双六 UI + 「メッセージBOXへ ➔」）
+4. 提出ボタン（ロック時「決算データ提出済み（監査中）」disabled）
+
+### 提出時（`applyClubSettlementSubmit`）
+
+1. `is_club_settlement_locked_{clubId} = "true"`
+2. `club_auditor_audit_status_{clubId} = "in_review"`
+3. 双六 UI を「監査中」へ
+4. 学校側決算マップを `submitted` に同期
+
+### 監査人承認（`auditorApproveSettlement`）
+
+1. 監査状態 → `approved`
+2. ロック **`true` 維持**（編集不可継続）
+3. 双六 → 承認済
+4. カード背景 `bg-gray-50`（opacity 減衰なし）
+
+### 監査人差戻（`auditorRejectSettlement`）
+
+1. 監査状態 → `rejected`
+2. ロック → **`false`**（編集再開）
+3. 双六に差戻し履歴追加
+4. 理由はメッセージ BOX 経由（自動投稿はデモでは任意）
+
+### ロック時の UI 制限
+
+- 赤警告 `SettlementLockAlert`: 「当年度の決算は**監査中**のため…」
+- 全書き込みボタン `disabled={isLocked}`
+
+---
+
+## 監査人ポータル詳細
+
+### 監査人マスタ
+
+- キー: `school_auditors`（イベント: `kurasaokaikei-school-auditors-changed`）
+- ID: `AUD-` + 4桁、`assignedClubIds: string[]`
+- 登録: `/school/clubs/auditors/register`
+
+### ダッシュボードカード（`AuditorClubDashboardCard`）
+
+**下部 3 ボタン（2:1:1 = 50%:25%:25%）**:
+
+| 位置 | ラベル | 活性 |
+|------|--------|------|
+| 左 50% | クラブページへ（ピンク） | 常時 |
+| 中 25% | 承認（青） | `canReview` のみ |
+| 右 25% | 差戻（黄） | `canReview` のみ |
+
+### 学校ポータル監査人カード（`SchoolAuditorDashboardCard`）
+
+5 段レイアウト: ヘッダー / 基本情報 / 監査進捗サマリー（ミニ 4 列）/ 担当クラブチップ / フッター操作
+
+---
+
+## 証憑管理（クラブ）
+
+### 集計（`clubReceiptStats.ts`）
+
+```typescript
+// 対象: type === "expense" && !isTransferLeg(t)
+// 未登録: receiptUrl が空
+computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEntries }
+```
+
+### 帳簿赤ハイライト
+
+| 画面 | パス |
+|------|------|
+| 現金預金出納帳 | `/club/accounting/ledger/cash-bank` |
+| 科目別台帳 | `/club/accounting/ledger/subject` |
+
+条件: `isExpenseMissingReceipt(row.transaction)` → `bg-red-50 text-red-600` + 証憑列「未登録」
+
+---
+
+## localStorage キー一覧（デモ正本）
+
+| キー | 用途 |
+|------|------|
+| `kurasaokaikei-school-admin-session` | 学校管理者セッション |
+| `kurasaokaikei-current-club` | クラブログインセッション |
+| `kurasaokaikei-last-active-club-session` | クラブセッション復元 |
+| `kurasaokaikei-school-clubs` | 登録クラブマスタ |
+| `school_auditors` | 監査人マスタ |
+| `auditor_current_session` | 監査人セッション |
+| `is_club_settlement_locked_{clubId}` | 決算一次ロック |
+| `club_auditor_audit_status_{clubId}` | 監査ステータス |
+| `club_settlement_history_flow_{clubId}` | 双六 UI 履歴 |
+| `kurasaokaikei-school-club-settlement-status` | 学校側決算マップ |
+| `club_workflow_status` | ワークフロー正本（クラブ ID 別、LATEST_SYSTEM_SPEC 参照） |
+| 取引・科目・部員 | `src/utils/localStorage.ts` 内クラブスコープキー |
+
+**原則**: 状態キーは必ず `_{clubId}` 末尾で完全分離。グローバル共有禁止。
+
+---
+
+## 全ルート一覧（復元用）
+
+### 学校管理者 `/school`
+
+| パス | 画面 |
+|------|------|
+| `/school/login` | ログイン |
+| `/school` | トップ（SchoolTopView） |
+| `/school/clubs` | クラブダッシュボード |
+| `/school/clubs/register` | クラブ登録 |
+| `/school/clubs/groups` | グループ作成 |
+| `/school/clubs/auditors` | 監査人ダッシュボード |
+| `/school/clubs/auditors/register` | 監査人登録 |
+| `/school/clubs/[clubId]/messages` | クラブ個別メッセージ |
+| `/school/messages` | メッセージ BOX |
+| `/school/messages/drafts` | 下書き |
+| `/school/contract` | 契約状況 |
+| `/school/settings/category` | 共通カテゴリー |
+| `/school/settings/account-titles` | 共通科目 |
+| `/school/settings/staff` | 担当者設定 |
+| `/school/settings/audit-flow` | 監査運用設定 |
+| `/school/guide` | 操作ガイド |
+
+### クラブ `/club`
+
+| パス | 画面 |
+|------|------|
+| `/club/login` | ログイン |
+| `/club/dashboard` | **トップ（3 列ダッシュボード）** |
+| `/club/settlement` | 決算提出 |
+| `/club/accounting/*` | 入出金・帳簿・集計 |
+| `/club/accounting/ledger/cash-bank` | 現金預金出納帳 |
+| `/club/accounting/ledger/subject` | 科目別台帳 |
+| `/club/collection/*` | 集金管理 |
+| `/club/budget/*` | 予実管理 |
+| `/club/members/*` | 部員管理 |
+| `/club/messages` | メッセージ BOX |
+| `/club/settings/*` | 設定 |
+| `/club/guide` | 操作ガイド |
+
+### 監査人 `/audit`
+
+| パス | 画面 |
+|------|------|
+| `/audit/login` | ログイン |
+| `/audit` | 担当クラブ一覧 |
+| `/audit/clubs/[clubId]` | 監査詳細 |
+| `/audit/messages` | メッセージ BOX |
+| `/audit/messages/drafts` | 下書き |
+| `/audit/guide` | 操作ガイド |
+
+### その他
+
+| パス | 画面 |
+|------|------|
+| `/` | 統合ログインハブ |
+| `/member` | 部員（準備中） |
+| `/parent` | 保護者（準備中） |
+| `/register/school` | 学校申込 |
+
+---
+
+## 主要ソースファイル索引（コンポーネント対応表）
+
+| 領域 | ファイル |
 |------|----------|
-| **配布** | クラブが部員登録後、印刷・メール・LINE 等で保護者へ URL を案内（学校一括配布は将来オプション） |
-| **漏えい時** | クラブまたは学校管理者が **トークン再発行**。旧 URL は即無効 |
-| **有効期限** | 契約・学校方針で設定可能（デフォルト: 部員在籍中は有効、卒業で無効化） |
-| **HTTPS** | 本番は必須。トークンを query に載せるため Referer 漏えい対策（リダイレクト後は cookie セッション化を検討） |
-| **ログ** | トークンそのものをサーバーログに残さない |
-
-**権限原則**（§2 ④・`system-specification-for-school.md` §5.2 と同一）:
-
-- 保護者ページは「個人の納入とお知らせ、将来の支払手続」に限定。
-- 会計帳票の全面、他児、監査専用行にはアクセス不可。
-
-### 14.6 保護者向け画面構成（目標 UI）
-
-**ルートグループ**: `src/app/(parent)/` — クラブ／学校 Shell を **表示しない** 独立レイアウト。
-
-| 画面 | パス（目標） | 内容 |
-|------|--------------|------|
-| トークン閲覧 | `/parent/view` | 集金一覧・入金状況・お知らせ |
-| ホーム（将来ログイン） | `/parent` | Phase 2 ログイン後ホーム |
-| パスワード再設定 | `/parent/reset-password` | Phase 2 |
-
-**デザイン**: 保護者向けはクラブのピンク Shell を使わず、落ち着いたニュートラル（白・グレー）で「公式通知」感を出す。ヘッダーに学校名・クラブ名・対象児童名のみ表示（会計期間は不要な場合あり）。
-
-### 14.7 学校・クラブ担当者の操作
-
-| 操作者 | できること |
-|--------|------------|
-| **クラブ** | 部員登録、保護者連絡先入力、トークン URL 発行・再発行、案内文印刷 |
-| **学校** | 横断的な閲覧は原則不可（個人情報保護）。一括発行は将来機能 |
-| **運営** | テナント単位の保護者機能 ON/OFF、決済 PSP 契約 |
-
-部員 CSV インポート時も、行ごとに `parentViewToken` を生成する（`docs/spec.md` 部員管理）。
-
-### 14.8 拡張時の整合（出欠・備品）
-
-会計以外（出欠・備品在庫）を追加しても、**学校・クラブ・保護者の階層と閲覧壁**は踏襲する（`system-specification-for-school.md` §5.3）。
-
-- 保護者: 出欠は **自児の行のみ**。
-- 在庫: 部内備品と会計行の照合はクラブ画面。保護者には不要な帳票を混在させない。
+| 学校トップ | `src/components/school/SchoolMypageView.tsx` |
+| 監査進捗サマリー | `src/components/school/SchoolAuditProgressSummary.tsx` |
+| 共通ステータスバッジ | `src/components/school/SettlementAuditStatusBadge.tsx` |
+| 契約状況カード | `src/components/school/SchoolContractStatusSummaryCard.tsx` |
+| 監査集計 | `src/lib/schoolAuditProgressSummary.ts` |
+| 決算同期正本 | `src/lib/clubSettlementPortalSync.ts` |
+| クラブダッシュボード | `src/app/club/dashboard/page.tsx` |
+| 決算ステータス UI | `src/components/club/ClubDashboardSettlementSummary.tsx` |
+| 証憑未登録 UI | `src/components/club/ClubDashboardVoucherStats.tsx` |
+| 証憑集計 | `src/lib/clubReceiptStats.ts` |
+| 監査人ダッシュボード | `src/components/audit/AuditorDashboardView.tsx` |
+| 監査人カード | `src/components/audit/AuditorClubDashboardCard.tsx` |
+| 学校監査人カード | `src/components/school/SchoolAuditorDashboardCard.tsx` |
+| 監査人担当サマリー | `src/components/school/AuditorAssignedClubProgressSummary.tsx` |
+| 統合ヘッダー | `src/components/layout/PortalUnifiedHeader.tsx` |
+| 学校テーマ・ルート | `src/lib/schoolTheme.ts` |
+| 取引 localStorage | `src/utils/localStorage.ts` |
+| Prisma スキーマ | `prisma/schema.prisma` |
 
 ---
 
-## 15. 改訂履歴
+## 勘定科目マスタと配布（概要）
+
+- **学校マスタ**: `/school/settings/category`, `/school/settings/account-titles`
+- **クラブ実務**: `/club/settings/*`
+- **グループ**: 現金預金 / 資産 / 負債 / 収入 / 支出
+- **繰延固定 4 科目**: 未収入金、仮払金、未払金、仮受金
+- for school 契約: 学校配布科目はクラブが削除・改名不可
+
+---
+
+## 保護者・部員（将来拡張）
+
+- 部員登録時に `parentViewToken` 発行（Prisma `Member.parentViewToken`）
+- 閲覧 URL: `/parent/view?token={token}` — 自児の集金・納入状況のみ
+- 部員マイページ `/member`: 部費納入確認、入退部・精算申請 WF
+
+---
+
+## 開発・復元手順
+
+```bash
+# 依存関係
+npm install
+
+# 開発サーバー
+npm run dev
+# → http://localhost:3000
+
+# ルート一覧確認
+npm run routes
+
+# DB（本番移行時）
+npm run db:generate
+npm run db:push
+```
+
+**復元チェックリスト**:
+1. 本書 §「4 つの監査ステータス」に従い `clubSettlementPortalSync.ts` を実装
+2. `SchoolMypageView` の 1:1 グリッド + 3 等分メニュー + 契約カード `h-full`
+3. `SchoolAuditProgressSummary` タイトル「監査進捗サマリー」+ `SettlementAuditStatusBadge` + `text-3xl/4xl` 件数
+4. `/club/dashboard` 3 列レイアウト、未処理通知なし、証憑 `0/0`
+5. 全 Layout Gate でログイン画面 Shell 除外
+6. localStorage イベント購読でリアルタイム同期
+
+---
+
+## 改訂履歴
 
 | 版 | 日付 | 内容 |
 |----|------|------|
-| 2.0 | 2026-05-29 | Ver 1.0 全体仕様と本日確定 UI（3段ヘッダー・ロック・監査人連動）の統合 |
-| 2.0.1 | 2026-05-29 | 第12章 科目マスタ配布、第13章 監査人詳細、第14章 保護者トークン URL を追補 |
-| 2.0.2 | 2026-06-01 | 4.2/5.1/5.2/6/10/13 を最新UI・操作制限・クラブ別キー分離・セッション固定仕様へ更新。差戻しメッセージBOX自動連動の記述を見送り方針へ修正 |
-| 2.2.0 | 2026-06-01 | **学校管理者ポータルのUI刷新**を反映。§4.4 決算・監査ステータス名称（未提出/監査中/差戻/承認済）および4色カラーパレット（赤/緑/黄/青）の全域統一。ヘッダー第2段を「学校管理者ポータル」に改称。§7.0 リアルタイム監査進捗サマリー（総クラブ数の強調表示・進捗並び順）を追記。双六UI・ロック警告文言を新名称へ更新 |
-| 2.3.0 | 2026-06-05 | **§13.1.1** 学校ポータル `/school/clubs/auditors` の監査人ダッシュボード・カードUI刷新を追記。5段レイアウト（ヘッダー／基本情報／4色監査進捗サマリー／担当クラブチップ／フッター操作）、`SchoolAuditorDashboardCard`・`AuditorAssignedClubProgressSummary`・localStorage イベント購読によるリアルタイム集計仕様を正文化 |
+| 2.0 | 2026-05-29 | 3 段ヘッダー・ロック・監査人連動の統合初版 |
+| 2.2.0 | 2026-06-01 | 4 色ステータス名称統一、リアルタイム監査進捗サマリー |
+| 2.3.0 | 2026-06-05 | 監査人カード UI 刷新、担当クラブ 4 色サマリー |
+| **3.0.0** | **2026-06-10** | **学校トップ 1:1 グリッド（SchoolTopView）、監査進捗サマリー共通バッジ UI、クラブ 3 列ダッシュボード（部員数・証憑 0/0）、本書全面刷新による 100% 復元仕様** |
 
 ---
 
-## 11. プロジェクトの永続化（Gitバックアップ手順）
-
-上記の完全網羅仕様通りに `docs/system-grand-spec.md` を復旧・格納したあと、ターミナルで以下のコマンドを実行し、GitHubへの完全なバックアップを完了させてください。
-
-```bash
-git add .
-git commit -m "docs: 学校管理者ポータルの最新UI刷新、ステータス名称・4色カラー統一仕様を仕様書に反映しバックアップ"
-git push origin main
-```
+*本書は `docs/LATEST_SYSTEM_SPEC.md` および `docs/system_spec.md` より優先する。実装と差異がある場合、本書とソースコードを突合し、本書を更新すること。*

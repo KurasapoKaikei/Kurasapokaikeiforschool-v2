@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
+import { SettlementAuditStatusBadge } from "@/components/school/SettlementAuditStatusBadge"
 import {
   CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT,
   CLUB_SETTLEMENT_LOCK_CHANGED_EVENT,
+  type AuditorAuditBadgeVariant,
 } from "@/lib/clubSettlementPortalSync"
 import {
   aggregateSchoolAuditProgress,
@@ -18,6 +20,7 @@ type StatCardConfig = {
   key: keyof SchoolAuditProgressCounts
   label: string
   description: string
+  badgeVariant: AuditorAuditBadgeVariant
   cardClass: string
   valueClass: string
   barClass: string
@@ -28,6 +31,7 @@ const STAT_CARDS: StatCardConfig[] = [
     key: "preparing",
     label: "未提出",
     description: "未提出・ロックなし",
+    badgeVariant: "muted",
     cardClass: "border-red-200 bg-red-50",
     valueClass: "text-red-700",
     barClass: "bg-red-500",
@@ -36,6 +40,7 @@ const STAT_CARDS: StatCardConfig[] = [
     key: "inAudit",
     label: "監査中",
     description: "監査中かつ未承認",
+    badgeVariant: "navy",
     cardClass: "border-green-200 bg-green-50",
     valueClass: "text-green-700",
     barClass: "bg-green-600",
@@ -44,6 +49,7 @@ const STAT_CARDS: StatCardConfig[] = [
     key: "rejected",
     label: "差戻し",
     description: "監査人差戻し中",
+    badgeVariant: "rejected",
     cardClass: "border-amber-200 bg-amber-50",
     valueClass: "text-amber-800",
     barClass: "bg-amber-400",
@@ -52,6 +58,7 @@ const STAT_CARDS: StatCardConfig[] = [
     key: "approved",
     label: "承認済",
     description: "監査人承認・完全ロック",
+    badgeVariant: "approved",
     cardClass: "border-blue-600/25 bg-blue-50",
     valueClass: "text-blue-700",
     barClass: "bg-blue-600",
@@ -70,7 +77,7 @@ function ProgressBar({
   const pct = total > 0 ? Math.round((value / total) * 100) : 0
   return (
     <div
-      className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-black/5"
+      className="mt-3 h-1.5 w-full self-stretch overflow-hidden rounded-full bg-black/5"
       role="presentation"
     >
       <div
@@ -126,13 +133,13 @@ export function SchoolAuditProgressSummary() {
 
   return (
     <section
-      className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
-      aria-label="リアルタイム監査進捗サマリー"
+      className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+      aria-label="監査進捗サマリー"
     >
-      <div className="mb-4">
+      <div className="mb-5">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <h2 className="text-lg font-semibold text-indigo-950">
-            リアルタイム監査進捗サマリー
+            監査進捗サマリー
           </h2>
           <p
             className="ml-auto shrink-0 text-right tabular-nums"
@@ -166,7 +173,7 @@ export function SchoolAuditProgressSummary() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         {STAT_CARDS.map((card) => {
           const value = counts ? counts[card.key] : "—"
           const numeric = typeof value === "number" ? value : 0
@@ -176,27 +183,34 @@ export function SchoolAuditProgressSummary() {
             <div
               key={card.key}
               className={cn(
-                "flex flex-col rounded-lg border px-4 py-3.5 transition-shadow",
+                "flex w-full flex-col items-start rounded-lg border px-4 py-4 sm:px-5 sm:py-5",
                 card.cardClass,
               )}
             >
-              <p className="text-xs font-medium text-[#6B7280]">{card.label}</p>
+              <SettlementAuditStatusBadge
+                label={card.label}
+                variant={card.badgeVariant}
+              />
+
               <p
                 className={cn(
-                  "mt-1 text-3xl font-bold tabular-nums leading-none md:text-4xl",
+                  "mt-3 w-full text-left text-3xl font-extrabold tabular-nums leading-none sm:text-4xl",
                   card.valueClass,
                 )}
+                aria-label={`${card.label}: ${value}クラブ`}
               >
                 {value}
                 {isLoaded ? (
-                  <span className="ml-1 text-lg font-semibold text-[#9CA3AF]">
+                  <span className="ml-1.5 text-lg font-semibold text-[#9CA3AF] sm:text-xl">
                     クラブ
                   </span>
                 ) : null}
               </p>
-              <p className="mt-1.5 text-[10px] leading-snug text-[#9CA3AF]">
+
+              <p className="mt-2 w-full text-left text-[10px] leading-snug text-[#9CA3AF] sm:text-xs">
                 {card.description}
               </p>
+
               {showBar ? (
                 <ProgressBar
                   value={numeric}
