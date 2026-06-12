@@ -2,13 +2,18 @@
 
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 import {
+  calculateRegisterPricing,
+  DEFAULT_REGISTER_OPTIONS,
+  formatYen,
+  REGISTER_OPTION_DEFINITIONS,
+  type RegisterOptionsState,
+} from "@/lib/registerPricing"
+import {
   formatBillingDayLabel,
   formatBillingForContract,
   MONTHLY_PAYMENT_NOTE,
   PLAN_SELECT_OPTIONS,
   YEARLY_PAYMENT_NOTE,
-  type PaymentCycleId,
-  type MonthlyBillingDay,
 } from "@/lib/registerFormUtils"
 
 export const CONTRACT_INFO_STORAGE_KEY = "contract_info"
@@ -51,6 +56,12 @@ export type SchoolContractInfo = {
     monthlyBillingDay: MonthlyBillingDay
     paymentMethod: PaymentMethodId
   }
+  /** 申込時に選択した有料オプション */
+  options?: RegisterOptionsState
+  /** 監査人（クラブ監査）オプションの有無 */
+  hasAuditorOption?: boolean
+  /** 申込時点の月額合計（税込） */
+  monthlyFee?: number
 }
 
 export const PLAN_META: Record<
@@ -80,19 +91,92 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
   credit_card: "クレジット払い",
 }
 
-const ANNUAL_FEE: Record<SchoolPlanId, string> = {
-  light: "¥60,000 (税込)",
-  standard: "¥120,000 (税込)",
-  plus: "要お見積り",
+function resolveContractOptions(
+  info: SchoolContractInfo
+): RegisterOptionsState {
+  if (info.options) return info.options
+  if (info.hasAuditorOption === true) {
+    return { ...DEFAULT_REGISTER_OPTIONS, auditFlow: true }
+  }
+  return DEFAULT_REGISTER_OPTIONS
+}
+
+function resolveContractMonthlyFee(info: SchoolContractInfo): number {
+  if (typeof info.monthlyFee === "number" && info.monthlyFee > 0) {
+    return info.monthlyFee
+  }
+  const options = resolveContractOptions(info)
+  return calculateRegisterPricing(info.contract.plan, options).totalMonthly
+}
+
+function formatAnnualFeeLabel(monthlyFee: number): string {
+  return `${formatYen(monthlyFee * 12)} (税込)`
+}
+
+/** 契約状況画面のオプション欄表示 */
+export function formatContractOptionsLabel(info: SchoolContractInfo): string {
+  const options = resolveContractOptions(info)
+  const hasAuditor =
+    info.hasAuditorOption === true || options.auditFlow === true
+  const parts: string[] = []
+
+  if (hasAuditor) {
+    parts.push("監査人監査機能：あり")
+  }
+
+  for (const def of REGISTER_OPTION_DEFINITIONS) {
+    if (def.id === "auditFlow") continue
+    if (options[def.id]) {
+      parts.push(`${def.label}：あり`)
+    }
+  }
+
+  return parts.length > 0 ? parts.join(" / ") : "なし"
+}
+
+/** localStorage 読込・表示解決の共通正規化（オプション・監査人・月額を確定） */
+export function normalizeSchoolContractInfo(
+  info: SchoolContractInfo
+): SchoolContractInfo {
+  const contract = migrateContractFields(info.contract)
+  const options = info.options ?? resolveContractOptions(info)
+  const monthlyFee = resolveContractMonthlyFee({ ...info, contract, options })
+  return {
+    ...info,
+    contract,
+    options,
+    hasAuditorOption:
+      info.hasAuditorOption === true || options.auditFlow === true,
+    monthlyFee,
+  }
 }
 
 export function saveContractInfo(info: SchoolContractInfo): void {
   if (typeof window === "undefined") return
-  localStorage.setItem(CONTRACT_INFO_STORAGE_KEY, JSON.stringify(info))
+  localStorage.setItem(
+    CONTRACT_INFO_STORAGE_KEY,
+    JSON.stringify(normalizeSchoolContractInfo(info))
+  )
+}
+
+const LEGACY_CONTRACT_INFO_KEYS = ["school_contract_info"] as const
+
+/** 旧キー名から contract_info へ移行（Ver 3.0.0 正本キー） */
+function migrateLegacyContractInfoKeys(): void {
+  if (typeof window === "undefined") return
+  if (localStorage.getItem(CONTRACT_INFO_STORAGE_KEY)) return
+  for (const legacyKey of LEGACY_CONTRACT_INFO_KEYS) {
+    const raw = localStorage.getItem(legacyKey)
+    if (!raw) continue
+    localStorage.setItem(CONTRACT_INFO_STORAGE_KEY, raw)
+    localStorage.removeItem(legacyKey)
+    return
+  }
 }
 
 export function loadContractInfo(): SchoolContractInfo | null {
   if (typeof window === "undefined") return null
+  migrateLegacyContractInfoKeys()
   try {
     const raw = localStorage.getItem(CONTRACT_INFO_STORAGE_KEY)
     if (!raw) return null
@@ -100,10 +184,7 @@ export function loadContractInfo(): SchoolContractInfo | null {
       schoolId?: string
     }
     if (parsed?.school?.schoolName && parsed?.contract?.plan) {
-      return {
-        ...parsed,
-        contract: migrateContractFields(parsed.contract),
-      }
+      return normalizeSchoolContractInfo(parsed)
     }
     return null
   } catch {
@@ -227,6 +308,11 @@ export type ContractDisplayData = {
   email: string
   loginId: string
   passwordMask: string
+  hasAuditorOption: boolean
+  optionsLabel: string
+  monthlyFeeLabel: string
+  /** 月払い時は月額、年払い時は年額を表示 */
+  contractAmountLabel: string
 }
 
 export function contractInfoToDisplay(info: SchoolContractInfo): ContractDisplayData {
@@ -240,6 +326,21 @@ export function contractInfoToDisplay(info: SchoolContractInfo): ContractDisplay
   const planSelectLabel =
     PLAN_SELECT_OPTIONS.find((o) => o.value === contract.plan)?.label ??
     planMeta.planDisplay
+  const options = resolveContractOptions(info)
+  const hasAuditorOption =
+    info.hasAuditorOption === true || options.auditFlow === true
+  const monthlyFee = resolveContractMonthlyFee({ ...info, contract, options })
+  const monthlyFeeLabel = `${formatYen(monthlyFee)} (税込)`
+  const annualFee = formatAnnualFeeLabel(monthlyFee)
+  const optionsLabel = formatContractOptionsLabel({
+    ...info,
+    contract,
+    options,
+    hasAuditorOption,
+  })
+  const contractAmountLabel =
+    contract.paymentCycle === "yearly" ? annualFee : monthlyFeeLabel
+
   return {
     startDate: formatStartDate(info.submittedAt),
     plan: planMeta.planDisplay,
@@ -250,7 +351,7 @@ export function contractInfoToDisplay(info: SchoolContractInfo): ContractDisplay
       contract.settlementMonth,
       contract.settlementDay
     ),
-    annualFee: ANNUAL_FEE[contract.plan],
+    annualFee,
     billingMonth: formatBillingMonth(contract),
     paymentCycle: cycleLabel,
     paymentDayLabel: formatBillingDayLabel(
@@ -277,6 +378,10 @@ export function contractInfoToDisplay(info: SchoolContractInfo): ContractDisplay
     email: contact.email,
     loginId,
     passwordMask: "••••••••••••",
+    hasAuditorOption,
+    optionsLabel,
+    monthlyFeeLabel,
+    contractAmountLabel,
   }
 }
 

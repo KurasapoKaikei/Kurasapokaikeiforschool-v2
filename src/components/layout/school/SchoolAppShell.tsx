@@ -1,7 +1,10 @@
 "use client"
 
 import { ReactNode, useEffect, useState } from "react"
-import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
+import {
+  ensureCurrentSchoolSynced,
+  SCHOOL_SESSION_CHANGED_EVENT,
+} from "@/lib/currentSchool"
 import { ensureSchoolMastersSeeded } from "@/lib/schoolMasters"
 import { getSchoolAdminSession } from "@/lib/schoolLoginSession"
 import { SchoolClubGroupsProvider } from "@/contexts/SchoolClubGroupsContext"
@@ -16,6 +19,7 @@ export function SchoolAppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     ensureSchoolMastersSeeded()
+    ensureCurrentSchoolSynced()
   }, [])
 
   useEffect(() => {

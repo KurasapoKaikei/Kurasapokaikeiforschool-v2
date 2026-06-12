@@ -3,6 +3,7 @@
  */
 
 import {
+  normalizeSchoolContractInfo,
   saveContractInfo,
   loadContractInfo,
   type MonthlyBillingDay,
@@ -11,7 +12,11 @@ import {
   type SchoolContractInfo,
   type SchoolPlanId,
 } from "@/lib/schoolContractInfo"
-import type { RegisterOptionsState } from "@/lib/registerPricing"
+import {
+  calculateRegisterPricing,
+  DEFAULT_REGISTER_OPTIONS,
+  type RegisterOptionsState,
+} from "@/lib/registerPricing"
 import { upsertSchoolMaster } from "@/lib/schoolMasters"
 import {
   initializeCleanSchoolWorkspace,
@@ -294,7 +299,10 @@ export function getActiveRegistrationByCredentials(
 export function registrationToContractInfo(
   reg: SchoolRegistration
 ): SchoolContractInfo {
-  return {
+  const options = reg.options ?? DEFAULT_REGISTER_OPTIONS
+  const { totalMonthly } = calculateRegisterPricing(reg.contract.plan, options)
+
+  return normalizeSchoolContractInfo({
     submittedAt: reg.activatedAt ?? reg.createdAt,
     school: {
       schoolName: reg.school.schoolName,
@@ -313,7 +321,10 @@ export function registrationToContractInfo(
       email: reg.contact.email,
     },
     contract: { ...reg.contract },
-  }
+    options,
+    hasAuditorOption: options.auditFlow === true,
+    monthlyFee: totalMonthly,
+  })
 }
 
 /** メール送信シミュレーション（デモ用コンソール出力） */

@@ -42,8 +42,8 @@ function toSummary(d: ContractDisplayData): ContractSummary {
 
   return {
     plan: d.planSelectLabel,
-    options: "なし",
-    amount: d.annualFee,
+    options: d.optionsLabel,
+    amount: d.contractAmountLabel,
     paymentCycle: d.paymentCycle,
     nextPaymentDate,
     paymentMethod: d.paymentMethod,

@@ -1,25 +1,14 @@
-import { loadCurrentSchool, resolveSchoolContractForLogin } from "@/lib/currentSchool"
-import { getSchoolAdminSession } from "@/lib/schoolLoginSession"
+import { resolveActiveSchoolContract } from "@/lib/currentSchool"
 import { SCHOOL_CONTRACT_DEMO } from "@/lib/schoolTheme"
 import {
   contractInfoToDisplay,
-  loadContractInfo,
   type ContractDisplayData,
 } from "@/lib/schoolContractInfo"
 
-/** 契約状況画面：current_school → ログイン学校 → contract_info → デモ */
+/** 契約状況画面：セッション学校ID → active_schools → contract_info → current_school → デモ */
 export function getSchoolContractDisplay(): ContractDisplayData {
-  const current = loadCurrentSchool()
-  if (current?.contract) return contractInfoToDisplay(current.contract)
-
-  const session = getSchoolAdminSession()
-  if (session?.loginId) {
-    const resolved = resolveSchoolContractForLogin(session.loginId)
-    if (resolved) return contractInfoToDisplay(resolved)
-  }
-
-  const saved = loadContractInfo()
-  if (saved) return contractInfoToDisplay(saved)
+  const resolved = resolveActiveSchoolContract()
+  if (resolved) return contractInfoToDisplay(resolved)
   return {
     startDate: SCHOOL_CONTRACT_DEMO.startDate,
     plan: SCHOOL_CONTRACT_DEMO.plan,
@@ -47,5 +36,9 @@ export function getSchoolContractDisplay(): ContractDisplayData {
     email: SCHOOL_CONTRACT_DEMO.email,
     loginId: SCHOOL_CONTRACT_DEMO.loginId,
     passwordMask: SCHOOL_CONTRACT_DEMO.passwordMask,
+    hasAuditorOption: false,
+    optionsLabel: "なし",
+    monthlyFeeLabel: "¥10,000 (税込)",
+    contractAmountLabel: "¥10,000 (税込)",
   }
 }

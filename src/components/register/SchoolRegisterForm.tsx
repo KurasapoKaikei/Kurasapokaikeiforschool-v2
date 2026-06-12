@@ -422,12 +422,18 @@ export function SchoolRegisterForm() {
               school={school}
               setSchool={setSchool}
               errors={errors}
+              setErrors={setErrors}
               addressLoading={addressLoading}
               onPostalLookup={handlePostalLookup}
             />
           )}
           {step === 2 && (
-            <StepContact contact={contact} setContact={setContact} errors={errors} />
+            <StepContact
+              contact={contact}
+              setContact={setContact}
+              errors={errors}
+              setErrors={setErrors}
+            />
           )}
           {step === 3 && (
             <StepContract
@@ -537,12 +543,14 @@ function StepSchool({
   school,
   setSchool,
   errors,
+  setErrors,
   addressLoading,
   onPostalLookup,
 }: {
   school: SchoolFormState
   setSchool: React.Dispatch<React.SetStateAction<SchoolFormState>>
   errors: Record<string, string>
+  setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>
   addressLoading: boolean
   onPostalLookup: () => void
 }) {
@@ -664,10 +672,12 @@ function StepContact({
   contact,
   setContact,
   errors,
+  setErrors,
 }: {
   contact: ContactFormState
   setContact: React.Dispatch<React.SetStateAction<ContactFormState>>
   errors: Record<string, string>
+  setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }) {
   return (
     <div className="space-y-4">

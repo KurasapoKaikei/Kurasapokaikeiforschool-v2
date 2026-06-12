@@ -4,10 +4,8 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { SCHOOL_SESSION_CHANGED_EVENT } from "@/lib/currentSchool"
 import { SCHOOL_THEME } from "@/lib/schoolTheme"
-import {
-  getSchoolContractDisplay,
-  type ContractDisplayData,
-} from "@/lib/getSchoolContractDisplay"
+import { getSchoolContractDisplay } from "@/lib/getSchoolContractDisplay"
+import type { ContractDisplayData } from "@/lib/schoolContractInfo"
 
 function SectionCard({
   title,
@@ -109,10 +107,17 @@ export function SchoolContractView() {
             <div className="overflow-x-auto">
               <ContractInfoRow label="ご利用開始日" value={d.startDate} />
               <ContractInfoRow label="ご契約プラン" value={d.planSelectLabel} />
+              <ContractInfoRow label="オプション" value={d.optionsLabel} />
               <ContractInfoRow label="登録クラブ数" value={d.registeredClubs} />
               <ContractInfoRow label="会計期間" value={d.fiscalPeriod} />
               <ContractInfoRow label="決算日" value={d.settlementDate} />
-              <ContractInfoRow label="年額" value={d.annualFee} />
+              <ContractInfoRow
+                label={d.paymentCycle === "年払い" ? "年額" : "月額"}
+                value={d.contractAmountLabel}
+              />
+              {d.paymentCycle === "月払い" ? (
+                <ContractInfoRow label="年額（参考）" value={d.annualFee} />
+              ) : null}
               <ContractInfoRow
                 label="お支払い回数（サイクル）"
                 value={d.paymentCycle}
