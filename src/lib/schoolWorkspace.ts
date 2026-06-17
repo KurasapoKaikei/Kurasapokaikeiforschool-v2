@@ -165,8 +165,7 @@ export function writeScopedWorkspace(
   updater: (ws: SchoolWorkspaceData) => SchoolWorkspaceData,
   legacyWrite: () => void
 ): void {
-  if (!schoolId) return
-  if (usesLegacyGlobalSchoolStorage(schoolId)) {
+  if (!schoolId || usesLegacyGlobalSchoolStorage(schoolId)) {
     legacyWrite()
     return
   }

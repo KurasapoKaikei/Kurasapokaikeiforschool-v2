@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SchoolFormRequiredBadge } from "@/components/school/SchoolFormRequiredBadge"
 import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
 import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
+import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
 import {
   addSchoolAuditor,
   isDuplicateAuditorEmail,
@@ -79,9 +80,11 @@ export function SchoolAuditorsRegisterSection({
     const refresh = () => setAuditors(loadSchoolAuditors())
     refresh()
     window.addEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, refresh)
+    window.addEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, refresh)
     window.addEventListener("storage", refresh)
     return () => {
       window.removeEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, refresh)
+      window.removeEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, refresh)
       window.removeEventListener("storage", refresh)
     }
   }, [formResetKey, editingId])
@@ -112,7 +115,7 @@ export function SchoolAuditorsRegisterSection({
     return !lockedClubIds.has(clubId)
   }
 
-  const persistAuditor = () => {
+  const persistAuditor = useCallback(() => {
     const input = {
       name: form.name.trim(),
       department: form.department.trim(),
@@ -131,7 +134,7 @@ export function SchoolAuditorsRegisterSection({
     }
 
     onSaved()
-  }
+  }, [editingId, form, onSaved])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

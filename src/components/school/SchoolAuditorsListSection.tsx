@@ -12,6 +12,7 @@ import {
   SCHOOL_AUDITORS_CHANGED_EVENT,
   type SchoolAuditor,
 } from "@/lib/schoolAuditors"
+import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
 import { schoolAuditorComposeMessagePath } from "@/lib/schoolTheme"
 
 const EMPTY_TEXT = "監査人が登録されていません"
@@ -53,9 +54,11 @@ export function SchoolAuditorsListSection({
     refresh()
     const onChange = () => refresh()
     window.addEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onChange)
+    window.addEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onChange)
     window.addEventListener("storage", onChange)
     return () => {
       window.removeEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onChange)
+      window.removeEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onChange)
       window.removeEventListener("storage", onChange)
     }
   }, [refresh, listRefreshKey])

@@ -12,6 +12,7 @@ import {
   SCHOOL_AUDITORS_CHANGED_EVENT,
   type SchoolAuditor,
 } from "@/lib/schoolAuditors"
+import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
 import { cn } from "@/lib/utils"
 
 /** 順序｜氏名｜部署｜ID｜初期PW｜電話｜メール｜担当クラブ｜担当クラブ数｜操作 */
@@ -59,9 +60,11 @@ export function SchoolAuditorsAccountBackupSection({
     refresh()
     const onChange = () => refresh()
     window.addEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onChange)
+    window.addEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onChange)
     window.addEventListener("storage", onChange)
     return () => {
       window.removeEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onChange)
+      window.removeEventListener(SCHOOL_WORKSPACE_CHANGED_EVENT, onChange)
       window.removeEventListener("storage", onChange)
     }
   }, [refresh, listRefreshKey])

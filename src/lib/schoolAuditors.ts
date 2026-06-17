@@ -1,8 +1,10 @@
 /** 学校ポータル：監査担当者マスタ（localStorage） */
 
 import {
+  assertSchoolWorkspaceWritable,
   getOperationalSchoolId,
   readScopedWorkspace,
+  usesLegacyGlobalSchoolStorage,
   writeScopedWorkspace,
 } from "@/lib/schoolWorkspace"
 
@@ -165,13 +167,26 @@ function saveAllToGlobal(auditors: SchoolAuditor[]): void {
   }
 }
 
-function saveAll(auditors: SchoolAuditor[]): void {
+function saveAll(auditors: SchoolAuditor[]): boolean {
   const schoolId = getOperationalSchoolId()
+  const isLegacy =
+    !schoolId || usesLegacyGlobalSchoolStorage(schoolId)
+
+  if (
+    schoolId &&
+    !isLegacy &&
+    !assertSchoolWorkspaceWritable(schoolId)
+  ) {
+    return false
+  }
+
   writeScopedWorkspace(
     schoolId,
     (ws) => ({ ...ws, auditors }),
     () => saveAllToGlobal(auditors)
   )
+  if (!isLegacy) dispatchChanged()
+  return true
 }
 
 export function loadSchoolAuditors(): SchoolAuditor[] {
@@ -217,7 +232,7 @@ export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | nul
     createdAt: now,
     updatedAt: now,
   }
-  saveAll([created, ...auditors])
+  if (!saveAll([created, ...auditors])) return null
   return created
 }
 
@@ -247,7 +262,7 @@ export function updateSchoolAuditor(
   }
   const next = [...auditors]
   next[idx] = updated
-  saveAll(next)
+  if (!saveAll(next)) return null
   return updated
 }
 
@@ -255,8 +270,7 @@ export function deleteSchoolAuditor(id: string): boolean {
   const auditors = loadSchoolAuditors()
   const next = auditors.filter((a) => a.id !== id)
   if (next.length === auditors.length) return false
-  saveAll(next)
-  return true
+  return saveAll(next)
 }
 
 export function getSchoolAuditorById(id: string): SchoolAuditor | null {

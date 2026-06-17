@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import type { ActionConfirmVariant } from "@/components/shared/ActionConfirmDialog"
 
 type PendingConfirm = {
@@ -11,6 +11,7 @@ type PendingConfirm = {
 
 export function useActionConfirmDialog() {
   const [pending, setPending] = useState<PendingConfirm | null>(null)
+  const pendingRef = useRef<PendingConfirm | null>(null)
 
   const requestConfirm = useCallback(
     (
@@ -18,22 +19,30 @@ export function useActionConfirmDialog() {
       onConfirm: () => void,
       message?: string
     ) => {
-      setPending({ variant, message, onConfirm })
+      const next = { variant, message, onConfirm }
+      pendingRef.current = next
+      setPending(next)
     },
     []
   )
 
-  const cancelConfirm = useCallback(() => setPending(null), [])
+  const cancelConfirm = useCallback(() => {
+    pendingRef.current = null
+    setPending(null)
+  }, [])
+
+  const handleConfirm = useCallback(() => {
+    pendingRef.current?.onConfirm()
+    pendingRef.current = null
+    setPending(null)
+  }, [])
 
   const confirmProps = pending
     ? {
         open: true as const,
         variant: pending.variant,
         message: pending.message,
-        onConfirm: () => {
-          pending.onConfirm()
-          setPending(null)
-        },
+        onConfirm: handleConfirm,
         onCancel: cancelConfirm,
       }
     : {

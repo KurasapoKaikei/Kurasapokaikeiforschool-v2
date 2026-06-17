@@ -1,6 +1,6 @@
 # クラサポ会計 — 学校管理者ポータル 仕様書
 
-**文書バージョン**: 2026-06-17（サイドメニュー再編完了時点）  
+**文書バージョン**: 2026-06-17（サイドメニュー再編・監査人登録修正完了時点）  
 **対象範囲**: `/school` 配下の学校管理者ポータル
 
 ---
@@ -46,16 +46,17 @@
 
 ### 2.1 メニュー構成（完全リスト）
 
-#### トップレベル（常時表示）
+#### トップレベル
 
-| # | タイトル | URL | 種別 |
-|---|---------|-----|------|
-| 1 | ポータルトップ | `/school` | リンク |
-| 2 | クラブ管理 | `/school/clubs` | 親（アコーディオン） |
-| 3 | メッセージBOX | `/school/messages` | 親（アコーディオン） |
-| 4 | 契約状況 | `/school/contract` | リンク |
-| 5 | 設定 | `/school/settings` | 親（アコーディオン） |
-| 6 | 操作ガイド | `/school/guide` | リンク |
+| # | タイトル | URL | 種別 | 表示条件 |
+|---|---------|-----|------|----------|
+| 1 | ポータルトップ | `/school` | リンク | 常時 |
+| 2 | クラブ管理 | `/school/clubs` | 親（アコーディオン） | 常時 |
+| 3 | 監査人管理 | `/school/clubs/auditors` | 親（アコーディオン） | 監査フロー有効時のみ |
+| 4 | メッセージBOX | `/school/messages` | 親（アコーディオン） | 常時 |
+| 5 | 契約状況 | `/school/contract` | リンク | 常時 |
+| 6 | 設定 | `/school/settings` | 親（アコーディオン） | 常時 |
+| 7 | 操作ガイド | `/school/guide` | リンク | 常時 |
 
 #### クラブ管理（子メニュー）
 
@@ -65,14 +66,19 @@
 | 2 | クラブ登録 | `/school/clubs/register` |
 | 3 | グループ作成 | `/school/clubs/groups` |
 
-#### 監査人管理（子メニュー）※監査フロー有効時のみ
+#### 監査人管理（親メニュー・子メニュー）※監査フロー有効時のみ
 
-| # | タイトル | URL |
-|---|---------|-----|
-| 1 | 監査人ダッシュボード | `/school/clubs/auditors` |
-| 2 | 監査人登録 | `/school/clubs/auditors/register` |
+親メニュー「監査人管理」は `buildMenuItems()` 内で `auditFlowEnabled === true` のときのみ配列に挿入される。  
+`parentKey: "auditor"`、`match: isSchoolAuditorPath()` により、監査人関連パス全体で親のハイライト・アコーディオン展開が連動する。
 
-> **表示位置**: 「クラブ管理」の直後（メッセージBOX の前）
+| # | タイトル | URL | 備考 |
+|---|---------|-----|------|
+| — | 監査人管理（親） | `/school/clubs/auditors` | 展開トグル。リンクではなくボタン |
+| 1 | 監査人ダッシュボード | `/school/clubs/auditors` | 子メニュー |
+| 2 | 監査人登録 | `/school/clubs/auditors/register` | 子メニュー |
+
+> **表示位置**: 「クラブ管理」の直後（メッセージBOX の前）  
+> **アイコン**: 親＝`ClipboardCheck`、子「監査人ダッシュボード」＝`List`、子「監査人登録」＝`Plus`
 
 #### メッセージBOX（子メニュー）
 
@@ -170,24 +176,102 @@ src/components/layout/school/
 
 ---
 
-## 4. 現在の状態
+## 4. 監査人登録機能
+
+実装ファイル:
+
+| レイヤー | ファイル |
+|----------|----------|
+| ページ | `src/app/school/clubs/auditors/register/page.tsx` |
+| 画面 | `src/components/school/SchoolAuditorsRegisterView.tsx` |
+| フォーム・一覧 | `src/components/school/SchoolAuditorsRegisterSection.tsx` |
+| 控え一覧 | `src/components/school/SchoolAuditorsAccountBackupSection.tsx` |
+| データ層 | `src/lib/schoolAuditors.ts` |
+| ワークスペース | `src/lib/schoolWorkspace.ts` |
+
+### 4.1 画面仕様
+
+- **アクセス経路**: サイドバー「監査人管理」>「監査人登録」（`/school/clubs/auditors/register`）
+- **表示条件**: `loadSchoolUseAuditFlow()` が `true` の場合のみ利用可能。無効時は案内メッセージと「監査運用設定」へのリンクを表示
+- **登録項目（すべて必須）**: 氏名、部署、電話番号、メールアドレス、担当クラブ（1件以上）
+- **担当クラブ制約**: 他の監査人に既に割り当て済みのクラブは選択不可（編集時は自監査人の担当分は選択可能）
+- **メール重複チェック**: 同一メールアドレスの二重登録を拒否（編集時は自身を除外）
+- **確認ダイアログ**: 登録・更新・削除は `ActionConfirmDialog`（`useActionConfirmDialog`）経由で確定
+- **保存後遷移**: 登録・更新成功後は監査人ダッシュボード（`/school/clubs/auditors`）へ遷移
+- **編集モード**: 控え一覧の編集ボタン、または `?edit={監査人ID}` クエリでフォームに既存データを読み込み
+
+### 4.2 登録ロジック（`schoolAuditors.ts`）
+
+| 関数 | 役割 |
+|------|------|
+| `addSchoolAuditor()` | 新規監査人を作成。ID は `AUD-0001` 形式で採番。初期パスワードを自動生成 |
+| `updateSchoolAuditor()` | 既存監査人を更新 |
+| `deleteSchoolAuditor()` | 監査人を削除 |
+| `saveAll()` | 永続化の共通入口。成功時 `true`、書き込み不可時 `false` を返す |
+
+**ストレージの分岐**:
+
+| 学校種別 | 保存先 | 備考 |
+|----------|--------|------|
+| デモ校（`SCH-79268`） | グローバル `localStorage` キー `school_auditors` | 従来互換（レガシー） |
+| 新規登録校 | 学校ワークスペース blob 内の `auditors` 配列 | `writeScopedWorkspace()` 経由 |
+
+`saveAll()` は `assertSchoolWorkspaceWritable()` により、保護対象デモ校への誤書き込みを拒否する。  
+`addSchoolAuditor` / `updateSchoolAuditor` / `deleteSchoolAuditor` は `saveAll()` が `false` を返した場合 `null` または `false` を返し、UI 側で「保存に失敗しました」を表示する。
+
+### 4.3 イベント発火仕様（修正内容）
+
+監査人データの変更通知は、以下のカスタムイベントで行う。
+
+| イベント名 | 定数 | 発火タイミング |
+|------------|------|----------------|
+| 監査人変更 | `SCHOOL_AUDITORS_CHANGED_EVENT`（`kurasaokaikei-school-auditors-changed`） | 監査人マスタの保存成功時 |
+| ワークスペース変更 | `SCHOOL_WORKSPACE_CHANGED_EVENT`（`kurasaokaikei-school-workspace-changed`） | 学校ワークスペース blob 保存時 |
+
+**修正前の問題**: 新規登録校（スコープドワークスペース）では `saveAllToGlobal()` が呼ばれず、`SCHOOL_AUDITORS_CHANGED_EVENT` が発火しないため、登録直後に一覧・担当クラブの排他制御が更新されなかった。
+
+**修正後の動作**:
+
+1. **レガシー（デモ校）**: `saveAllToGlobal()` 内で `dispatchChanged()` → `SCHOOL_AUDITORS_CHANGED_EVENT` を発火（従来どおり）
+2. **スコープドワークスペース（新規校）**: `writeScopedWorkspace()` 完了後、`saveAll()` 内で `dispatchChanged()` → `SCHOOL_AUDITORS_CHANGED_EVENT` を発火
+3. **UI 側の購読拡張**: 以下のコンポーネントが `SCHOOL_WORKSPACE_CHANGED_EVENT` にもリスナーを登録し、ワークスペース経由の変更を確実に反映
+   - `SchoolAuditorsRegisterSection`
+   - `SchoolAuditorsListSection`
+   - `SchoolAuditorsAccountBackupSection`
+
+**確認ダイアログの stale closure 修正**（`useActionConfirmDialog.ts`）:  
+`pendingRef` で最新の `onConfirm` コールバックを保持し、ダイアログ確定時に常に最新のフォーム状態で `persistAuditor` が実行されるようにした。  
+`SchoolAuditorsRegisterSection` の `persistAuditor` は `useCallback` で依存配列を明示している。
+
+---
+
+## 5. 現在の状態
 
 | 項目 | 状態 |
 |------|------|
 | サイドメニュー再編 | **完了** — 「クラブ管理」「監査人管理」への階層化を反映済み |
+| 監査人登録機能 | **完了** — 登録・更新・削除、イベント連動、ワークスペース分岐を修正済み |
 | 画面レイアウト | **正常** — `SchoolAppShell` によるサイドバー + ヘッダー構成で表示確認済み |
 | アコーディオン動作 | **正常** — 親メニューの展開/折りたたみ、現在地ハイライトが動作 |
 | 開発サーバー | `npm run dev` で起動・各画面のコンパイル成功を確認 |
 | 本ドキュメント | 上記安定時点の仕様を記録（2026-06-17） |
 
-### 4.1 直近の変更履歴（サイドバー）
+### 5.1 直近の変更履歴
+
+**サイドバー（§2）**
 
 1. **クラブ管理への再編**: 旧トップレベル「クラブダッシュボード」「クラブ登録」を「クラブ管理」親メニュー配下の子項目に統合
 2. **監査人管理への再編**: 旧「監査人ダッシュボード」親メニューを「監査人管理」に改名し、子項目に「監査人ダッシュボード」「監査人登録」を配置
 
+**監査人登録（§4）**
+
+1. **`saveAll()` の戻り値とイベント発火**: スコープドワークスペース保存後に `SCHOOL_AUDITORS_CHANGED_EVENT` を明示発火。書き込み不可時は `false` を返す
+2. **UI リスナー拡張**: 登録画面・一覧・控え一覧が `SCHOOL_WORKSPACE_CHANGED_EVENT` を購読
+3. **確認ダイアログ修正**: `useActionConfirmDialog` の `pendingRef` 化により、登録確定時のコールバックが最新フォーム状態を参照
+
 ---
 
-## 5. 関連ドキュメント
+## 6. 関連ドキュメント
 
 プロジェクト内のその他仕様書（参考）:
 
@@ -196,4 +280,4 @@ src/components/layout/school/
 - `ROUTES.md` — ルート一覧
 - `PROJECT_STRUCTURE.md` — プロジェクト構造
 
-本 `SPECIFICATION.md` は、**サイドメニュー再編完了後の学校管理者ポータルの安定スナップショット** を目的としたドキュメントです。
+本 `SPECIFICATION.md` は、**サイドメニュー再編および監査人登録修正完了後の学校管理者ポータルの安定スナップショット** を目的としたドキュメントです。
