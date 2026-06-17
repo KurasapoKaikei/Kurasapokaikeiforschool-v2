@@ -69,38 +69,44 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
       match: (path) => path === SCHOOL_ROUTES.home,
     },
     {
-      title: SCHOOL_PAGE_TITLES.clubList,
+      title: SCHOOL_PAGE_TITLES.clubs,
       href: CLUB_DASHBOARD_KEY,
       icon: Users,
       parentKey: "club",
       match: (path) =>
         path === SCHOOL_ROUTES.clubList ||
+        path === SCHOOL_ROUTES.clubRegister ||
+        path.startsWith(`${SCHOOL_ROUTES.clubRegister}/`) ||
         path === SCHOOL_ROUTES.clubGroups ||
         path.startsWith(`${SCHOOL_ROUTES.clubGroups}/`),
       subItems: [
+        {
+          title: SCHOOL_PAGE_TITLES.clubList,
+          href: SCHOOL_ROUTES.clubList,
+        },
+        {
+          title: SCHOOL_PAGE_TITLES.clubRegister,
+          href: SCHOOL_ROUTES.clubRegister,
+        },
         {
           title: SCHOOL_PAGE_TITLES.clubGroups,
           href: SCHOOL_ROUTES.clubGroups,
         },
       ],
     },
-    {
-      title: SCHOOL_PAGE_TITLES.clubRegister,
-      href: SCHOOL_ROUTES.clubRegister,
-      icon: Plus,
-      match: (path) =>
-        path === SCHOOL_ROUTES.clubRegister ||
-        path.startsWith(`${SCHOOL_ROUTES.clubRegister}/`),
-    },
     ...(auditFlowEnabled
       ? ([
           {
-            title: SCHOOL_PAGE_TITLES.auditors,
+            title: "監査人管理",
             href: AUDITORS_PARENT_KEY,
             icon: ClipboardCheck,
             parentKey: "auditor",
             match: (path) => isSchoolAuditorPath(path),
             subItems: [
+              {
+                title: SCHOOL_PAGE_TITLES.auditors,
+                href: SCHOOL_ROUTES.auditors,
+              },
               {
                 title: SCHOOL_PAGE_TITLES.auditorRegister,
                 href: SCHOOL_ROUTES.auditorsRegister,
