@@ -552,9 +552,120 @@ export function loadAuditorOutboundMessages(
 ): PortalMessage[] {
   const id = auditorId.trim()
   const clubSet = new Set(assignedClubIds ?? [])
-  return (loadPortalMessages() ?? []).filter((m) => {
-    if (!isClubAudienceMessage(m) || resolveSender(m) !== "audit") return false
-    if (m.auditorId) return m.auditorId === id
-    return clubSet.has(m.targetClubId)
+  return sortMessagesNewestFirst(
+    (loadPortalMessages() ?? []).filter((m) => {
+      if (!isClubAudienceMessage(m) || resolveSender(m) !== "audit") return false
+      if (m.auditorId) return m.auditorId === id
+      return clubSet.has(m.targetClubId)
+    })
+  )
+}
+
+/** 監査人→学校管理者宛ての送信先 ID（localStorage 上の convention） */
+export const SCHOOL_ADMIN_TARGET_ID = "school-admin"
+
+export const SCHOOL_ADMIN_TARGET_NAME = "学校管理者"
+
+export function isSchoolAdminTarget(targetId: string): boolean {
+  return targetId === SCHOOL_ADMIN_TARGET_ID
+}
+
+function sortMessagesNewestFirst(messages: PortalMessage[]): PortalMessage[] {
+  return [...messages].sort(
+    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()
+  )
+}
+
+/** 監査人↔担当クラブの会話（自分の送信 ＋ 学校からクラブへの配信） */
+export function loadAuditorClubConversationMessages(
+  auditorId: string,
+  clubId: string,
+  assignedClubIds: string[]
+): PortalMessage[] {
+  const id = auditorId.trim()
+  const club = clubId.trim()
+  if (!id || !club || !(assignedClubIds ?? []).includes(club)) return []
+
+  return sortMessagesNewestFirst(
+    (loadPortalMessages() ?? []).filter((m) => {
+      const sender = resolveSender(m)
+      if (
+        isClubAudienceMessage(m) &&
+        sender === "audit" &&
+        m.targetClubId === club &&
+        (m.auditorId ? m.auditorId === id : true)
+      ) {
+        return true
+      }
+      if (
+        isClubAudienceMessage(m) &&
+        (sender === "school" || sender === "system") &&
+        (m.targetClubId === club || isAllClubsTarget(m.targetClubId))
+      ) {
+        return true
+      }
+      return false
+    })
+  )
+}
+
+/** 監査人↔学校管理者の会話（学校からの受信 ＋ 監査人から学校への送信） */
+export function loadAuditorSchoolConversationMessages(
+  auditorId: string
+): PortalMessage[] {
+  const id = auditorId.trim()
+  if (!id) return []
+
+  return sortMessagesNewestFirst(
+    (loadPortalMessages() ?? []).filter((m) => {
+      const sender = resolveSender(m)
+      if (
+        isAuditorAudienceMessage(m) &&
+        (sender === "school" || sender === "system") &&
+        (isAllAuditorsTarget(m.targetClubId) || m.targetClubId === id)
+      ) {
+        return true
+      }
+      if (
+        sender === "audit" &&
+        m.auditorId === id &&
+        isSchoolAdminTarget(m.targetClubId)
+      ) {
+        return true
+      }
+      return false
+    })
+  )
+}
+
+/** 監査人→学校管理者へのメッセージ送信 */
+export function sendAuditorToSchoolMessage(input: {
+  subject: string
+  body: string
+  auditorId: string
+}): PortalMessage {
+  return sendPortalMessage({
+    subject: input.subject,
+    body: input.body,
+    targetClubId: SCHOOL_ADMIN_TARGET_ID,
+    targetClubName: SCHOOL_ADMIN_TARGET_NAME,
+    audience: "club",
+    sender: "audit",
+    auditorId: input.auditorId.trim(),
   })
+}
+
+/** 監査人会話一覧の相手ラベル（クラブタブ） */
+export function formatAuditorClubConversationLabel(m: PortalMessage): string {
+  const sender = resolveSender(m)
+  if (sender === "audit") return "自分（送信）"
+  return getClubSenderLabel(sender)
+}
+
+/** 監査人会話一覧の相手ラベル（学校管理者タブ） */
+export function formatAuditorSchoolConversationLabel(m: PortalMessage): string {
+  const sender = resolveSender(m)
+  if (sender === "audit") return "自分（送信）"
+  if (sender === "school") return "学校管理者"
+  return getClubSenderLabel(sender)
 }

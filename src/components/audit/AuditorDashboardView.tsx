@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { AuditorAuditProgressSummary } from "@/components/audit/AuditorAuditProgressSummary"
 import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettlementReviewDialog"
 import { AuditorClubDashboardCard } from "@/components/audit/AuditorClubDashboardCard"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
@@ -111,6 +112,8 @@ export function AuditorDashboardView() {
           監査人ID: {displayId} ／ 担当クラブ {assignedClubs.length}件
         </p>
       </div>
+
+      <AuditorAuditProgressSummary />
 
       {!clubsLoaded ? (
         <p className="py-16 text-center text-sm text-[#9CA3AF]">読み込み中…</p>

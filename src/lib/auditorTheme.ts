@@ -39,6 +39,11 @@ export function auditorComposeMessagePath(clubId: string): string {
   return `${AUDIT_ROUTES.messages}?${params.toString()}`
 }
 
+/** 学校管理者宛てメッセージ新規作成 */
+export function auditorComposeSchoolMessagePath(): string {
+  return `${AUDIT_ROUTES.messages}?compose=school`
+}
+
 /** 監査人ポータル UI アクセント */
 export const AUDIT_BRAND_ORANGE = "#EA580C"
 

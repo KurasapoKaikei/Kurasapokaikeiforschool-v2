@@ -166,6 +166,8 @@ type SchoolMessageDetailPanelProps = {
   onBack: () => void
   backLabel?: string
   formatTargetLabel?: (message: PortalMessage) => string
+  /** 既定は「送信先」。受信メッセージ表示時は「送信元」などに変更 */
+  counterpartyFieldLabel?: string
 }
 
 export function SchoolMessageDetailPanel({
@@ -173,6 +175,7 @@ export function SchoolMessageDetailPanel({
   onBack,
   backLabel = "一覧に戻る",
   formatTargetLabel = formatSchoolClubOutboundTargetLabel,
+  counterpartyFieldLabel = "送信先",
 }: SchoolMessageDetailPanelProps) {
   const targetLabel = formatTargetLabel(message)
 
@@ -197,7 +200,8 @@ export function SchoolMessageDetailPanel({
           </p>
           <h2 className="mt-2 text-lg font-semibold text-[#374151]">{message.subject}</h2>
           <p className="mt-2 text-sm text-[#6B7280]">
-            送信先: <span className="font-medium text-[#374151]">{targetLabel}</span>
+            {counterpartyFieldLabel}:{" "}
+            <span className="font-medium text-[#374151]">{targetLabel}</span>
           </p>
           <pre className="mt-6 whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#374151]">
             {message.body}

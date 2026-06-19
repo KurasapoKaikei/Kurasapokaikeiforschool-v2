@@ -7,7 +7,7 @@ import { AUDIT_ROUTES, safeAuditPathname } from "@/lib/auditorTheme"
 
 /**
  * 監査人メッセージBOX（一覧 / 下書きのルーティング）
- * - `/audit/messages` … メッセージ一覧（受信・送信済タブ）
+ * - `/audit/messages` … メッセージ一覧（クラブ宛て・学校管理者宛てタブ）
  * - `/audit/messages/drafts` … 下書き一覧
  */
 export function AuditorMessagesView() {

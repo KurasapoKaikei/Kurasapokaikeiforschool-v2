@@ -1,7 +1,7 @@
 # クラサポ会計 — 学校管理者ポータル 仕様書
 
-**文書バージョン**: 2026-06-18（監査人管理機能強化・不具合修正完了時点）  
-**対象範囲**: `/school` 配下の学校管理者ポータル（監査人ポータル `/audit` との連携仕様を含む）
+**文書バージョン**: 2026-06-19（監査人管理・メッセージBOX UI 修正完了・セーブポイント）  
+**対象範囲**: `/school` 配下の学校管理者ポータル、および連携する監査人ポータル `/audit`
 
 ---
 
@@ -301,22 +301,113 @@ src/components/layout/school/
 
 **並び替え永続化の不具合修正（2026-06-18）**: 並び替え直後に旧 `order` 値で再ソートされ順序がリセットされていた問題を修正。`setSchoolAuditorsOrder()` が配列インデックスを `order` に書き込んでから保存するよう変更。
 
+#### 操作ボタン（カードフッター）
+
+各監査人カード下部に、クラブダッシュボードと統一感のある操作ボタンを配置する。
+
+| 領域 | 幅 | 内容 |
+|------|-----|------|
+| 左半分 | 50% | **メッセージBOX**（`bg-sky-500` / `hover:bg-sky-600`、クラブカードと同スタイル） |
+| 右半分 | 50%（各25%） | **編集**（グレー背景） / **削除**（薄赤・アウトライン） |
+
+- **メッセージBOX**: `schoolAuditorComposeMessagePath(auditorId)` へ遷移し、学校管理者ポータルの監査人宛てメッセージ作成画面を開く
+- **編集**: 監査人登録画面 `?edit={id}` へ遷移
+- **削除**: `ActionConfirmDialog` 経由で確定後 `deleteSchoolAuditor()` を実行
+
+実装: `SchoolAuditorDashboardCard.tsx` フッター、`SchoolAuditorsListSection.tsx` から各ハンドラを渡す。
+
 ---
 
-## 5. 現在の状態
+## 5. 監査人ポータル（`/audit`）メッセージBOX
+
+実装ファイル:
+
+| レイヤー | ファイル |
+|----------|----------|
+| ページ | `src/app/audit/messages/page.tsx` |
+| ルーティング | `src/components/audit/AuditorMessagesView.tsx` |
+| 一覧 | `src/components/audit/AuditorMessagesListView.tsx` |
+| 下書き | `src/components/audit/AuditorMessagesDraftsView.tsx` |
+| クラブ宛作成 | `src/components/audit/AuditorClubComposeForm.tsx` |
+| 学校宛作成 | `src/components/audit/AuditorSchoolComposeForm.tsx` |
+| データ層 | `src/lib/portalMessages.ts`, `src/lib/auditorDraftMessages.ts` |
+| テーマ | `src/lib/auditorTheme.ts`（`AUDIT_MESSAGE_BOX_ACCENT` = `#EA580C`） |
+
+### 5.1 画面構成（学校管理者ポータルと統一）
+
+監査人メッセージBOX（`/audit/messages`）は、学校管理者メッセージBOX（`/school/messages`）と **同一の1カラムレイアウト** を採用する。
+
+```
+MessageBoxTitleBand（オレンジアクセント）
+  ↓
+SchoolPortalSegmentTabs（クラブ宛て / 学校管理者宛て）
+  ↓
+新規作成ボタン（タブ直下・カード左上）
+  ↓
+単一ホワイトカード（左ボーダー5px + ヘッダー「〇〇宛て送信履歴」）
+  ↓
+SchoolMessageHistoryList（共通テーブルUI）
+```
+
+- 左右分割のサイドバー（チャット相手リスト）は **採用しない**
+- タブコンポーネントは `SchoolPortalSegmentTabs` を学校側と共通利用
+- 履歴テーブル・空状態文言（「メッセージがありません」）は `SchoolMessageHistoryUi` を共通利用
+- アクセント色のみ監査人テーマ（オレンジ `#EA580C`）に差し替え
+
+### 5.2 タブと表示データ
+
+| タブ | ヘッダータイトル | 新規作成ボタン | 履歴データ |
+|------|-----------------|----------------|-----------|
+| クラブ宛て | クラブ宛て送信履歴 | クラブへ新規作成 | `loadAuditorOutboundMessages()` — 担当クラブへの送信済み |
+| 学校管理者宛て | 学校管理者宛て送信履歴 | 学校管理者へ新規作成 | `loadAuditorSchoolConversationMessages()` — 学校からの受信 + 監査人から学校への送信 |
+
+**学校管理者宛てのデータ規約**（`portalMessages.ts`）:
+
+- 監査人→学校送信先 ID: `SCHOOL_ADMIN_TARGET_ID`（`"school-admin"`）
+- 送信関数: `sendAuditorToSchoolMessage()`
+- 学校→監査人受信: 既存の `audience: "auditor"` メッセージ（`getMessagesForAuditor` 系）
+
+### 5.3 作成画面・URL クエリ
+
+| 用途 | URL |
+|------|-----|
+| クラブ宛て新規作成 | `/audit/messages?compose=1&to={clubId}` |
+| 学校管理者宛て新規作成 | `/audit/messages?compose=school` |
+| 下書き編集 | `/audit/messages?draft={draftId}` |
+| 下書き一覧 | `/audit/messages/drafts` |
+
+下書きは `auditor_draft_messages`（`auditorDraftMessages.ts`）に保存。学校宛下書きは `targetId: "school-admin"` で識別。
+
+### 5.4 詳細表示
+
+一覧行クリック時は `SchoolMessageDetailPanel` を全画面表示。受信メッセージは `counterpartyFieldLabel="送信元"`、送信メッセージは `"送信先"` を表示。
+
+---
+
+## 6. 監査人ポータル ダッシュボード
+
+実装: `src/components/audit/AuditorDashboardView.tsx`
+
+- **監査進捗サマリー**: `AuditorAuditProgressSummary` — 担当クラブの未提出・監査中・承認済・差戻の件数をカード表示
+- **担当クラブ一覧**: マスタ `assignedClubIds` の配列順で `AuditorClubDashboardCard` を表示
+- **同期**: `SCHOOL_AUDITORS_CHANGED_EVENT` 購読により、学校側での並び替え・割当変更を即反映
+
+---
+
+## 7. 現在の状態（セーブポイント）
 
 | 項目 | 状態 |
 |------|------|
 | サイドメニュー再編 | **完了** — 「クラブ管理」「監査人管理」への階層化を反映済み |
 | 監査人登録機能 | **完了** — 登録・更新・削除、連続登録、イベント連動、ワークスペース分岐 |
-| 監査人ダッシュボード | **完了** — 未割当クラブ表示、担当クラブ数 UI、並び替え永続化 |
-| 監査人ポータル連携 | **完了** — `/audit` でマスタの担当クラブ順を反映 |
-| 画面レイアウト | **正常** — `SchoolAppShell` によるサイドバー + ヘッダー構成で表示確認済み |
-| アコーディオン動作 | **正常** — 親メニューの展開/折りたたみ、現在地ハイライトが動作 |
+| 監査人ダッシュボード（学校側） | **完了** — 未割当クラブ表示、担当クラブ数 UI、並び替え永続化、操作ボタン（メッセージBOX/編集/削除） |
+| 監査人ポータル連携 | **完了** — `/audit` でマスタの担当クラブ順を反映、監査進捗サマリー表示 |
+| 監査人メッセージBOX | **完了** — クラブ宛て/学校管理者宛てタブ、学校側と統一の1カラムUI |
+| 画面レイアウト | **正常** — 各ポータルで表示・操作を確認済み |
 | 開発サーバー | `npm run dev` で起動・各画面のコンパイル成功を確認 |
-| 本ドキュメント | 上記安定時点の仕様を記録（2026-06-18） |
+| 本ドキュメント | 上記安定時点の仕様を記録（**2026-06-19 セーブポイント**） |
 
-### 5.1 直近の変更履歴
+### 7.1 直近の変更履歴
 
 **サイドバー（§2）**
 
@@ -325,21 +416,32 @@ src/components/layout/school/
 
 **監査人登録（§4）**
 
-1. **`saveAll()` の戻り値とイベント発火**: スコープドワークスペース保存後に `SCHOOL_AUDITORS_CHANGED_EVENT` を明示発火。書き込み不可時は `false` を返す
+1. **`saveAll()` の戻り値とイベント発火**: スコープドワークスペース保存後に `SCHOOL_AUDITORS_CHANGED_EVENT` を明示発火
 2. **UI リスナー拡張**: 登録画面・一覧・控え一覧が `SCHOOL_WORKSPACE_CHANGED_EVENT` を購読
-3. **確認ダイアログ修正**: `useActionConfirmDialog` の `pendingRef` 化により、登録確定時のコールバックが最新フォーム状態を参照
-4. **連続登録対応（2026-06-18）**: 登録成功後のダッシュボード遷移を廃止。フォームリセットと成功メッセージ表示で連続登録を可能に
+3. **確認ダイアログ修正**: `useActionConfirmDialog` の `pendingRef` 化
+4. **連続登録対応**: 登録成功後のダッシュボード遷移を廃止
 
-**監査人ダッシュボード（§4.4）— 2026-06-18**
+**監査人ダッシュボード・一覧（§4.4）— 2026-06-18〜19**
 
-1. **未割当クラブ表示**: `filterUnassignedClubs()` と `SchoolUnassignedClubDashboardCard` により、担当監査人のいないクラブを「未割当」バッジ付きで一覧表示
-2. **担当クラブ数 UI**: カードヘッダー右端にラベル（小）・数値（大）を縦中央揃えで配置
-3. **並び替え機能**: カード・控え一覧でドラッグ＆ドロップ並び替え。`order` フィールドと `setSchoolAuditorsOrder()` による永続化
-4. **永続化不具合修正**: 並び替え時に旧 `order` で再ソートされ順序がリセットされる問題を修正。`/audit` 側はマスタ再読み込みで同期
+1. **未割当クラブ表示**: `filterUnassignedClubs()` と `SchoolUnassignedClubDashboardCard`
+2. **担当クラブ数 UI**: カードヘッダー右端にラベル（小）・数値（大）
+3. **並び替え機能・永続化**: `order` フィールドと `setSchoolAuditorsOrder()` による即保存
+4. **操作ボタン（2026-06-19）**: フッターを 50% メッセージBOX + 25% 編集 + 25% 削除の横並びボタンに変更
+
+**監査人メッセージBOX（§5）— 2026-06-19**
+
+1. **タブ追加**: 「クラブ宛て」「学校管理者宛て」の2タブ（`SchoolPortalSegmentTabs` 共通）
+2. **学校管理者宛て送信**: `AuditorSchoolComposeForm` + `sendAuditorToSchoolMessage()`
+3. **1カラムUI統一**: 学校管理者ポータルと同構造（タブ → 作成ボタン → 単一カード → 履歴テーブル）。サイドバー式の相手リストは廃止
+4. **詳細パネル**: `SchoolMessageDetailPanel` に `counterpartyFieldLabel` を追加し送受信の表示を区別
+
+**監査人ダッシュボード（§6）— 2026-06-19**
+
+1. **監査進捗サマリー**: `AuditorAuditProgressSummary` をダッシュボード上部に配置
 
 ---
 
-## 6. 関連ドキュメント
+## 8. 関連ドキュメント
 
 プロジェクト内のその他仕様書（参考）:
 
@@ -348,4 +450,4 @@ src/components/layout/school/
 - `ROUTES.md` — ルート一覧
 - `PROJECT_STRUCTURE.md` — プロジェクト構造
 
-本 `SPECIFICATION.md` は、**監査人管理機能強化（連続登録・未割当表示・並び替え永続化）完了後の学校管理者ポータルの安定スナップショット** を目的としたドキュメントです。
+本 `SPECIFICATION.md` は、**監査人管理・メッセージBOX UI 修正完了後（2026-06-19 セーブポイント）の安定スナップショット** を目的としたドキュメントです。コードが壊れた場合は、このコミット（`feat: 監査人管理・メッセージBOXのUI修正完了（正常動作のセーブポイント）`）へ戻すことで本仕様の状態を復元できます。

@@ -1,6 +1,5 @@
 "use client"
 
-import { Edit2, Mail, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { AuditorAssignedClubProgressSummary } from "@/components/school/AuditorAssignedClubProgressSummary"
@@ -146,43 +145,36 @@ export function SchoolAuditorDashboardCard({
         )}
       </div>
 
-      {/* 5. フッター：操作ボタン */}
+      {/* 5. フッター：操作ボタン（左50% メッセージBOX / 右50% 編集・削除） */}
       <div className="mt-5 border-t border-gray-100 pt-4">
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex w-full items-center gap-2">
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 px-3"
+            className="h-9 min-w-0 w-1/2 rounded-lg border-0 bg-sky-500 px-3 py-1 text-center text-sm font-medium text-white shadow-none hover:bg-sky-600"
             onClick={onMessage}
             aria-label="メッセージを送信"
             title="監査人宛てメッセージを作成"
           >
-            <Mail className="h-4 w-4 text-[#EA580C]" />
-            <span className="text-xs font-medium text-[#374151]">メッセージ</span>
+            メッセージBOX
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 px-3"
-            onClick={onEdit}
-            aria-label="編集"
-          >
-            <Edit2 className="h-4 w-4" />
-            <span className="text-xs font-medium text-[#374151]">編集</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 border-red-200 px-3 text-[#EF4444] hover:bg-red-50 hover:text-[#EF4444]"
-            onClick={onDelete}
-            aria-label="削除"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="text-xs font-medium">削除</span>
-          </Button>
+          <div className="flex w-1/2 gap-2">
+            <Button
+              type="button"
+              className="h-9 min-w-0 w-1/2 rounded border-0 bg-gray-100 px-2 py-1 text-center text-sm font-medium text-gray-700 shadow-none hover:bg-gray-200"
+              onClick={onEdit}
+              aria-label="編集"
+            >
+              編集
+            </Button>
+            <Button
+              type="button"
+              className="h-9 min-w-0 w-1/2 rounded border border-red-200 bg-red-50 px-2 py-1 text-center text-sm font-medium text-red-600 shadow-none hover:bg-red-100"
+              onClick={onDelete}
+              aria-label="削除"
+            >
+              削除
+            </Button>
+          </div>
         </div>
       </div>
     </article>

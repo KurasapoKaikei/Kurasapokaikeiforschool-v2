@@ -6,9 +6,8 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { SchoolPortalSegmentTabs } from "@/components/school/SchoolPortalSegmentTabs"
 import { AuditorClubComposeForm } from "@/components/audit/AuditorClubComposeForm"
-import {
-  MessageBoxTitleBand,
-} from "@/components/shared/MessageBoxTitleBand"
+import { AuditorSchoolComposeForm } from "@/components/audit/AuditorSchoolComposeForm"
+import { MessageBoxTitleBand } from "@/components/shared/MessageBoxTitleBand"
 import {
   getAuditorDraftById,
   AUDITOR_DRAFTS_CHANGED_EVENT,
@@ -30,55 +29,70 @@ import {
   SchoolMessageHistoryList,
 } from "@/components/school/SchoolMessageHistoryUi"
 import {
+  formatAuditorSchoolConversationLabel,
   formatSchoolClubOutboundTargetLabel,
-  getMessagesForAuditor,
+  isSchoolAdminTarget,
   loadAuditorOutboundMessages,
+  loadAuditorSchoolConversationMessages,
   PORTAL_MESSAGES_CHANGED_EVENT,
   type PortalMessage,
 } from "@/lib/portalMessages"
 
-type ListTab = "inbox" | "sent"
+const MESSAGE_BOX_ACCENT = AUDIT_MESSAGE_BOX_ACCENT
+const MESSAGE_PAGE_CONTENT_CLASS = SCHOOL_MESSAGE_PAGE_CONTENT_CLASS
 
-function formatAuditorInboundLabel(m: PortalMessage): string {
-  if (m.sender === "school") return "学校"
-  if (m.sender === "system") return "クラサポ"
-  return "受信"
+type MessageTab = "club" | "school"
+type ComposeMode = "club" | "school" | null
+
+type ClubComposeInitial = {
+  targetClubId: string
+  subject: string
+  body: string
 }
 
-/** 監査人：メッセージ一覧（受信 / 送信済） */
+type SchoolComposeInitial = {
+  subject: string
+  body: string
+}
+
+/** 監査人：メッセージBOX（クラブ宛て / 学校管理者宛てタブ） */
 export function AuditorMessagesListView() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [auditor, setAuditor] = useState<CurrentAuditorSession | null>(null)
-  const [listTab, setListTab] = useState<ListTab>("inbox")
-  const [inbox, setInbox] = useState<PortalMessage[]>([])
-  const [sent, setSent] = useState<PortalMessage[]>([])
+  const [activeTab, setActiveTab] = useState<MessageTab>("club")
+  const [clubHistory, setClubHistory] = useState<PortalMessage[]>([])
+  const [schoolHistory, setSchoolHistory] = useState<PortalMessage[]>([])
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null)
   const [listNotice, setListNotice] = useState<string | null>(null)
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
-  const [composeInitial, setComposeInitial] = useState<
-    | { targetClubId: string; subject: string; body: string }
-    | undefined
+  const [composeMode, setComposeMode] = useState<ComposeMode>(null)
+  const [clubComposeInitial, setClubComposeInitial] = useState<
+    ClubComposeInitial | undefined
   >(undefined)
+  const [schoolComposeInitial, setSchoolComposeInitial] = useState<
+    SchoolComposeInitial | undefined
+  >(undefined)
+
+  const assignedClubIds = auditor?.assignedClubIds ?? []
 
   const refresh = useCallback(() => {
     const session = loadCurrentAuditor()
     setAuditor(session)
     if (!session) return
+
     try {
-      setInbox(getMessagesForAuditor(session.id) ?? [])
-    } catch {
-      setInbox([])
-    }
-    try {
-      setSent(
-        loadAuditorOutboundMessages(
-          session.id,
-          session.assignedClubIds ?? []
-        ) ?? []
+      setClubHistory(
+        loadAuditorOutboundMessages(session.id, session.assignedClubIds ?? [])
       )
     } catch {
-      setSent([])
+      setClubHistory([])
+    }
+
+    try {
+      setSchoolHistory(loadAuditorSchoolConversationMessages(session.id))
+    } catch {
+      setSchoolHistory([])
     }
   }, [])
 
@@ -99,48 +113,133 @@ export function AuditorMessagesListView() {
 
   useEffect(() => {
     if (!auditor) return
+
     const draftId = searchParams.get("draft")
     if (draftId) {
       const draft = getAuditorDraftById(draftId, auditor.id)
       if (!draft) return
       setEditingDraftId(draft.id)
-      setComposeInitial({
-        targetClubId: draft.targetId,
-        subject: draft.subject,
-        body: draft.body,
-      })
+      setListNotice(null)
+      setSelectedDetailId(null)
+      if (isSchoolAdminTarget(draft.targetId)) {
+        setActiveTab("school")
+        setComposeMode("school")
+        setSchoolComposeInitial({
+          subject: draft.subject,
+          body: draft.body,
+        })
+        setClubComposeInitial(undefined)
+      } else {
+        setActiveTab("club")
+        setComposeMode("club")
+        setClubComposeInitial({
+          targetClubId: draft.targetId,
+          subject: draft.subject,
+          body: draft.body,
+        })
+        setSchoolComposeInitial(undefined)
+      }
       return
     }
+
     setEditingDraftId(null)
     const compose = searchParams.get("compose")
     const toClubId = searchParams.get("to")?.trim()
+
+    if (compose === "school") {
+      setActiveTab("school")
+      setComposeMode("school")
+      setSchoolComposeInitial({ subject: "", body: "" })
+      setClubComposeInitial(undefined)
+      return
+    }
+
     if (compose === "1") {
+      setActiveTab("club")
+      setComposeMode("club")
       const target =
-        toClubId && (auditor.assignedClubIds ?? []).includes(toClubId)
+        toClubId && assignedClubIds.includes(toClubId)
           ? toClubId
-          : (auditor.assignedClubIds ?? [])[0]
+          : assignedClubIds[0]
       if (target) {
-        setComposeInitial({
+        setClubComposeInitial({
           targetClubId: target,
           subject: "",
           body: "",
         })
       }
+      setSchoolComposeInitial(undefined)
       return
     }
-    if (!draftId) {
-      setComposeInitial(undefined)
-    }
-  }, [searchParams, auditor])
 
-  const displayedHistory = listTab === "inbox" ? inbox ?? [] : sent ?? []
+    setComposeMode(null)
+    if (!draftId) {
+      setClubComposeInitial(undefined)
+      setSchoolComposeInitial(undefined)
+    }
+  }, [searchParams, auditor, assignedClubIds])
+
+  const displayedHistory = activeTab === "club" ? clubHistory : schoolHistory
   const selectedMessage =
     selectedDetailId != null
       ? displayedHistory.find((m) => m.id === selectedDetailId) ?? null
       : null
 
+  const listTitle =
+    activeTab === "club" ? "クラブ宛て送信履歴" : "学校管理者宛て送信履歴"
+
+  const createButtonLabel =
+    activeTab === "club" ? "クラブへ新規作成" : "学校管理者へ新規作成"
+
+  const formatLabel =
+    activeTab === "club"
+      ? formatSchoolClubOutboundTargetLabel
+      : formatAuditorSchoolConversationLabel
+
   const clearComposeQuery = () => {
     router.replace(AUDIT_ROUTES.messages)
+  }
+
+  const exitCompose = () => {
+    setComposeMode(null)
+    setEditingDraftId(null)
+    setClubComposeInitial(undefined)
+    setSchoolComposeInitial(undefined)
+    clearComposeQuery()
+  }
+
+  const handleTabChange = (tab: MessageTab) => {
+    setActiveTab(tab)
+    setListNotice(null)
+    setSelectedDetailId(null)
+    setComposeMode(null)
+    setEditingDraftId(null)
+    setClubComposeInitial(undefined)
+    setSchoolComposeInitial(undefined)
+    if (searchParams.get("compose") || searchParams.get("draft")) {
+      clearComposeQuery()
+    }
+  }
+
+  const openCompose = () => {
+    setListNotice(null)
+    setSelectedDetailId(null)
+    setEditingDraftId(null)
+    if (activeTab === "club") {
+      const target = assignedClubIds[0]
+      if (!target) return
+      setComposeMode("club")
+      setClubComposeInitial({
+        targetClubId: target,
+        subject: "",
+        body: "",
+      })
+      router.push(`${AUDIT_ROUTES.messages}?compose=1&to=${encodeURIComponent(target)}`)
+      return
+    }
+    setComposeMode("school")
+    setSchoolComposeInitial({ subject: "", body: "" })
+    router.push(`${AUDIT_ROUTES.messages}?compose=school`)
   }
 
   if (!auditor) {
@@ -159,47 +258,77 @@ export function AuditorMessagesListView() {
     )
   }
 
-  if (composeInitial) {
+  if (composeMode === "club" && clubComposeInitial) {
     return (
-      <AuditorClubComposeForm
-        key={editingDraftId ?? composeInitial.targetClubId}
-        auditorId={auditor.id}
-        assignedClubIds={auditor.assignedClubIds ?? []}
-        editingDraftId={editingDraftId}
-        initialValues={composeInitial}
-        onBack={() => {
-          setComposeInitial(undefined)
-          setEditingDraftId(null)
-          clearComposeQuery()
-        }}
-        onSent={() => {
-          setListNotice("メッセージを送信しました。担当クラブに届きます。")
-          setComposeInitial(undefined)
-          setEditingDraftId(null)
-          setListTab("sent")
-          refresh()
-          clearComposeQuery()
-        }}
-        onDraftSaved={refresh}
-      />
+      <div className="flex min-h-full flex-col bg-[#F5F5F0]">
+        <MessageBoxTitleBand
+          title="メッセージ作成"
+          accentColor={MESSAGE_BOX_ACCENT}
+        />
+        <AuditorClubComposeForm
+          key={editingDraftId ?? clubComposeInitial.targetClubId}
+          auditorId={auditor.id}
+          assignedClubIds={assignedClubIds}
+          editingDraftId={editingDraftId}
+          initialValues={clubComposeInitial}
+          onBack={exitCompose}
+          onSent={() => {
+            setListNotice("メッセージを送信しました。一覧に反映されています。")
+            exitCompose()
+            refresh()
+          }}
+          onDraftSaved={refresh}
+        />
+      </div>
+    )
+  }
+
+  if (composeMode === "school" && schoolComposeInitial) {
+    return (
+      <div className="flex min-h-full flex-col bg-[#F5F5F0]">
+        <MessageBoxTitleBand
+          title="メッセージ作成"
+          accentColor={MESSAGE_BOX_ACCENT}
+        />
+        <AuditorSchoolComposeForm
+          key={editingDraftId ?? "school-new"}
+          auditorId={auditor.id}
+          editingDraftId={editingDraftId}
+          initialValues={schoolComposeInitial}
+          onBack={exitCompose}
+          onSent={() => {
+            setListNotice("メッセージを送信しました。一覧に反映されています。")
+            exitCompose()
+            refresh()
+          }}
+          onDraftSaved={refresh}
+        />
+      </div>
     )
   }
 
   if (selectedMessage) {
     return (
       <div className="flex min-h-full flex-col bg-[#F5F5F0]">
-        <MessageBoxTitleBand
-          title="メッセージ詳細"
-          accentColor={AUDIT_MESSAGE_BOX_ACCENT}
-        />
-        <div className="px-6 py-6">
-          <div className={SCHOOL_MESSAGE_PAGE_CONTENT_CLASS}>
-            <SchoolMessageDetailPanel
-              message={selectedMessage}
-              onBack={() => setSelectedDetailId(null)}
-            />
+        {auditor.simulatedBySchool ? (
+          <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-900">
+            学校管理者による監査人シミュレーション中です。
+            <Link
+              href={SCHOOL_ROUTES.auditors}
+              className="ml-2 font-medium text-[#EA580C] hover:underline"
+            >
+              監査人管理に戻る
+            </Link>
           </div>
-        </div>
+        ) : null}
+        <SchoolMessageDetailPanel
+          message={selectedMessage}
+          onBack={() => setSelectedDetailId(null)}
+          formatTargetLabel={formatLabel}
+          counterpartyFieldLabel={
+            selectedMessage.sender === "audit" ? "送信先" : "送信元"
+          }
+        />
       </div>
     )
   }
@@ -208,7 +337,7 @@ export function AuditorMessagesListView() {
     <div className="flex min-h-full flex-col bg-[#F5F5F0]">
       <MessageBoxTitleBand
         title="メッセージBOX"
-        accentColor={AUDIT_MESSAGE_BOX_ACCENT}
+        accentColor={MESSAGE_BOX_ACCENT}
         description={`${auditor.name}（${auditor.id}）`}
       />
       {auditor.simulatedBySchool ? (
@@ -226,39 +355,28 @@ export function AuditorMessagesListView() {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 bg-white px-6 pt-3">
           <SchoolPortalSegmentTabs
-            className={SCHOOL_MESSAGE_PAGE_CONTENT_CLASS}
-            ariaLabel="メッセージの種類"
+            className={MESSAGE_PAGE_CONTENT_CLASS}
+            ariaLabel="メッセージ送信先"
             tabs={[
-              { id: "inbox", label: "受信一覧" },
-              { id: "sent", label: "送信済一覧" },
+              { id: "club", label: "クラブ宛て" },
+              { id: "school", label: "学校管理者宛て" },
             ]}
-            activeId={listTab}
-            onChange={(id) => {
-              setListTab(id as ListTab)
-              setSelectedDetailId(null)
-            }}
+            activeId={activeTab}
+            onChange={(id) => handleTabChange(id as MessageTab)}
           />
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
-          <div className={SCHOOL_MESSAGE_PAGE_CONTENT_CLASS}>
-            <div className="mb-4 flex flex-wrap items-center justify-start gap-2">
+          <div className={MESSAGE_PAGE_CONTENT_CLASS}>
+            <div className="mb-4 flex shrink-0 flex-wrap items-center justify-start gap-2">
               <Button
                 type="button"
-                onClick={() => {
-                  setEditingDraftId(null)
-                  setComposeInitial({
-                    targetClubId: (auditor.assignedClubIds ?? [])[0] ?? "",
-                    subject: "",
-                    body: "",
-                  })
-                  router.push(`${AUDIT_ROUTES.messages}?compose=1`)
-                }}
-                disabled={(auditor.assignedClubIds ?? []).length === 0}
-                className="h-auto min-h-10 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-                style={{ backgroundColor: AUDIT_MESSAGE_BOX_ACCENT }}
+                onClick={openCompose}
+                disabled={activeTab === "club" && assignedClubIds.length === 0}
+                className="h-auto min-h-10 max-w-full shrink-0 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium leading-snug text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: MESSAGE_BOX_ACCENT }}
               >
-                担当クラブへメッセージ作成
+                {createButtonLabel}
               </Button>
             </div>
 
@@ -273,20 +391,24 @@ export function AuditorMessagesListView() {
 
             <div
               className="flex min-h-[320px] w-full flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] bg-white shadow-sm"
-              style={{ borderLeftColor: AUDIT_MESSAGE_BOX_ACCENT }}
+              style={{ borderLeftColor: MESSAGE_BOX_ACCENT }}
             >
-              <h3 className="border-b border-gray-100 px-4 py-3 text-base font-semibold text-[#374151]">
-                {listTab === "inbox" ? "受信メッセージ" : "送信済メッセージ"}
-              </h3>
+              <div
+                className="shrink-0 border-b-2 px-4 py-2"
+                style={{ borderColor: MESSAGE_BOX_ACCENT }}
+              >
+                <h2
+                  className="text-base font-semibold"
+                  style={{ color: MESSAGE_BOX_ACCENT }}
+                >
+                  {listTitle}
+                </h2>
+              </div>
               <SchoolMessageHistoryList
                 history={displayedHistory}
+                onSelect={setSelectedDetailId}
                 emptyText={SCHOOL_MESSAGE_LIST_EMPTY_TEXT}
-                formatTargetLabel={
-                  listTab === "inbox"
-                    ? formatAuditorInboundLabel
-                    : formatSchoolClubOutboundTargetLabel
-                }
-                onSelect={(id) => setSelectedDetailId(id)}
+                formatTargetLabel={formatLabel}
               />
             </div>
           </div>
