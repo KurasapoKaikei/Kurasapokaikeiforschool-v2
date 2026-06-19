@@ -1,6 +1,6 @@
 "use client"
 
-import { Edit2, Trash2 } from "lucide-react"
+import { Edit2, GripVertical, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
@@ -9,6 +9,7 @@ import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import {
   deleteSchoolAuditor,
   loadSchoolAuditors,
+  setSchoolAuditorsOrder,
   SCHOOL_AUDITORS_CHANGED_EVENT,
   type SchoolAuditor,
 } from "@/lib/schoolAuditors"
@@ -46,6 +47,8 @@ export function SchoolAuditorsAccountBackupSection({
 }: SchoolAuditorsAccountBackupSectionProps) {
   const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [auditors, setAuditors] = useState<SchoolAuditor[]>([])
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const refresh = useCallback(() => {
@@ -77,12 +80,57 @@ export function SchoolAuditorsAccountBackupSection({
     })
   }
 
+  const handleDragStart = (id: string) => setDraggedId(id)
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    if (draggedId && draggedId !== id) setDragOverId(id)
+  }
+
+  const handleDrop = (e: React.DragEvent, dropId: string) => {
+    e.preventDefault()
+    if (!draggedId || draggedId === dropId) {
+      setDraggedId(null)
+      setDragOverId(null)
+      return
+    }
+
+    const from = auditors.findIndex((a) => a.id === draggedId)
+    const to = auditors.findIndex((a) => a.id === dropId)
+    if (from === -1 || to === -1) {
+      setDraggedId(null)
+      setDragOverId(null)
+      return
+    }
+
+    const reordered = [...auditors]
+    const [moved] = reordered.splice(from, 1)
+    reordered.splice(to, 0, moved)
+
+    if (setSchoolAuditorsOrder(reordered)) {
+      refresh()
+    }
+
+    setDraggedId(null)
+    setDragOverId(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedId(null)
+    setDragOverId(null)
+  }
+
   return (
     <div className="mt-8 w-full max-w-none">
       <ActionConfirmDialog {...confirmProps} />
-      <h3 className="mb-4 text-lg font-semibold text-[#374151]">
+      <h3 className="mb-1 text-lg font-semibold text-[#374151]">
         登録済の監査人
       </h3>
+      {auditors.length > 0 ? (
+        <p className="mb-4 text-xs text-[#9CA3AF]">
+          行をドラッグして監査人の表示順を変更できます
+        </p>
+      ) : null}
       <div className="flex min-h-[200px] w-full flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white shadow-sm">
         <div className="overflow-x-auto">
           <div
@@ -120,19 +168,33 @@ export function SchoolAuditorsAccountBackupSection({
                   sortedClubs
                 )
                 const isEditingRow = editingId === auditor.id
+                const isDragged = draggedId === auditor.id
+                const isDragOver =
+                  dragOverId === auditor.id && draggedId !== auditor.id
                 return (
                   <li
                     key={auditor.id}
+                    draggable={!isEditingRow}
+                    onDragStart={() => handleDragStart(auditor.id)}
+                    onDragOver={(e) => handleDragOver(e, auditor.id)}
+                    onDrop={(e) => handleDrop(e, auditor.id)}
+                    onDragEnd={handleDragEnd}
                     className={cn(
-                      "transition-colors hover:bg-blue-50/40",
-                      isEditingRow && "bg-[#EFF6FF]/60"
+                      "cursor-move transition-colors hover:bg-blue-50/40",
+                      isEditingRow && "bg-[#EFF6FF]/60",
+                      isDragged && "opacity-50",
+                      isDragOver && "bg-[#EFF6FF]"
                     )}
                   >
                     <div
                       className={cn(BACKUP_TABLE_GRID, "px-4 py-3 text-sm")}
                       role="row"
                     >
-                      <span className="text-center tabular-nums text-[#6B7280]">
+                      <span className="flex items-center justify-center gap-1 tabular-nums text-[#6B7280]">
+                        <GripVertical
+                          className="h-4 w-4 shrink-0 text-[#9CA3AF]"
+                          aria-hidden
+                        />
                         {index + 1}
                       </span>
                       <span className="font-medium text-[#374151]">

@@ -38,6 +38,8 @@ export type SchoolAuditor = {
   initialPassword: string
   /** 担当クラブ ID 一覧 */
   assignedClubIds: string[]
+  /** 一覧表示順（1始まり） */
+  order: number
   createdAt: string
   updatedAt: string
 }
@@ -121,6 +123,7 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
     typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString()
   const updatedAt =
     typeof item.updatedAt === "string" ? item.updatedAt : createdAt
+  const order = typeof item.order === "number" ? item.order : 0
   return {
     id,
     name,
@@ -129,21 +132,35 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
     email,
     initialPassword,
     assignedClubIds,
+    order,
     auditStatus: normalizeAuditStatus(item.auditStatus),
     createdAt,
     updatedAt,
   }
 }
 
+function normalizeAuditorOrders(auditors: SchoolAuditor[]): SchoolAuditor[] {
+  return applyAuditorDisplayOrder(
+    [...auditors].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  )
+}
+
+/** 配列の並び順を order に反映（並び替え保存用） */
+function applyAuditorDisplayOrder(auditors: SchoolAuditor[]): SchoolAuditor[] {
+  return auditors.map((a, idx) => ({ ...a, order: idx + 1 }))
+}
+
 function parseAuditors(parsed: unknown): SchoolAuditor[] {
   if (!Array.isArray(parsed)) return []
-  return parsed
-    .map(normalizeAuditor)
-    .filter((a): a is SchoolAuditor => a != null)
-    .sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    )
+  return normalizeAuditorOrders(
+    parsed
+      .map(normalizeAuditor)
+      .filter((a): a is SchoolAuditor => a != null)
+      .map((a, idx) => ({
+        ...a,
+        order: a.order > 0 ? a.order : idx + 1,
+      }))
+  )
 }
 
 function loadAuditorsFromGlobal(): SchoolAuditor[] {
@@ -160,7 +177,10 @@ function loadAuditorsFromGlobal(): SchoolAuditor[] {
 function saveAllToGlobal(auditors: SchoolAuditor[]): void {
   if (typeof window === "undefined") return
   try {
-    localStorage.setItem(SCHOOL_AUDITORS_KEY, JSON.stringify(auditors))
+    localStorage.setItem(
+      SCHOOL_AUDITORS_KEY,
+      JSON.stringify(normalizeAuditorOrders(auditors))
+    )
     dispatchChanged()
   } catch {
     /* ignore */
@@ -168,6 +188,7 @@ function saveAllToGlobal(auditors: SchoolAuditor[]): void {
 }
 
 function saveAll(auditors: SchoolAuditor[]): boolean {
+  const normalized = normalizeAuditorOrders(auditors)
   const schoolId = getOperationalSchoolId()
   const isLegacy =
     !schoolId || usesLegacyGlobalSchoolStorage(schoolId)
@@ -182,8 +203,8 @@ function saveAll(auditors: SchoolAuditor[]): boolean {
 
   writeScopedWorkspace(
     schoolId,
-    (ws) => ({ ...ws, auditors }),
-    () => saveAllToGlobal(auditors)
+    (ws) => ({ ...ws, auditors: normalized }),
+    () => saveAllToGlobal(normalized)
   )
   if (!isLegacy) dispatchChanged()
   return true
@@ -228,11 +249,12 @@ export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | nul
     email,
     initialPassword: generateInitialAuditorPassword(),
     assignedClubIds: [...new Set(input.assignedClubIds)],
+    order: 1,
     auditStatus: "before",
     createdAt: now,
     updatedAt: now,
   }
-  if (!saveAll([created, ...auditors])) return null
+  if (!saveAll(normalizeAuditorOrders([created, ...auditors]))) return null
   return created
 }
 
@@ -273,8 +295,44 @@ export function deleteSchoolAuditor(id: string): boolean {
   return saveAll(next)
 }
 
+/** 監査人の表示順を更新（配列順を order に反映して即保存） */
+export function setSchoolAuditorsOrder(ordered: SchoolAuditor[]): boolean {
+  return saveAll(applyAuditorDisplayOrder(ordered))
+}
+
 export function getSchoolAuditorById(id: string): SchoolAuditor | null {
   return loadSchoolAuditors().find((a) => a.id === id) ?? null
+}
+
+/** 全監査人の担当クラブ ID を集合で返す */
+export function collectAssignedClubIds(
+  auditors: SchoolAuditor[] = loadSchoolAuditors()
+): Set<string> {
+  const ids = new Set<string>()
+  for (const auditor of auditors) {
+    for (const clubId of auditor.assignedClubIds) {
+      if (clubId) ids.add(clubId)
+    }
+  }
+  return ids
+}
+
+/** クラブ ID に担当監査人がいれば返す（いなければ null） */
+export function findAuditorForClub(
+  clubId: string,
+  auditors: SchoolAuditor[] = loadSchoolAuditors()
+): SchoolAuditor | null {
+  if (!clubId) return null
+  return auditors.find((a) => a.assignedClubIds.includes(clubId)) ?? null
+}
+
+/** どの監査人にも割り当てられていないクラブを抽出 */
+export function filterUnassignedClubs<T extends { id: string }>(
+  clubs: T[],
+  auditors: SchoolAuditor[] = loadSchoolAuditors()
+): T[] {
+  const assigned = collectAssignedClubIds(auditors)
+  return clubs.filter((club) => club.id && !assigned.has(club.id))
 }
 
 /** メッセージBOX宛先プルダウン用（部署名 ＋ 氏名） */

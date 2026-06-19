@@ -55,6 +55,7 @@ export function SchoolAuditorsRegisterSection({
   const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [form, setForm] = useState<AuditorFormState>(emptyAuditorForm)
   const [formError, setFormError] = useState<string | null>(null)
+  const [formSuccess, setFormSuccess] = useState<string | null>(null)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const editingId = editingAuditor?.id ?? null
@@ -68,6 +69,7 @@ export function SchoolAuditorsRegisterSection({
         email: editingAuditor.email,
         assignedClubIds: [...editingAuditor.assignedClubIds],
       })
+      setFormSuccess(null)
     } else {
       setForm(emptyAuditorForm())
     }
@@ -99,6 +101,7 @@ export function SchoolAuditorsRegisterSection({
   }, [auditors, editingId])
 
   const toggleClub = (clubId: string) => {
+    setFormSuccess(null)
     setForm((prev) => {
       const has = prev.assignedClubIds.includes(clubId)
       return {
@@ -133,6 +136,9 @@ export function SchoolAuditorsRegisterSection({
       return
     }
 
+    setFormSuccess(
+      editingId ? "変更を保存しました" : "監査人を登録しました"
+    )
     onSaved()
   }, [editingId, form, onSaved])
 
@@ -196,6 +202,7 @@ export function SchoolAuditorsRegisterSection({
               onChange={(e) => {
                 setForm((p) => ({ ...p, name: e.target.value }))
                 setFormError(null)
+                setFormSuccess(null)
               }}
               placeholder="例：鈴木 公認会計士"
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
@@ -216,6 +223,7 @@ export function SchoolAuditorsRegisterSection({
               onChange={(e) => {
                 setForm((p) => ({ ...p, department: e.target.value }))
                 setFormError(null)
+                setFormSuccess(null)
               }}
               placeholder="例：外部監査役、会計審査課"
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
@@ -237,6 +245,7 @@ export function SchoolAuditorsRegisterSection({
                 onChange={(e) => {
                   setForm((p) => ({ ...p, phone: e.target.value }))
                   setFormError(null)
+                  setFormSuccess(null)
                 }}
                 placeholder="例：090-1234-5678"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
@@ -258,6 +267,7 @@ export function SchoolAuditorsRegisterSection({
                 onChange={(e) => {
                   setForm((p) => ({ ...p, email: e.target.value }))
                   setFormError(null)
+                  setFormSuccess(null)
                 }}
                 placeholder="例：audit@example.com"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
@@ -303,6 +313,11 @@ export function SchoolAuditorsRegisterSection({
               </div>
             )}
           </fieldset>
+          {formSuccess ? (
+            <p className="text-sm text-green-800" role="status">
+              {formSuccess}
+            </p>
+          ) : null}
           {formError ? (
             <p className="text-sm text-[#EF4444]" role="alert">
               {formError}

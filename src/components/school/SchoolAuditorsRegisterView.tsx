@@ -51,7 +51,9 @@ export function SchoolAuditorsRegisterView() {
   const handleSaved = () => {
     setEditingAuditor(null)
     setFormResetKey((k) => k + 1)
-    router.push(SCHOOL_ROUTES.auditors)
+    if (editId) {
+      router.replace(SCHOOL_ROUTES.auditorsRegister, { scroll: false })
+    }
   }
 
   const handleCancelEdit = () => {

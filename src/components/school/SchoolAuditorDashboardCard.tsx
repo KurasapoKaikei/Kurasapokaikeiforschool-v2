@@ -75,15 +75,26 @@ export function SchoolAuditorDashboardCard({
         "transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-xl",
       )}
     >
-      {/* 1. ヘッダー：氏名・監査人ID */}
+      {/* 1. ヘッダー：氏名・監査人ID・担当クラブ数 */}
       <header className="border-b border-blue-100 pb-3">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <h3 className="text-lg font-bold leading-snug text-[#374151]">
-            {auditor.name}
-          </h3>
-          <span className="shrink-0 font-mono text-xs text-[#9CA3AF]">
-            {auditor.id}
-          </span>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-bold leading-snug text-[#374151]">
+              {auditor.name}
+            </h3>
+            <span className="mt-0.5 block shrink-0 font-mono text-xs text-[#9CA3AF]">
+              {auditor.id}
+            </span>
+          </div>
+          <div className="flex shrink-0 flex-col items-center text-center">
+            <span className="text-xs text-[#9CA3AF]">担当クラブ数</span>
+            <span
+              className="text-lg font-bold tabular-nums leading-snug text-[#374151]"
+              aria-label={`担当クラブ数: ${clubCount}`}
+            >
+              {clubCount}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -118,10 +129,6 @@ export function SchoolAuditorDashboardCard({
       {/* 4. 担当クラブ */}
       <div className="flex-1">
         <h4 className="text-sm font-medium text-[#6B7280]">担当クラブ</h4>
-        <p className="mt-1 text-xs tabular-nums text-[#9CA3AF]">
-          <span className="font-semibold text-indigo-950">{clubCount}</span>
-          クラブ
-        </p>
         {clubNames.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {clubNames.map((name) => (

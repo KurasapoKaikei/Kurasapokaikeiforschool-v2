@@ -9,11 +9,15 @@ import {
   loadCurrentAuditor,
   type CurrentAuditorSession,
 } from "@/lib/currentAuditor"
-import { getSchoolAuditorById } from "@/lib/schoolAuditors"
+import {
+  getSchoolAuditorById,
+  SCHOOL_AUDITORS_CHANGED_EVENT,
+} from "@/lib/schoolAuditors"
 
 export function AuditorDashboardView() {
   const { sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [session, setSession] = useState<CurrentAuditorSession | null>(null)
+  const [auditorsRevision, setAuditorsRevision] = useState(0)
   const [reviewClub, setReviewClub] = useState<{
     id: string
     name: string
@@ -27,25 +31,37 @@ export function AuditorDashboardView() {
   useEffect(() => {
     refreshSession()
     const onSession = () => refreshSession()
+    const onAuditorsChanged = () => setAuditorsRevision((k) => k + 1)
     window.addEventListener(AUDITOR_SESSION_CHANGED_EVENT, onSession)
+    window.addEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onAuditorsChanged)
     window.addEventListener("storage", onSession)
+    window.addEventListener("storage", onAuditorsChanged)
     return () => {
       window.removeEventListener(AUDITOR_SESSION_CHANGED_EVENT, onSession)
+      window.removeEventListener(SCHOOL_AUDITORS_CHANGED_EVENT, onAuditorsChanged)
       window.removeEventListener("storage", onSession)
+      window.removeEventListener("storage", onAuditorsChanged)
     }
   }, [refreshSession])
 
   const clubList = sortedClubs ?? []
 
-  const assignedClubIds = useMemo(
-    () => session?.assignedClubIds ?? [],
-    [session]
-  )
+  const assignedClubIds = useMemo(() => {
+    void auditorsRevision
+    if (!session?.id) return session?.assignedClubIds ?? []
+    return (
+      getSchoolAuditorById(session.id)?.assignedClubIds ??
+      session.assignedClubIds ??
+      []
+    )
+  }, [session, auditorsRevision])
 
   const assignedClubs = useMemo(() => {
     if (assignedClubIds.length === 0) return []
-    const idSet = new Set(assignedClubIds)
-    return clubList.filter((c) => c?.id && idSet.has(c.id))
+    const byId = new Map(clubList.map((c) => [c.id, c]))
+    return assignedClubIds
+      .map((id) => byId.get(id))
+      .filter((c): c is NonNullable<typeof c> => Boolean(c?.id))
   }, [assignedClubIds, clubList])
 
   const auditorMaster = session?.id

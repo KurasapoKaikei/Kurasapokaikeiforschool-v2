@@ -1,7 +1,7 @@
 # クラサポ会計 — 学校管理者ポータル 仕様書
 
-**文書バージョン**: 2026-06-17（サイドメニュー再編・監査人登録修正完了時点）  
-**対象範囲**: `/school` 配下の学校管理者ポータル
+**文書バージョン**: 2026-06-18（監査人管理機能強化・不具合修正完了時点）  
+**対象範囲**: `/school` 配下の学校管理者ポータル（監査人ポータル `/audit` との連携仕様を含む）
 
 ---
 
@@ -197,17 +197,28 @@ src/components/layout/school/
 - **担当クラブ制約**: 他の監査人に既に割り当て済みのクラブは選択不可（編集時は自監査人の担当分は選択可能）
 - **メール重複チェック**: 同一メールアドレスの二重登録を拒否（編集時は自身を除外）
 - **確認ダイアログ**: 登録・更新・削除は `ActionConfirmDialog`（`useActionConfirmDialog`）経由で確定
-- **保存後遷移**: 登録・更新成功後は監査人ダッシュボード（`/school/clubs/auditors`）へ遷移
-- **編集モード**: 控え一覧の編集ボタン、または `?edit={監査人ID}` クエリでフォームに既存データを読み込み
+- **保存後の挙動（2026-06-18 改定）**: 新規登録成功後は **監査人ダッシュボードへ遷移しない**。登録画面（`/school/clubs/auditors/register`）に留まり、フォームをリセットし、画面上に「監査人を登録しました」（編集時は「変更を保存しました」）を緑色テキストで表示する。連続登録が可能。ユーザーが再入力を始めると成功メッセージは非表示になる
+- **編集モード**: 控え一覧の編集ボタン、または `?edit={監査人ID}` クエリでフォームに既存データを読み込み。編集保存後はクエリをクリアして登録画面に留まる（一覧画面へは遷移しない）
 
 ### 4.2 登録ロジック（`schoolAuditors.ts`）
 
 | 関数 | 役割 |
 |------|------|
-| `addSchoolAuditor()` | 新規監査人を作成。ID は `AUD-0001` 形式で採番。初期パスワードを自動生成 |
-| `updateSchoolAuditor()` | 既存監査人を更新 |
-| `deleteSchoolAuditor()` | 監査人を削除 |
+| `addSchoolAuditor()` | 新規監査人を作成。ID は `AUD-0001` 形式で採番。初期パスワードを自動生成。`order: 1` で先頭に追加 |
+| `updateSchoolAuditor()` | 既存監査人を更新（`order` は維持） |
+| `deleteSchoolAuditor()` | 監査人を削除（残りの `order` を再採番） |
+| `setSchoolAuditorsOrder()` | 並び替え後の配列順を `order` に反映して即保存 |
+| `filterUnassignedClubs()` | どの監査人にも割り当てられていないクラブを抽出 |
+| `findAuditorForClub()` | クラブ ID から担当監査人を検索 |
 | `saveAll()` | 永続化の共通入口。成功時 `true`、書き込み不可時 `false` を返す |
+
+**データモデル（`SchoolAuditor`）**:
+
+| フィールド | 説明 |
+|-----------|------|
+| `order` | 一覧表示順（1 始まり）。読み込み時は `order` 昇順でソート |
+| `assignedClubIds` | 担当クラブ ID 配列（配列順が担当クラブの表示順にも利用される） |
+| その他 | `id`, `name`, `department`, `phone`, `email`, `initialPassword`, `auditStatus`, `createdAt`, `updatedAt` |
 
 **ストレージの分岐**:
 
@@ -243,6 +254,53 @@ src/components/layout/school/
 `pendingRef` で最新の `onConfirm` コールバックを保持し、ダイアログ確定時に常に最新のフォーム状態で `persistAuditor` が実行されるようにした。  
 `SchoolAuditorsRegisterSection` の `persistAuditor` は `useCallback` で依存配列を明示している。
 
+### 4.4 監査人ダッシュボード（一覧）
+
+実装ファイル:
+
+| レイヤー | ファイル |
+|----------|----------|
+| ページ | `src/app/school/clubs/auditors/page.tsx` |
+| 画面 | `src/components/school/SchoolAuditorsListView.tsx` |
+| 一覧・並び替え | `src/components/school/SchoolAuditorsListSection.tsx` |
+| 監査人カード | `src/components/school/SchoolAuditorDashboardCard.tsx` |
+| 未割当クラブカード | `src/components/school/SchoolUnassignedClubDashboardCard.tsx` |
+| 監査人ポータル | `src/components/audit/AuditorDashboardView.tsx`（`/audit`） |
+
+- **アクセス経路**: サイドバー「監査人管理」>「監査人ダッシュボード」（`/school/clubs/auditors`）
+- **表示形式**: 監査人ごとにカード形式で氏名・部署・連絡先・監査進捗・担当クラブを表示
+
+#### 未割当クラブの可視化
+
+- 全クラブ（`SchoolClubsContext` / `kurasaokaikei-school-clubs`）のうち、いずれの監査人の `assignedClubIds` にも含まれないクラブを `filterUnassignedClubs()` で抽出
+- 監査人カード一覧の下に **「未割当クラブ」** セクションを表示
+- 各カードの「担当監査人」行に琥珀色バッジ **「未割当」** を表示。点線ボーダーで通常カードと区別
+- 監査人が 0 人でも未割当クラブがあれば当該セクションは表示する
+
+#### 担当クラブ数の表示（カードヘッダー）
+
+各監査人カードのヘッダー左側に氏名・監査人 ID、右側に担当クラブ数を縦並びで配置する。
+
+| 要素 | スタイル |
+|------|----------|
+| ラベル「担当クラブ数」 | `text-xs`（監査人 ID と同サイズ） |
+| 数値 | `text-lg font-bold`（氏名と同サイズ） |
+| 配置 | `flex flex-col items-center text-center` でラベル幅に対し数値を中央揃え |
+
+担当クラブ名バッジ一覧は従来どおりカード下部に表示（件数の重複表示はヘッダーに集約）。
+
+#### 並び替えと永続化
+
+- **UI**: 登録済みクラブ一覧と同様の HTML5 ドラッグ＆ドロップ。カード左上にグリップアイコン（`GripVertical`）と順序番号を表示
+- **控え一覧**: 監査人登録画面（`SchoolAuditorsAccountBackupSection`）のテーブル行でも同様に並び替え可能
+- **保存**: ドロップ確定時に `setSchoolAuditorsOrder()` → `applyAuditorDisplayOrder()` で配列順を `order` に反映 → `saveAll()` で即保存
+- **ストレージ**: デモ校は `localStorage` キー `school_auditors`、新規校はワークスペース blob 内 `auditors` 配列
+- **読み込み**: `loadSchoolAuditors()` は `order` 昇順でソート（旧 `updatedAt` 降順ソートは廃止）
+- **同期**: 保存成功時に `SCHOOL_AUDITORS_CHANGED_EVENT` を発火。一覧は `refresh()` で再読み込み
+- **監査人ポータル（`/audit`）**: `AuditorDashboardView` が `SCHOOL_AUDITORS_CHANGED_EVENT` を購読し、担当クラブ ID を `getSchoolAuditorById()` から取得。マスタの `assignedClubIds` 配列順でクラブカードを表示
+
+**並び替え永続化の不具合修正（2026-06-18）**: 並び替え直後に旧 `order` 値で再ソートされ順序がリセットされていた問題を修正。`setSchoolAuditorsOrder()` が配列インデックスを `order` に書き込んでから保存するよう変更。
+
 ---
 
 ## 5. 現在の状態
@@ -250,11 +308,13 @@ src/components/layout/school/
 | 項目 | 状態 |
 |------|------|
 | サイドメニュー再編 | **完了** — 「クラブ管理」「監査人管理」への階層化を反映済み |
-| 監査人登録機能 | **完了** — 登録・更新・削除、イベント連動、ワークスペース分岐を修正済み |
+| 監査人登録機能 | **完了** — 登録・更新・削除、連続登録、イベント連動、ワークスペース分岐 |
+| 監査人ダッシュボード | **完了** — 未割当クラブ表示、担当クラブ数 UI、並び替え永続化 |
+| 監査人ポータル連携 | **完了** — `/audit` でマスタの担当クラブ順を反映 |
 | 画面レイアウト | **正常** — `SchoolAppShell` によるサイドバー + ヘッダー構成で表示確認済み |
 | アコーディオン動作 | **正常** — 親メニューの展開/折りたたみ、現在地ハイライトが動作 |
 | 開発サーバー | `npm run dev` で起動・各画面のコンパイル成功を確認 |
-| 本ドキュメント | 上記安定時点の仕様を記録（2026-06-17） |
+| 本ドキュメント | 上記安定時点の仕様を記録（2026-06-18） |
 
 ### 5.1 直近の変更履歴
 
@@ -268,6 +328,14 @@ src/components/layout/school/
 1. **`saveAll()` の戻り値とイベント発火**: スコープドワークスペース保存後に `SCHOOL_AUDITORS_CHANGED_EVENT` を明示発火。書き込み不可時は `false` を返す
 2. **UI リスナー拡張**: 登録画面・一覧・控え一覧が `SCHOOL_WORKSPACE_CHANGED_EVENT` を購読
 3. **確認ダイアログ修正**: `useActionConfirmDialog` の `pendingRef` 化により、登録確定時のコールバックが最新フォーム状態を参照
+4. **連続登録対応（2026-06-18）**: 登録成功後のダッシュボード遷移を廃止。フォームリセットと成功メッセージ表示で連続登録を可能に
+
+**監査人ダッシュボード（§4.4）— 2026-06-18**
+
+1. **未割当クラブ表示**: `filterUnassignedClubs()` と `SchoolUnassignedClubDashboardCard` により、担当監査人のいないクラブを「未割当」バッジ付きで一覧表示
+2. **担当クラブ数 UI**: カードヘッダー右端にラベル（小）・数値（大）を縦中央揃えで配置
+3. **並び替え機能**: カード・控え一覧でドラッグ＆ドロップ並び替え。`order` フィールドと `setSchoolAuditorsOrder()` による永続化
+4. **永続化不具合修正**: 並び替え時に旧 `order` で再ソートされ順序がリセットされる問題を修正。`/audit` 側はマスタ再読み込みで同期
 
 ---
 
@@ -280,4 +348,4 @@ src/components/layout/school/
 - `ROUTES.md` — ルート一覧
 - `PROJECT_STRUCTURE.md` — プロジェクト構造
 
-本 `SPECIFICATION.md` は、**サイドメニュー再編および監査人登録修正完了後の学校管理者ポータルの安定スナップショット** を目的としたドキュメントです。
+本 `SPECIFICATION.md` は、**監査人管理機能強化（連続登録・未割当表示・並び替え永続化）完了後の学校管理者ポータルの安定スナップショット** を目的としたドキュメントです。
