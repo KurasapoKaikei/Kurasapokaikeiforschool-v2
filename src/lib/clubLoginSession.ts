@@ -1,6 +1,7 @@
 /** クラブログインセッション（トップページ認証後） */
 
 import { notifyClubPortalSessionChanged } from "@/lib/clubPortalSessionEvents"
+import { clearCurrentWorkers } from "@/lib/currentWorkersSession"
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 import { clearImpersonatedClub } from "@/lib/schoolClubSession"
 
@@ -64,6 +65,7 @@ export function authenticateClub(
 /** ログイン成功時：管理者なりすましを解除し、クラブセッションを保存 */
 export function establishClubLogin(session: CurrentClubSession): void {
   clearImpersonatedClub()
+  clearCurrentWorkers(session.id)
   setCurrentClub(session)
   notifyClubPortalSessionChanged()
 }

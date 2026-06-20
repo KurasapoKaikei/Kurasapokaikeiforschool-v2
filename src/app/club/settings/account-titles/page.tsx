@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { GripVertical, Edit2, Trash2 } from "lucide-react"
 import {
@@ -82,6 +82,7 @@ export default function AccountTitlesPage() {
   const [openingCarryoverInput, setOpeningCarryoverInput] = useState("")
   const [openingCarryoverLocked, setOpeningCarryoverLocked] = useState(false)
   const [yearRolloverCompletedAt, setYearRolloverCompletedAt] = useState<string | null>(null)
+  const skipNextAccountSaveRef = useRef(true)
   const isLocked = useClubSettlementLock()
 
   const showToast = (message: string) => {
@@ -147,11 +148,14 @@ export default function AccountTitlesPage() {
     })
   }, [categories, isLoaded])
 
-  // 科目が変更されたらLocalStorageに保存
+  // ユーザー操作による変更のみ LocalStorage へ保存（初回読込では書き込まない）
   useEffect(() => {
-    if (isLoaded) {
-      saveAccountTitles(accountTitles)
+    if (!isLoaded) return
+    if (skipNextAccountSaveRef.current) {
+      skipNextAccountSaveRef.current = false
+      return
     }
+    saveAccountTitles(accountTitles)
   }, [accountTitles, isLoaded])
 
   // タブでフィルタリング
@@ -885,7 +889,9 @@ export default function AccountTitlesPage() {
           })}
 
           {filteredAccountTitles.length === 0 && (
-            <p className="text-center py-8 text-[#6B7280]">科目がありません</p>
+            <p className="text-center py-8 text-[#6B7280]">
+              科目が登録されていません
+            </p>
           )}
         </div>
 

@@ -12,7 +12,7 @@ import {
   SETTLEMENT_REJECTED_BADGE_CLASSES,
   type AuditorAuditBadgeVariant,
 } from "@/lib/clubSettlementPortalSync"
-import { getClubMemberCount } from "@/lib/auditorClubDashboard"
+import { useClubMemberCount } from "@/hooks/useClubMemberCount"
 import { clearCurrentClub } from "@/lib/clubLoginSession"
 import type { SchoolClub } from "@/lib/schoolClubs"
 import { setImpersonatedClub } from "@/lib/schoolClubSession"
@@ -75,7 +75,7 @@ export function AuditorClubDashboardCard({
     canReview,
     isApproved,
   } = useAuditorSettlementState(club?.id ?? "")
-  const memberCount = getClubMemberCount(club?.id ?? "")
+  const memberCount = useClubMemberCount(club?.id ?? "")
   const clubName = club?.name?.trim() || "（名称未設定）"
   const clubId = club?.id ?? "—"
 

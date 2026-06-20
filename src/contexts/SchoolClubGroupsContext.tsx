@@ -57,11 +57,6 @@ export function SchoolClubGroupsProvider({ children }: { children: ReactNode }) 
     }
   }, [reloadFromStorage])
 
-  useEffect(() => {
-    if (!isLoaded) return
-    saveSchoolClubGroups(groups)
-  }, [groups, isLoaded])
-
   const sortedGroups = useMemo(
     () => [...groups].sort((a, b) => a.order - b.order),
     [groups]
@@ -74,7 +69,7 @@ export function SchoolClubGroupsProvider({ children }: { children: ReactNode }) 
     setGroups((prev) => {
       if (isDuplicateGroupName(trimmed, prev)) return prev
       added = true
-      return [
+      const next = [
         ...prev,
         {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -82,6 +77,8 @@ export function SchoolClubGroupsProvider({ children }: { children: ReactNode }) 
           order: prev.length + 1,
         },
       ]
+      saveSchoolClubGroups(next)
+      return next
     })
     return added
   }, [])
@@ -93,21 +90,27 @@ export function SchoolClubGroupsProvider({ children }: { children: ReactNode }) 
     setGroups((prev) => {
       if (isDuplicateGroupName(trimmed, prev, id)) return prev
       ok = true
-      return prev.map((g) => (g.id === id ? { ...g, name: trimmed } : g))
+      const next = prev.map((g) => (g.id === id ? { ...g, name: trimmed } : g))
+      saveSchoolClubGroups(next)
+      return next
     })
     return ok
   }, [])
 
   const deleteGroup = useCallback((id: string) => {
-    setGroups((prev) =>
-      prev
+    setGroups((prev) => {
+      const next = prev
         .filter((g) => g.id !== id)
         .map((g, idx) => ({ ...g, order: idx + 1 }))
-    )
+      saveSchoolClubGroups(next)
+      return next
+    })
   }, [])
 
   const setGroupsOrder = useCallback((ordered: SchoolClubGroup[]) => {
-    setGroups(ordered.map((g, idx) => ({ ...g, order: idx + 1 })))
+    const next = ordered.map((g, idx) => ({ ...g, order: idx + 1 }))
+    saveSchoolClubGroups(next)
+    setGroups(next)
   }, [])
 
   const value = useMemo(

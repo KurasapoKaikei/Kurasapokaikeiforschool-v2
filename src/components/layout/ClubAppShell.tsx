@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar"
 import { AppShellHeader } from "@/components/layout/AppShellHeader"
 import { PortalFiscalYearProvider } from "@/contexts/PortalFiscalYearContext"
 import { isAuditorImpersonatingClub, isSchoolImpersonatingClub } from "@/lib/clubPortalAccess"
+import { ClubCurrentWorkersGate } from "@/components/club/ClubCurrentWorkersGate"
 import { ClubImpersonationBanner } from "@/components/layout/club/ClubImpersonationBanner"
 import { CLUB_PORTAL_SESSION_CHANGED_EVENT } from "@/lib/clubPortalSessionEvents"
 
@@ -40,6 +41,7 @@ export function ClubAppShell({ children }: { children: ReactNode }) {
 
   return (
     <PortalFiscalYearProvider>
+    <ClubCurrentWorkersGate />
     <div className="flex min-h-screen overflow-x-hidden bg-[#F5F5F0]">
       {/* サイドバー：メイン領域より前面に固定し、リンククリックを確実に通す */}
       <Sidebar />

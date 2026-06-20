@@ -12,6 +12,10 @@ import {
   getPortalTransactions,
 } from "@/lib/clubPortalData"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
+import {
+  CLUB_MEMBERS_CHANGED_EVENT,
+  isClubMembersChangedForClub,
+} from "@/lib/clubMembers"
 import { ClubDashboardSettlementSummary } from "@/components/club/ClubDashboardSettlementSummary"
 import { ClubDashboardVoucherStats } from "@/components/club/ClubDashboardVoucherStats"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
@@ -41,14 +45,22 @@ export default function DashboardPage() {
   }, [loadPortalData])
 
   useEffect(() => {
-    const onRefresh = () => loadPortalData()
-    window.addEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onRefresh)
-    window.addEventListener("storage", onRefresh)
-    return () => {
-      window.removeEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onRefresh)
-      window.removeEventListener("storage", onRefresh)
+    const clubId = activeClub?.id ?? ""
+    const onMessagesChange = () => loadPortalData()
+    const onMembersChange = (e: Event) => {
+      if (!clubId || isClubMembersChangedForClub(clubId, e)) {
+        loadPortalData()
+      }
     }
-  }, [loadPortalData])
+    window.addEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onMessagesChange)
+    window.addEventListener(CLUB_MEMBERS_CHANGED_EVENT, onMembersChange)
+    window.addEventListener("storage", onMembersChange)
+    return () => {
+      window.removeEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onMessagesChange)
+      window.removeEventListener(CLUB_MEMBERS_CHANGED_EVENT, onMembersChange)
+      window.removeEventListener("storage", onMembersChange)
+    }
+  }, [loadPortalData, activeClub?.id])
 
   // 現金・預金科目のみを取得
   const cashAccountTitles = useMemo(

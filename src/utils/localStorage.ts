@@ -1,6 +1,12 @@
 // LocalStorage用のユーティリティ関数
 import type { CollectionPaymentStatus } from "@/types"
 import { getCollectionPaymentStatus } from "@/types"
+import {
+  CLUB_MEMBERS_BASE_KEY,
+  clubMembersStorageKey,
+  dispatchClubMembersChanged,
+} from "@/lib/clubMembers"
+import { resolveActiveClubSession } from "@/lib/activeClubSession"
 export type { CollectionPaymentStatus } from "@/types"
 
 export interface Category {
@@ -488,12 +494,7 @@ export const getCategories = (): Category[] => {
       return []
     }
   }
-  // 初期値
-  return [
-    { id: "1", name: "部会計", order: 1, isUsed: false },
-    { id: "2", name: "合宿会計", order: 2, isUsed: false },
-    { id: "3", name: "遠征費", order: 3, isUsed: false },
-  ]
+  return []
 }
 
 export const saveCategories = (categories: Category[]): void => {
@@ -512,45 +513,7 @@ export const getAccountTitles = (): AccountTitle[] => {
       return []
     }
   }
-  // 初期値
-  return [
-    {
-      id: "1",
-      group: "cash",
-      name: "現金",
-      categoryIds: ["1"],
-      balance: 50000,
-      order: 1,
-      isUsed: false,
-    },
-    {
-      id: "2",
-      group: "cash",
-      name: "メイン銀行",
-      categoryIds: ["1", "2"],
-      balance: 500000,
-      order: 2,
-      isUsed: false,
-    },
-    {
-      id: "3",
-      group: "income",
-      name: "会費収入",
-      categoryIds: ["1"],
-      balance: null,
-      order: 1,
-      isUsed: false,
-    },
-    {
-      id: "4",
-      group: "expense",
-      name: "消耗品費",
-      categoryIds: ["1", "2"],
-      balance: null,
-      order: 1,
-      isUsed: false,
-    },
-  ]
+  return []
 }
 
 export const saveAccountTitles = (accountTitles: AccountTitle[]): void => {
@@ -958,22 +921,60 @@ export const saveMonthlyNote = (subjectId: string, year: number, month: number, 
 }
 
 // 部員関連
-export const getMembers = (): Member[] => {
+function getMembersStorageKey(): string {
+  const active = resolveActiveClubSession()
+  if (active?.id) return clubMembersStorageKey(active.id)
+  return CLUB_MEMBERS_BASE_KEY
+}
+
+function readMembersFromKey(key: string): Member[] {
   if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(STORAGE_KEYS.MEMBERS)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
+  const stored = localStorage.getItem(key)
+  if (!stored) return []
+  try {
+    const parsed = JSON.parse(stored) as Member[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
   }
-  return []
+}
+
+function markClubPortalHasDataFlag(clubId: string): void {
+  if (typeof window === "undefined") return
+  localStorage.setItem(`kurasaokaikei-club-has-portal-data-${clubId}`, "1")
+}
+
+/** ログインクラブのスコープキーへ、レガシー全体キーからの初回移行 */
+function migrateLegacyMembersToScopedClub(clubId: string, scopedKey: string): Member[] {
+  const legacy = readMembersFromKey(CLUB_MEMBERS_BASE_KEY)
+  if (legacy.length === 0) return []
+  localStorage.setItem(scopedKey, JSON.stringify(legacy))
+  markClubPortalHasDataFlag(clubId)
+  dispatchClubMembersChanged(clubId)
+  return legacy
+}
+
+export const getMembers = (): Member[] => {
+  const key = getMembersStorageKey()
+  let members = readMembersFromKey(key)
+  const active = resolveActiveClubSession()
+  if (active?.id && members.length === 0 && key !== CLUB_MEMBERS_BASE_KEY) {
+    members = migrateLegacyMembersToScopedClub(active.id, key)
+  }
+  return members
 }
 
 export const saveMembers = (members: Member[]): void => {
   if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members))
+  const key = getMembersStorageKey()
+  localStorage.setItem(key, JSON.stringify(members))
+  const active = resolveActiveClubSession()
+  if (active?.id) {
+    markClubPortalHasDataFlag(active.id)
+    dispatchClubMembersChanged(active.id)
+  } else {
+    dispatchClubMembersChanged()
+  }
 }
 
 export const addMember = (member: Omit<Member, "id" | "createdAt">): Member => {

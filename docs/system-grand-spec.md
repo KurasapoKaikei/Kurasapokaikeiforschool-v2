@@ -312,15 +312,18 @@ lg以上における画面配置イメージ：
 |------|------|
 | **正式名称** | 「**監査進捗サマリー**」 |
 | **禁止** | タイトルに「リアルタイム」等の修飾語を付けない（旧仕様から削除済み） |
-| 補助説明文 | 「学内全クラブの決算提出・監査ステータス（localStorage から自動集計）」 |
+| 補助説明文 | 「学内全クラブの監査ステータス（localStorage から自動集計）」 |
 
 ### 6.2 適用箇所
 
 | 画面 | コンポーネント | 集計対象 |
 |------|----------------|----------|
 | 学校トップ | `SchoolAuditProgressSummary` | 全登録クラブ |
+| 学校クラブ一覧 | `SchoolClubDashboardCard` / `SchoolUnassignedClubDashboardCard` | 個別クラブ（監査ステータスのみ） |
 | 監査人カード内 | `AuditorAssignedClubProgressSummary` | 担当クラブのみ |
 | 監査人ポータル | 各 `AuditorClubDashboardCard` のバッジ | 個別クラブ |
+
+**学校管理者ポータル・クラブカード（2026-06-20 改定）**: `SchoolClubDashboardCard` および `SchoolUnassignedClubDashboardCard` から **「当期の決算提出状況」行を完全削除**（監査ステータスと情報が重複していたため）。カード上部の強調エリアに `SettlementAuditStatusBadge` で **監査ステータスのみ**（未提出 / 監査中 / 差戻 / 承認済）を表示する。旧仕様の「当期の決算提出状況」連動は学校側 UI から廃止。
 
 ### 6.3 4 つの監査ステータス（厳密定義）
 

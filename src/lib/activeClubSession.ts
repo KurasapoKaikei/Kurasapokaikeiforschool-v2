@@ -55,7 +55,6 @@ export function resolveActiveClubSession(): ActiveClubSession | null {
     return session
   }
 
-  // リロード/ホットリロード直後に一次的にセッション読込が空でも、
-  // 直前の有効クラブを優先復元してラグビー部デモへの逆戻りを防ぐ。
+  // リロード直後にログインセッション読込が空でも、直前の有効クラブを復元する。
   return readLastActiveClub()
 }

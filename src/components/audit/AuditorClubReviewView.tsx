@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { useAuditorSettlementState } from "@/components/audit/useAuditorSettlementState"
 import { SchoolSettlementReviewDialog } from "@/components/school/SchoolSettlementReviewDialog"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
-import { getClubMemberCount } from "@/lib/auditorClubDashboard"
+import { useClubMemberCount } from "@/hooks/useClubMemberCount"
 import { clearCurrentClub } from "@/lib/clubLoginSession"
 import {
   AUDITOR_APPROVED_BADGE_CLASSES,
@@ -39,6 +39,7 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
     canReview,
     isApproved,
   } = useAuditorSettlementState(clubId)
+  const memberCount = useClubMemberCount(clubId)
 
   const session = loadCurrentAuditor()
   const club = sortedClubs.find((c) => c.id === clubId)
@@ -98,7 +99,7 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
             <dt className="text-[#6B7280]">部員数</dt>
             <dd className="font-medium tabular-nums text-[#374151]">
-              {getClubMemberCount(club.id)}名
+              {memberCount}名
             </dd>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">

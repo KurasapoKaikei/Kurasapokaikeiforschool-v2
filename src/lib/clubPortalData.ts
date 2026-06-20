@@ -12,6 +12,7 @@ import {
   type ClubPortalMessageView,
 } from "@/lib/portalMessages"
 import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeClubSession"
+import { getClubMembersById } from "@/lib/clubMembers"
 import { loadSchoolClubs } from "@/lib/schoolClubs"
 import type { AccountTitle, Member, Transaction } from "@/utils/localStorage"
 
@@ -94,7 +95,7 @@ export function getPortalAccountTitles(
 export function getPortalMembers(active: ActiveClubSession | null): Member[] {
   if (isEmptyPortalForClub(active)) return []
   if (isLegacyGlobalPortal(active)) return []
-  return readStorageJson(scopedKey(BASE_KEYS.MEMBERS, active!.id), [])
+  return getClubMembersById(active!.id) as Member[]
 }
 
 export const LEGACY_INBOX_CLUB_ID = "legacy-demo"

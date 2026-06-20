@@ -162,7 +162,7 @@ export function SchoolAuditProgressSummary() {
         </div>
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-[#6B7280]">
-            学内全クラブの決算提出・監査ステータス（localStorage から自動集計）
+            学内全クラブの監査ステータス（localStorage から自動集計）
           </p>
           <div className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
             <Building2 className="h-3.5 w-3.5" aria-hidden />

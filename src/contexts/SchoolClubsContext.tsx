@@ -78,11 +78,6 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
     }
   }, [reloadFromStorage])
 
-  useEffect(() => {
-    if (!isLoaded) return
-    saveSchoolClubs(clubs)
-  }, [clubs, isLoaded])
-
   const sortedClubs = useMemo(
     () => [...clubs].sort((a, b) => a.order - b.order),
     [clubs]

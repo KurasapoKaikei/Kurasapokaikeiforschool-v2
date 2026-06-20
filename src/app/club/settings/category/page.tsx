@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { HelpCircle, GripVertical, Edit2, Trash2 } from "lucide-react"
 import {
@@ -20,6 +20,7 @@ const MSG_CATEGORY_DUPLICATE =
 export default function CategorySettingsPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
+  const skipNextSaveRef = useRef(true)
 
   // LocalStorageから読み込み
   useEffect(() => {
@@ -28,11 +29,14 @@ export default function CategorySettingsPage() {
     setIsLoaded(true)
   }, [])
 
-  // カテゴリーが変更されたらLocalStorageに保存
+  // ユーザー操作による変更のみ LocalStorage へ保存（初回読込では書き込まない）
   useEffect(() => {
-    if (isLoaded) {
-      saveCategories(categories)
+    if (!isLoaded) return
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false
+      return
     }
+    saveCategories(categories)
   }, [categories, isLoaded])
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -256,7 +260,9 @@ export default function CategorySettingsPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6 pb-8 mb-8">
           <h3 className="text-lg font-semibold mb-4 text-[#374151]">追加済みカテゴリー</h3>
           {categories.length === 0 ? (
-            <p className="text-center py-8 text-[#6B7280]">カテゴリーがありません</p>
+            <p className="text-center py-8 text-[#6B7280]">
+              設定されているカテゴリーはありません
+            </p>
           ) : (
             <div className="space-y-2">
               {categories

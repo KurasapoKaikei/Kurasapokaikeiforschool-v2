@@ -37,6 +37,13 @@ export default function MembersRegisterPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([])
   const [csvFileName, setCsvFileName] = useState("")
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isCsvParsing, setIsCsvParsing] = useState(false)
+  const [csvPreviewReady, setCsvPreviewReady] = useState(false)
+  const [csvStatusMessage, setCsvStatusMessage] = useState<string | null>(null)
+  const [csvNotice, setCsvNotice] = useState<{
+    type: "success" | "info"
+    text: string
+  } | null>(null)
   const [importResult, setImportResult] = useState<{ count: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -52,6 +59,12 @@ export default function MembersRegisterPage() {
   useEffect(() => {
     refreshRecent()
   }, [refreshRecent])
+
+  useEffect(() => {
+    if (!csvNotice) return
+    const timer = window.setTimeout(() => setCsvNotice(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [csvNotice])
 
   // ===== 個別登録 =====
   const canSubmitIndividual = formName.trim() !== "" && formGrade !== ""
@@ -126,17 +139,47 @@ export default function MembersRegisterPage() {
   }
 
   const handleFile = (file: File) => {
-    if (!file.name.endsWith(".csv")) {
-      alert("CSVファイルのみアップロードできます。")
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setCsvNotice({
+        type: "info",
+        text: "CSVファイルのみアップロードできます。",
+      })
       return
     }
-    setCsvFileName(file.name)
+
+    setCsvNotice(null)
     setImportResult(null)
+    setCsvFileName(file.name)
+    setCsvRows([])
+    setCsvPreviewReady(false)
+    setCsvStatusMessage(null)
+    setIsCsvParsing(true)
 
     const reader = new FileReader()
     reader.onload = (e) => {
       const text = e.target?.result as string
-      setCsvRows(parseCsv(text))
+      const rows = parseCsv(text)
+      setCsvRows(rows)
+      setCsvPreviewReady(true)
+      setIsCsvParsing(false)
+
+      if (rows.length === 0) {
+        setCsvStatusMessage(
+          "データ行がありません。テンプレートの2行目以降に部員情報を入力してください。"
+        )
+      } else {
+        const errorCount = rows.filter((r) => r.errors.length > 0).length
+        setCsvStatusMessage(
+          errorCount > 0
+            ? `${rows.length}件を読み込みました（${errorCount}件にエラーがあります）`
+            : `${rows.length}件の部員データを読み込みました`
+        )
+      }
+    }
+    reader.onerror = () => {
+      setIsCsvParsing(false)
+      setCsvPreviewReady(false)
+      setCsvStatusMessage("ファイルの読み込みに失敗しました。再度お試しください。")
     }
     reader.readAsText(file, "UTF-8")
   }
@@ -178,13 +221,34 @@ export default function MembersRegisterPage() {
     setImportResult({ count: validRows.length })
     setCsvRows([])
     setCsvFileName("")
+    setCsvPreviewReady(false)
+    setCsvStatusMessage(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
     refreshRecent()
+  }
+
+  const handleCsvCancel = () => {
+    setCsvRows([])
+    setCsvFileName("")
+    setCsvPreviewReady(false)
+    setCsvStatusMessage(null)
+    setIsCsvParsing(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+    setCsvNotice({
+      type: "info",
+      text: "読み込みをキャンセルしました。別のCSVファイルを選択できます。",
+    })
   }
 
   const handleReset = () => {
     setCsvRows([])
     setCsvFileName("")
+    setCsvPreviewReady(false)
+    setCsvStatusMessage(null)
     setImportResult(null)
+    setCsvNotice(null)
+    setIsCsvParsing(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   return (
@@ -353,11 +417,36 @@ export default function MembersRegisterPage() {
         {/* ===== CSV一括登録タブ ===== */}
         {activeTab === "csv" && (
           <div className="p-6">
-            {importResult && (
-              <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
+            {csvNotice ? (
+              <div
+                className={`mb-5 flex items-center gap-3 px-4 py-3 rounded-lg border ${
+                  csvNotice.type === "success"
+                    ? "bg-green-50 border-green-200"
+                    : "bg-[#9D8CC3]/10 border-[#9D8CC3]/30"
+                }`}
+                role="status"
+              >
+                <CheckCircle2
+                  className={`h-5 w-5 flex-shrink-0 ${
+                    csvNotice.type === "success" ? "text-green-600" : "text-[#9D8CC3]"
+                  }`}
+                />
+                <p
+                  className={`text-sm ${
+                    csvNotice.type === "success" ? "text-green-800" : "text-[#374151]"
+                  }`}
+                >
+                  {csvNotice.text}
+                </p>
+              </div>
+            ) : null}
+
+            {importResult ? (
+              <div className="mb-6 flex flex-wrap items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
                 <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
                 <p className="text-sm text-green-800">
-                  <span className="font-semibold">{importResult.count}名</span>の部員を一括登録しました。
+                  <span className="font-semibold">{importResult.count}名</span>
+                  の部員を一括登録しました。
                 </p>
                 <Button
                   type="button"
@@ -369,9 +458,7 @@ export default function MembersRegisterPage() {
                   別のCSVを登録
                 </Button>
               </div>
-            )}
-
-            {!importResult && (
+            ) : (
               <div className="space-y-8">
                 {/* ステップ1 */}
                 <div className="flex gap-4">
@@ -382,9 +469,12 @@ export default function MembersRegisterPage() {
                     1
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-base font-semibold text-[#374151] mb-1">テンプレートの準備</h3>
+                    <h3 className="text-base font-semibold text-[#374151] mb-1">
+                      テンプレートの準備
+                    </h3>
                     <p className="text-sm text-[#6B7280] mb-3">
                       専用のCSVテンプレートをダウンロードし、部員情報を入力してください。
+                      （列：氏名、学年、メールアドレス）
                     </p>
                     <Button
                       type="button"
@@ -402,12 +492,16 @@ export default function MembersRegisterPage() {
                 <div className="flex gap-4">
                   <div
                     className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                    style={{ backgroundColor: csvFileName ? THEME_COLOR : "#9CA3AF" }}
+                    style={{
+                      backgroundColor: csvPreviewReady ? THEME_COLOR : "#9CA3AF",
+                    }}
                   >
                     2
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-base font-semibold text-[#374151] mb-1">ファイルのアップロード</h3>
+                    <h3 className="text-base font-semibold text-[#374151] mb-1">
+                      ファイルのアップロード
+                    </h3>
                     <p className="text-sm text-[#6B7280] mb-3">
                       入力済みのCSVファイルをここにドラッグ＆ドロップするか、ファイルを選択してください。
                     </p>
@@ -420,8 +514,8 @@ export default function MembersRegisterPage() {
                         isDragOver
                           ? "border-[#9D8CC3] bg-[#9D8CC3]/5"
                           : csvFileName
-                          ? "border-[#9D8CC3]/40 bg-[#9D8CC3]/5"
-                          : "border-gray-300 hover:border-[#9D8CC3]/60"
+                            ? "border-[#9D8CC3]/40 bg-[#9D8CC3]/5"
+                            : "border-gray-300 hover:border-[#9D8CC3]/60"
                       }`}
                       onClick={() => fileInputRef.current?.click()}
                     >
@@ -432,11 +526,21 @@ export default function MembersRegisterPage() {
                         className="hidden"
                         onChange={handleFileInput}
                       />
-                      {csvFileName ? (
+                      {isCsvParsing ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <FileSpreadsheet
+                            className="h-8 w-8 animate-pulse"
+                            style={{ color: THEME_COLOR }}
+                          />
+                          <p className="text-sm text-[#374151]">CSVを読み込み中…</p>
+                        </div>
+                      ) : csvFileName ? (
                         <div className="flex flex-col items-center gap-2">
                           <FileSpreadsheet className="h-8 w-8" style={{ color: THEME_COLOR }} />
                           <p className="text-sm font-medium text-[#374151]">{csvFileName}</p>
-                          <p className="text-xs text-[#6B7280]">クリックまたはドロップで変更</p>
+                          <p className="text-xs text-[#6B7280]">
+                            クリックまたはドロップで別ファイルに変更
+                          </p>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-2">
@@ -444,15 +548,17 @@ export default function MembersRegisterPage() {
                           <p className="text-sm text-[#6B7280]">
                             ここにCSVファイルをドラッグ＆ドロップ
                           </p>
-                          <p className="text-xs text-[#9CA3AF]">または クリックしてファイルを選択</p>
+                          <p className="text-xs text-[#9CA3AF]">
+                            または クリックしてファイルを選択
+                          </p>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* ステップ3 */}
-                {csvRows.length > 0 && (
+                {/* ステップ3: プレビュー */}
+                {csvPreviewReady && (
                   <div className="flex gap-4">
                     <div
                       className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
@@ -460,37 +566,49 @@ export default function MembersRegisterPage() {
                     >
                       3
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-base font-semibold text-[#374151] mb-1">内容の確認と実行</h3>
-                      <p className="text-sm text-[#6B7280] mb-3">
-                        {hasErrors
-                          ? `${csvRows.filter((r) => r.errors.length > 0).length}件のエラーがあります。修正してから再アップロードしてください。`
-                          : `${validRows.length}名の部員データを確認してください。`}
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-semibold text-[#374151] mb-1">
+                        内容の確認
+                      </h3>
+                      {csvStatusMessage ? (
+                        <p
+                          className={`text-sm mb-3 ${
+                            hasErrors ? "text-red-700" : "text-[#374151]"
+                          }`}
+                        >
+                          {csvFileName ? (
+                            <span className="text-[#6B7280]">{csvFileName} — </span>
+                          ) : null}
+                          {csvStatusMessage}
+                        </p>
+                      ) : null}
 
-                      <div className="flex justify-center mb-4">
-                        <div className="border border-gray-200 rounded-lg overflow-hidden inline-block max-w-full">
+                      {csvRows.length > 0 ? (
+                        <div
+                          className="mb-4 overflow-hidden rounded-lg border border-gray-200"
+                          style={{ borderLeftWidth: 4, borderLeftColor: THEME_COLOR }}
+                        >
                           <div className="overflow-x-auto">
-                            <table className="table-fixed border-collapse text-sm w-[22rem] sm:w-[26rem]">
-                              <colgroup>
-                                <col className="w-10" />
-                                <col className="w-[7rem]" />
-                                <col className="w-12" />
-                                <col className="w-[9rem]" />
-                              </colgroup>
+                            <table className="w-full min-w-[32rem] border-collapse text-sm">
                               <thead>
-                                <tr className="bg-gray-50">
-                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
+                                <tr
+                                  className="text-left text-xs font-semibold text-[#374151]"
+                                  style={{ backgroundColor: "#F3EFF8" }}
+                                >
+                                  <th className="px-3 py-2.5 border-b border-gray-200 w-12 text-center">
                                     No.
                                   </th>
-                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
+                                  <th className="px-3 py-2.5 border-b border-gray-200">
                                     氏名
                                   </th>
-                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
+                                  <th className="px-3 py-2.5 border-b border-gray-200 w-20 text-center">
                                     学年
                                   </th>
-                                  <th className="px-2 py-2.5 text-center font-semibold text-[#374151] border-b border-gray-200">
-                                    メール
+                                  <th className="px-3 py-2.5 border-b border-gray-200">
+                                    メールアドレス
+                                  </th>
+                                  <th className="px-3 py-2.5 border-b border-gray-200 w-28">
+                                    状態
                                   </th>
                                 </tr>
                               </thead>
@@ -500,19 +618,41 @@ export default function MembersRegisterPage() {
                                   return (
                                     <tr
                                       key={idx}
-                                      className={`border-b border-gray-100 last:border-b-0 ${hasErr ? "bg-red-50" : ""}`}
+                                      className={`border-b border-gray-100 last:border-b-0 ${
+                                        hasErr ? "bg-red-50/80" : "bg-white"
+                                      }`}
                                     >
-                                      <td className="px-2 py-2.5 text-center tabular-nums text-[#6B7280] border-r border-gray-100">
+                                      <td className="px-3 py-2.5 text-center tabular-nums text-[#6B7280]">
                                         {idx + 1}
                                       </td>
-                                      <td className="px-2 py-2.5 text-left text-[#374151] border-r border-gray-100 truncate max-w-0" title={row.name || undefined}>
-                                        {row.name || <span className="text-red-400 italic">未入力</span>}
+                                      <td className="px-3 py-2.5 text-[#374151]">
+                                        {row.name || (
+                                          <span className="text-red-500 italic">未入力</span>
+                                        )}
                                       </td>
-                                      <td className="px-2 py-2.5 text-center tabular-nums text-[#374151] border-r border-gray-100">
-                                        {row.grade != null ? row.grade : <span className="text-red-400 italic">-</span>}
+                                      <td className="px-3 py-2.5 text-center tabular-nums text-[#374151]">
+                                        {row.grade != null ? (
+                                          GRADE_LABELS[row.grade]
+                                        ) : (
+                                          <span className="text-red-500 italic">-</span>
+                                        )}
                                       </td>
-                                      <td className="px-2 py-2.5 text-left text-[#6B7280] truncate max-w-0" title={row.email || undefined}>
-                                        {row.email || "-"}
+                                      <td className="px-3 py-2.5 text-[#6B7280]">
+                                        {row.email || "—"}
+                                      </td>
+                                      <td className="px-3 py-2.5">
+                                        {hasErr ? (
+                                          <span className="text-xs text-red-600">
+                                            {row.errors.join(" / ")}
+                                          </span>
+                                        ) : (
+                                          <span
+                                            className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                                            style={{ backgroundColor: THEME_COLOR }}
+                                          >
+                                            登録可
+                                          </span>
+                                        )}
                                       </td>
                                     </tr>
                                   )
@@ -521,40 +661,38 @@ export default function MembersRegisterPage() {
                             </table>
                           </div>
                         </div>
-                      </div>
-
-                      {hasErrors && (
-                        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-sm font-medium text-red-800 mb-2">エラー詳細：</p>
-                          <ul className="text-xs text-red-700 space-y-1">
-                            {csvRows
-                              .filter((r) => r.errors.length > 0)
-                              .map((r, idx) => (
-                                <li key={idx}>
-                                  行{csvRows.indexOf(r) + 1}（{r.name || "氏名なし"}）：{r.errors.join("、")}
-                                </li>
-                              ))}
-                          </ul>
+                      ) : (
+                        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          登録対象のデータ行がありません。CSVの内容を確認してください。
                         </div>
                       )}
 
-                      <div className="flex items-center gap-3">
+                      {hasErrors && csvRows.length > 0 ? (
+                        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-sm font-medium text-red-800 mb-1">
+                            エラーがある行は登録されません。CSVを修正して再アップロードするか、キャンセルしてください。
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-wrap items-center gap-3 pt-1">
                         <Button
                           type="button"
-                          className="text-white px-6 py-2.5 rounded-lg"
+                          className="min-w-[8rem] rounded-lg px-6 py-2.5 text-sm text-white"
                           style={{ backgroundColor: THEME_COLOR }}
                           onClick={handleBulkRegister}
-                          disabled={hasErrors || validRows.length === 0}
+                          disabled={hasErrors || validRows.length === 0 || isCsvParsing}
                         >
-                          一括登録を実行（{validRows.length}名）
+                          登録する
+                          {validRows.length > 0 ? `（${validRows.length}名）` : ""}
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
-                          className="px-4 py-2.5 rounded-lg"
-                          onClick={handleReset}
+                          className="min-w-[8rem] rounded-lg px-6 py-2.5 text-sm"
+                          onClick={handleCsvCancel}
                         >
-                          リセット
+                          キャンセル
                         </Button>
                       </div>
                     </div>

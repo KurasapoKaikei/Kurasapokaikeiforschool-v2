@@ -318,6 +318,38 @@ src/components/layout/school/
 
 ---
 
+## 4.5 クラブダッシュボード（一覧）
+
+実装ファイル:
+
+| レイヤー | ファイル |
+|----------|----------|
+| ページ | `src/app/school/clubs/page.tsx` |
+| 画面 | `src/components/school/SchoolClubListView.tsx` |
+| カード一覧 | `src/components/school/SchoolClubDashboardListSection.tsx` |
+| クラブカード | `src/components/school/SchoolClubDashboardCard.tsx` |
+| 未割当クラブカード | `src/components/school/SchoolUnassignedClubDashboardCard.tsx`（監査人ダッシュボード §4.4 でも利用） |
+
+- **アクセス経路**: サイドバー「クラブ管理」>「クラブダッシュボード」（`/school/clubs`）、またはポータルトップのメニューカード
+- **表示形式**: グループタブ付きカードグリッド（`md:grid-cols-2` / `lg:grid-cols-3`）
+
+#### クラブカードの表示項目（2026-06-20 改定）
+
+| 項目 | 仕様 |
+|------|------|
+| ヘッダー | クラブ名 + クラブ ID（mono） |
+| **監査ステータス** | カード上部の強調エリア（`SettlementAuditStatusBadge`）。未提出 / 監査中 / 差戻 / 承認済 |
+| 部員数 | 在籍部員数 |
+| 操作 | 「クラブページへ」（ピンク）/ 「メッセージBOX」（青） |
+
+**削除済**: 「当期の決算提出状況」行（未提出 / 監査中バッジ）は監査ステータスと重複するため **完全削除**。学校管理者ポータルでは監査ステータスのみを表示する。
+
+#### ポータルトップの監査進捗サマリー
+
+`/school` 上部の `SchoolAuditProgressSummary` も監査ステータス（未提出・監査中・差戻・承認済）の件数集計のみを表示する。補助説明文は「学内全クラブの監査ステータス（localStorage から自動集計）」。
+
+---
+
 ## 5. 監査人ポータル（`/audit`）メッセージBOX
 
 実装ファイル:
@@ -438,6 +470,12 @@ SchoolMessageHistoryList（共通テーブルUI）
 **監査人ダッシュボード（§6）— 2026-06-19**
 
 1. **監査進捗サマリー**: `AuditorAuditProgressSummary` をダッシュボード上部に配置
+
+**学校クラブダッシュボード（§4.5）— 2026-06-20**
+
+1. **「当期の決算提出状況」の削除**: `SchoolClubDashboardCard` / `SchoolUnassignedClubDashboardCard` から重複行を除去
+2. **監査ステータスの強調表示**: カード上部に `SettlementAuditStatusBadge` を配置し、監査ステータスを主表示に統一
+3. **監査進捗サマリー文言**: 補助説明から「決算提出」を削除し監査ステータスのみに
 
 ---
 

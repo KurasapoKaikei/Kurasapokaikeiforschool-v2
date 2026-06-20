@@ -1,20 +1,7 @@
 import type { AuditorAuditStatus } from "@/lib/schoolAuditors"
 import type { ClubSettlementStatus } from "@/lib/schoolClubSettlement"
 
-const MEMBERS_KEY_PREFIX = "classapo_members__"
-
-/** クラブごとの部員数（クラブポータルの localStorage） */
-export function getClubMemberCount(clubId: string): number {
-  if (typeof window === "undefined") return 0
-  try {
-    const raw = localStorage.getItem(`${MEMBERS_KEY_PREFIX}${clubId}`)
-    if (!raw) return 0
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? parsed.length : 0
-  } catch {
-    return 0
-  }
-}
+export { getClubMemberCount } from "@/lib/clubMembers"
 
 /** 当期の決算提出状況（監査人向け表示） */
 export function getClubSettlementSubmissionLabel(

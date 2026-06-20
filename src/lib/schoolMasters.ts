@@ -68,11 +68,15 @@ function saveAllMasters(masters: SchoolMasterRecord[]): void {
   }
 }
 
-/** 初回起動時にシードデータをマージ（既存は上書きしない） */
+/**
+ * 既存マスタがある場合のみ、不足しているシードをマージする。
+ * LocalStorage が完全に空のときは何も書き込まない（新規申込〜手動登録フロー用）。
+ */
 export function ensureSchoolMastersSeeded(): void {
   if (typeof window === "undefined") return
   try {
     const existing = loadAllMasters()
+    if (existing.length === 0) return
     const byId = new Map(existing.map((m) => [m.schoolId, m]))
     let changed = false
     for (const seed of SEED_MASTERS) {
@@ -81,7 +85,7 @@ export function ensureSchoolMastersSeeded(): void {
         changed = true
       }
     }
-    if (existing.length === 0 || changed) {
+    if (changed) {
       saveAllMasters(Array.from(byId.values()))
     }
   } catch {
