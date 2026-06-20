@@ -12,7 +12,9 @@ import {
 } from "@/lib/schoolClubs"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
 import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
+import { SchoolLoginCredentialsModal } from "@/components/school/SchoolLoginCredentialsModal"
 import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
+import type { SchoolClub } from "@/lib/schoolClubs"
 
 /** クラブ登録・管理（グループ作成と共有データ連動） */
 export function SchoolClubRegisterView() {
@@ -23,6 +25,7 @@ export function SchoolClubRegisterView() {
   const [groupError, setGroupError] = useState<string | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
   const [listResetKey, setListResetKey] = useState(0)
+  const [registeredClub, setRegisteredClub] = useState<SchoolClub | null>(null)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const isLoaded = groupsLoaded && clubsLoaded
@@ -78,12 +81,22 @@ export function SchoolClubRegisterView() {
       setClubName("")
       setSelectedGroupId("")
       setListResetKey((k) => k + 1)
+      setRegisteredClub(created)
     })
   }
 
   return (
     <div className="min-h-full w-full bg-[#F5F5F0] px-6 py-8">
       <ActionConfirmDialog {...confirmProps} />
+      <SchoolLoginCredentialsModal
+        open={registeredClub !== null}
+        onClose={() => setRegisteredClub(null)}
+        title="クラブ登録が完了しました"
+        description={`「${registeredClub?.name ?? ""}」のログイン情報を担当者へ共有してください。`}
+        loginIdLabel="ログインID（クラブID）"
+        loginId={registeredClub?.id ?? ""}
+        initialPassword={registeredClub?.initialPassword ?? ""}
+      />
       <div className="w-full max-w-none">
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-[#374151]">クラブ登録</h2>

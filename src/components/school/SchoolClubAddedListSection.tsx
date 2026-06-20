@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Edit2, GripVertical, Trash2 } from "lucide-react"
 import { useSchoolClubGroups } from "@/contexts/SchoolClubGroupsContext"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
-import { SchoolClubAccountPrintModal } from "@/components/school/SchoolClubAccountPrintModal"
 import { formatClubRegisteredAt } from "@/lib/schoolClubs"
 import type { SchoolClub } from "@/lib/schoolClubs"
 import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
@@ -38,7 +37,6 @@ export function SchoolClubAddedListSection({
   const [editingGroupId, setEditingGroupId] = useState("")
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
-  const [printOpen, setPrintOpen] = useState(false)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const isLoaded = groupsLoaded && clubsLoaded
@@ -124,24 +122,9 @@ export function SchoolClubAddedListSection({
   return (
     <div className="w-full max-w-none rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <ActionConfirmDialog {...confirmProps} />
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4">
         <h3 className="text-lg font-semibold text-[#374151]">登録済みクラブ</h3>
-        <Button
-          type="button"
-          variant="outline"
-          className="rounded-lg border-[#005088] bg-white text-[#005088] hover:bg-[#005088]/5"
-          onClick={() => setPrintOpen(true)}
-          disabled={!isLoaded || sortedClubs.length === 0}
-        >
-          アカウント情報を印刷
-        </Button>
       </div>
-
-      <SchoolClubAccountPrintModal
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        clubs={sortedClubs}
-      />
 
       <div className="mb-6">
         <SchoolPortalSegmentTabs

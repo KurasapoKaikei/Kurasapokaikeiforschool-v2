@@ -16,6 +16,8 @@ import {
   type SchoolAuditor,
 } from "@/lib/schoolAuditors"
 import { SchoolAuditorsAccountBackupSection } from "@/components/school/SchoolAuditorsAccountBackupSection"
+import { SchoolLoginCredentialsModal } from "@/components/school/SchoolLoginCredentialsModal"
+import { formatAuditorDisplayName } from "@/lib/schoolAuditors"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
 import { cn } from "@/lib/utils"
 
@@ -58,6 +60,9 @@ export function SchoolAuditorsRegisterSection({
   const [form, setForm] = useState<AuditorFormState>(emptyAuditorForm)
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
+  const [registeredAuditor, setRegisteredAuditor] = useState<SchoolAuditor | null>(
+    null
+  )
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
 
   const editingId = editingAuditor?.id ?? null
@@ -140,9 +145,12 @@ export function SchoolAuditorsRegisterSection({
       return
     }
 
-    setFormSuccess(
-      editingId ? "変更を保存しました" : "監査人を登録しました"
-    )
+    if (editingId) {
+      setFormSuccess("変更を保存しました")
+    } else {
+      setFormSuccess(null)
+      setRegisteredAuditor(result)
+    }
     onSaved()
   }, [editingId, form, onSaved])
 
@@ -189,6 +197,14 @@ export function SchoolAuditorsRegisterSection({
   return (
     <>
       <ActionConfirmDialog {...confirmProps} />
+      <SchoolLoginCredentialsModal
+        open={registeredAuditor !== null}
+        onClose={() => setRegisteredAuditor(null)}
+        title="監査人登録が完了しました"
+        description={`${registeredAuditor ? formatAuditorDisplayName(registeredAuditor) : ""} さんのログイン情報を担当者へ共有してください。`}
+        loginId={registeredAuditor?.id ?? ""}
+        initialPassword={registeredAuditor?.initialPassword ?? ""}
+      />
       <form
         id="auditor-register-form"
         onSubmit={handleSubmit}
