@@ -24,8 +24,10 @@ export const AUDITOR_AUDIT_STATUS_LABELS: Record<AuditorAuditStatus, string> = {
 
 export type SchoolAuditor = {
   id: string
-  /** 監査人氏名 */
-  name: string
+  /** 姓 */
+  lastName: string
+  /** 名 */
+  firstName: string
   /** 部署 */
   department: string
   /** 監査進捗 */
@@ -45,12 +47,53 @@ export type SchoolAuditor = {
 }
 
 export type SchoolAuditorInput = {
-  name: string
+  lastName: string
+  firstName: string
   department: string
   phone: string
   email: string
   assignedClubIds: string[]
   auditStatus?: AuditorAuditStatus
+}
+
+/** 一覧・選択肢表示用：姓と名を全角スペースで結合 */
+export function formatAuditorDisplayName(
+  auditor: Pick<SchoolAuditor, "lastName" | "firstName">
+): string {
+  const last = auditor.lastName.trim()
+  const first = auditor.firstName.trim()
+  if (last && first) return `${last}　${first}`
+  return last || first
+}
+
+/** 旧 `name` フィールド（半角/全角スペース区切り）を姓・名に分割 */
+function splitLegacyAuditorName(name: string): {
+  lastName: string
+  firstName: string
+} {
+  const trimmed = name.trim()
+  if (!trimmed) return { lastName: "", firstName: "" }
+  const match = trimmed.match(/^(\S+)[\s　]+(\S.*)$/)
+  if (match) {
+    return { lastName: match[1]!.trim(), firstName: match[2]!.trim() }
+  }
+  return { lastName: trimmed, firstName: "" }
+}
+
+function parseAuditorNameFields(
+  item: Partial<SchoolAuditor> & { name?: unknown }
+): { lastName: string; firstName: string } {
+  const lastFromField =
+    typeof item.lastName === "string" ? item.lastName.trim() : ""
+  const firstFromField =
+    typeof item.firstName === "string" ? item.firstName.trim() : ""
+  if (lastFromField || firstFromField) {
+    return { lastName: lastFromField, firstName: firstFromField }
+  }
+  if (typeof item.name === "string" && item.name.trim()) {
+    return splitLegacyAuditorName(item.name)
+  }
+  return { lastName: "", firstName: "" }
 }
 
 function normalizeAuditStatus(raw: unknown): AuditorAuditStatus {
@@ -98,10 +141,11 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   if (!raw || typeof raw !== "object") return null
   const item = raw as Partial<SchoolAuditor> & {
     // 旧フィールド互換
+    name?: unknown
     accountId?: unknown
   }
   const id = typeof item.id === "string" ? item.id : ""
-  const name = typeof item.name === "string" ? item.name.trim() : ""
+  const { lastName, firstName } = parseAuditorNameFields(item)
   const department =
     typeof item.department === "string" ? item.department.trim() : ""
   const phone = typeof item.phone === "string" ? item.phone.trim() : ""
@@ -115,7 +159,7 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
     typeof item.initialPassword === "string" && item.initialPassword
       ? item.initialPassword
       : generateInitialAuditorPassword()
-  if (!id || !name || !email) return null
+  if (!id || !lastName || !email) return null
   const assignedClubIds = Array.isArray(item.assignedClubIds)
     ? item.assignedClubIds.filter((x): x is string => typeof x === "string")
     : []
@@ -126,7 +170,8 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   const order = typeof item.order === "number" ? item.order : 0
   return {
     id,
-    name,
+    lastName,
+    firstName,
     department,
     phone,
     email,
@@ -234,16 +279,18 @@ export function isDuplicateAuditorEmail(
 
 export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | null {
   const auditors = loadSchoolAuditors()
-  const name = input.name.trim()
+  const lastName = input.lastName.trim()
+  const firstName = input.firstName.trim()
   const department = input.department.trim()
   const phone = input.phone.trim()
   const email = input.email.trim()
-  if (!name || !department || !phone || !email) return null
+  if (!lastName || !firstName || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors)) return null
   const now = new Date().toISOString()
   const created: SchoolAuditor = {
     id: newAuditorId(auditors),
-    name,
+    lastName,
+    firstName,
     department,
     phone,
     email,
@@ -265,16 +312,18 @@ export function updateSchoolAuditor(
   const auditors = loadSchoolAuditors()
   const idx = auditors.findIndex((a) => a.id === id)
   if (idx < 0) return null
-  const name = input.name.trim()
+  const lastName = input.lastName.trim()
+  const firstName = input.firstName.trim()
   const department = input.department.trim()
   const phone = input.phone.trim()
   const email = input.email.trim()
-  if (!name || !department || !phone || !email) return null
+  if (!lastName || !firstName || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors, id)) return null
   const prev = auditors[idx]!
   const updated: SchoolAuditor = {
     ...prev,
-    name,
+    lastName,
+    firstName,
     department,
     phone,
     email,
@@ -338,7 +387,7 @@ export function filterUnassignedClubs<T extends { id: string }>(
 /** メッセージBOX宛先プルダウン用（部署名 ＋ 氏名） */
 export function formatAuditorSelectLabel(auditor: SchoolAuditor): string {
   const dept = auditor.department.trim()
-  const name = auditor.name.trim()
+  const name = formatAuditorDisplayName(auditor)
   if (dept && name) return `${dept} ${name}`
   return name || dept || auditor.id
 }

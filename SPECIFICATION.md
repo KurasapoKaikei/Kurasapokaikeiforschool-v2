@@ -193,7 +193,8 @@ src/components/layout/school/
 
 - **アクセス経路**: サイドバー「監査人管理」>「監査人登録」（`/school/clubs/auditors/register`）
 - **表示条件**: `loadSchoolUseAuditFlow()` が `true` の場合のみ利用可能。無効時は案内メッセージと「監査運用設定」へのリンクを表示
-- **登録項目（すべて必須）**: 氏名、部署、電話番号、メールアドレス、担当クラブ（1件以上）
+- **登録項目（すべて必須）**: 姓、名、部署、電話番号、メールアドレス、担当クラブ（1件以上）
+- **氏名**: `lastName`（姓）と `firstName`（名）を別フィールドで保存。一覧・選択肢では `formatAuditorDisplayName()` により全角スペース結合表示（例: `鈴木　一郎`）
 - **担当クラブ制約**: 他の監査人に既に割り当て済みのクラブは選択不可（編集時は自監査人の担当分は選択可能）
 - **メール重複チェック**: 同一メールアドレスの二重登録を拒否（編集時は自身を除外）
 - **確認ダイアログ**: 登録・更新・削除は `ActionConfirmDialog`（`useActionConfirmDialog`）経由で確定
@@ -216,9 +217,11 @@ src/components/layout/school/
 
 | フィールド | 説明 |
 |-----------|------|
+| `lastName` | 姓 |
+| `firstName` | 名 |
 | `order` | 一覧表示順（1 始まり）。読み込み時は `order` 昇順でソート |
 | `assignedClubIds` | 担当クラブ ID 配列（配列順が担当クラブの表示順にも利用される） |
-| その他 | `id`, `name`, `department`, `phone`, `email`, `initialPassword`, `auditStatus`, `createdAt`, `updatedAt` |
+| その他 | `id`, `department`, `phone`, `email`, `initialPassword`, `auditStatus`, `createdAt`, `updatedAt` |
 
 **ストレージの分岐**:
 

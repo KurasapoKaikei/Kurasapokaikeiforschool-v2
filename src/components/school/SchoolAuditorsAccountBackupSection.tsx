@@ -7,6 +7,7 @@ import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
 import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
 import { useSchoolClubs } from "@/contexts/SchoolClubsContext"
 import {
+  formatAuditorDisplayName,
   deleteSchoolAuditor,
   loadSchoolAuditors,
   setSchoolAuditorsOrder,
@@ -198,7 +199,7 @@ export function SchoolAuditorsAccountBackupSection({
                         {index + 1}
                       </span>
                       <span className="font-medium text-[#374151]">
-                        {auditor.name}
+                        {formatAuditorDisplayName(auditor)}
                       </span>
                       <span
                         className="truncate text-[#374151]"

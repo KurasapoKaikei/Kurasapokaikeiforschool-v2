@@ -20,7 +20,8 @@ import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
 import { cn } from "@/lib/utils"
 
 export type AuditorFormState = {
-  name: string
+  lastName: string
+  firstName: string
   department: string
   phone: string
   email: string
@@ -28,7 +29,8 @@ export type AuditorFormState = {
 }
 
 export const emptyAuditorForm = (): AuditorFormState => ({
-  name: "",
+  lastName: "",
+  firstName: "",
   department: "",
   phone: "",
   email: "",
@@ -63,7 +65,8 @@ export function SchoolAuditorsRegisterSection({
   useEffect(() => {
     if (editingAuditor) {
       setForm({
-        name: editingAuditor.name,
+        lastName: editingAuditor.lastName,
+        firstName: editingAuditor.firstName,
         department: editingAuditor.department,
         phone: editingAuditor.phone,
         email: editingAuditor.email,
@@ -120,7 +123,8 @@ export function SchoolAuditorsRegisterSection({
 
   const persistAuditor = useCallback(() => {
     const input = {
-      name: form.name.trim(),
+      lastName: form.lastName.trim(),
+      firstName: form.firstName.trim(),
       department: form.department.trim(),
       phone: form.phone.trim(),
       email: form.email.trim(),
@@ -144,9 +148,14 @@ export function SchoolAuditorsRegisterSection({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const name = form.name.trim()
-    if (!name) {
-      setFormError("氏名を入力してください。")
+    const lastName = form.lastName.trim()
+    if (!lastName) {
+      setFormError("姓を入力してください。")
+      return
+    }
+    const firstName = form.firstName.trim()
+    if (!firstName) {
+      setFormError("名を入力してください。")
       return
     }
     const department = form.department.trim()
@@ -187,26 +196,51 @@ export function SchoolAuditorsRegisterSection({
         className="mr-auto w-full max-w-3xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
       >
         <div className="space-y-5">
-          <div>
-            <label
-              htmlFor="auditor-name"
-              className="mb-1.5 flex items-center text-sm font-medium text-[#374151]"
-            >
-              氏名
-              <SchoolFormRequiredBadge />
-            </label>
-            <input
-              id="auditor-name"
-              type="text"
-              value={form.name}
-              onChange={(e) => {
-                setForm((p) => ({ ...p, name: e.target.value }))
-                setFormError(null)
-                setFormSuccess(null)
-              }}
-              placeholder="例：鈴木 公認会計士"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
-            />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="auditor-last-name"
+                className="mb-1.5 flex items-center text-sm font-medium text-[#374151]"
+              >
+                姓
+                <SchoolFormRequiredBadge />
+              </label>
+              <input
+                id="auditor-last-name"
+                type="text"
+                value={form.lastName}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, lastName: e.target.value }))
+                  setFormError(null)
+                  setFormSuccess(null)
+                }}
+                placeholder="例：鈴木"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
+                autoComplete="family-name"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="auditor-first-name"
+                className="mb-1.5 flex items-center text-sm font-medium text-[#374151]"
+              >
+                名
+                <SchoolFormRequiredBadge />
+              </label>
+              <input
+                id="auditor-first-name"
+                type="text"
+                value={form.firstName}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, firstName: e.target.value }))
+                  setFormError(null)
+                  setFormSuccess(null)
+                }}
+                placeholder="例：一郎"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90E2]/40"
+                autoComplete="given-name"
+              />
+            </div>
           </div>
           <div>
             <label

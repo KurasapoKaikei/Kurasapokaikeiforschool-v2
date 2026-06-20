@@ -3,6 +3,7 @@
 import { DEMO_SCHOOL_MASTER_ID } from "@/lib/schoolMasters"
 import {
   getSchoolAuditorById,
+  formatAuditorDisplayName,
   loadSchoolAuditors,
   type SchoolAuditor,
 } from "@/lib/schoolAuditors"
@@ -56,7 +57,7 @@ export function establishAuditorSession(
   if (typeof window === "undefined") return
   const session: CurrentAuditorSession = {
     id: auditor.id,
-    name: auditor.name,
+    name: formatAuditorDisplayName(auditor),
     department: (auditor.department ?? "").trim(),
     email: auditor.email ?? "",
     assignedClubIds: [...(auditor.assignedClubIds ?? [])],

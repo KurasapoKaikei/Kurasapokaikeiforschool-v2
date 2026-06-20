@@ -9,7 +9,10 @@ import {
 } from "@/lib/clubSettlementPortalSync"
 import { aggregateAssignedClubAuditProgress } from "@/lib/auditorAssignedClubProgress"
 import { SETTLEMENT_CHANGED_EVENT } from "@/lib/schoolClubSettlement"
-import type { SchoolAuditor } from "@/lib/schoolAuditors"
+import {
+  formatAuditorDisplayName,
+  type SchoolAuditor,
+} from "@/lib/schoolAuditors"
 import { cn } from "@/lib/utils"
 
 type SchoolAuditorDashboardCardProps = {
@@ -79,7 +82,7 @@ export function SchoolAuditorDashboardCard({
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-bold leading-snug text-[#374151]">
-              {auditor.name}
+              {formatAuditorDisplayName(auditor)}
             </h3>
             <span className="mt-0.5 block shrink-0 font-mono text-xs text-[#9CA3AF]">
               {auditor.id}
