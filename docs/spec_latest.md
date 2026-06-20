@@ -249,33 +249,41 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 ## 6. 学校管理者ポータル ＞ 監査人ダッシュボード（未割当クラブ）
 
 **画面 URL**: `/school/clubs/auditors`  
-**実装**: `src/components/school/SchoolAuditorsListSection.tsx`
+**実装**: `src/components/school/SchoolAuditorsListSection.tsx`  
+**カード**: `src/components/school/SchoolUnassignedClubDashboardCard.tsx`
 
-### 6.1 方針
+### 6.1 方針（確定）
 
-監査人ダッシュボードにおける **「未割当クラブ」一覧** は、クラブダッシュボード用カード（部員数・クラブページ遷移等）を使わない。  
-監査人が進捗を把握しやすい **監査進捗サマリー専用コンポーネント**（`SchoolClubAuditProgressSummaryCard`）を使用する。
+監査人ダッシュボードの **「未割当クラブ」** セクションでは、**クラブダッシュボード用カード（予算・決算概要）** と同系統の表示を用いる。  
+監査進捗サマリー専用カードへの差し替えは行わない。
 
 | コンポーネント | 用途 |
 |----------------|------|
-| `SchoolClubAuditProgressSummaryCard` | 監査進捗サマリー本体（提出・ステータス・指摘件数） |
-| `SchoolUnassignedClubDashboardCard` | 未割当向けラッパー（琥珀色枠・未割当バッジ・フッター案内） |
+| `SchoolClubDashboardCard` | 担当クラブありのクラブ一覧（クラブページへ・メッセージ BOX ボタン付き） |
+| `SchoolUnassignedClubDashboardCard` | 未割当クラブ向け（琥珀色点線枠・未割当バッジ・案内テキスト） |
 
-**データ取得**: `getClubAuditProgressSummary()` — `src/lib/clubAuditProgressSummary.ts`
+**抽出ロジック**: `filterUnassignedClubs()` — `src/lib/schoolAuditors.ts`  
+いずれの監査人の `assignedClubIds` にも含まれないクラブを一覧化する。
 
-### 6.2 カード表示項目
+### 6.2 カード表示項目（未割当）
 
 | 項目 | 仕様 |
 |------|------|
-| クラブ名・当期 | ヘッダーにクラブ名、`getSchoolHeaderDisplay().fiscalPeriod` を「当期」として表示 |
-| 決算書・証憑の提出 | 提出済み: 履歴フローから推定した日時（`ja-JP` 形式）。未提出: 「未提出」バッジ |
-| 監査ステータス | 未着手 / 監査中 / 承認済 / 差戻（`SettlementAuditStatusBadge` で 4 色統一） |
-| 指摘事項・メモ | 差戻し履歴ステップ数を集計。1 件以上は「指摘あり: N件」を琥珀色で強調 |
-| 担当監査人（未割当のみ） | 「未割当」バッジ |
+| クラブ名・ID | ヘッダーにクラブ名とクラブ ID（モノスペース） |
+| 監査ステータス | `useAuditorSettlementState` + `SettlementAuditStatusBadge`（未提出 / 監査中 / 差戻 / 承認済） |
+| 担当監査人 | 琥珀色バッジ **「未割当」** |
+| 部員数 | `useClubMemberCount` で表示 |
+| フッター | 「監査人登録画面から担当監査人を割り当ててください。」（遷移ボタンはなし） |
 
-### 6.3 データ同期
+### 6.3 スタイル
 
-`localStorage` の決算ロック・監査ステータス・決算ステータス変更イベントを購読し、リロードなしでカード表示を更新する。
+- 枠線: 琥珀色 **点線**（`border-dashed border-amber-200`）で通常のクラブカードと区別
+- 承認済クラブ: `AUDITOR_APPROVED_CARD_CLASSES` を適用（担当クラブカードと同様）
+- 監査人が 0 人でも未割当クラブがあれば当該セクションを表示
+
+### 6.4 データ同期
+
+`useAuditorSettlementState` が `localStorage` の決算ロック・監査ステータス変更を購読し、リロードなしでステータス表示を更新する。
 
 ---
 
@@ -297,4 +305,4 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 3. **作業者ログ連動** — ログイン時担当者選択モーダル、入出金履歴への `createdBy` 自動記録
 4. **開発キャッシュ** — `.next`  stale バンドルによるデモ復活問題を解消（運用手順を §2.5 に記載）
 5. **監査人氏名分割** — 姓・名の 2 フィールド管理、一覧は全角スペース結合表示
-6. **未割当クラブカード** — 監査人ダッシュボードで監査進捗サマリー専用カードに差し替え
+6. **未割当クラブカード** — クラブダッシュボード用カード（予算・決算概要）系統の表示で確定（監査ステータス・部員数・未割当バッジ）
