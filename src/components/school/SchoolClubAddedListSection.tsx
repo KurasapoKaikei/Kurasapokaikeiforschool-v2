@@ -10,6 +10,7 @@ import type { SchoolClub } from "@/lib/schoolClubs"
 import { ActionConfirmDialog } from "@/components/shared/ActionConfirmDialog"
 import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
 import { SchoolPortalSegmentTabs } from "@/components/school/SchoolPortalSegmentTabs"
+import { SchoolInlineCopyButton } from "@/components/school/SchoolInlineCopyButton"
 
 /** 順序｜クラブ名｜クラブID｜初期PW｜所属グループ｜登録日｜操作 */
 const CLUB_LIST_GRID =
@@ -213,18 +214,25 @@ export function SchoolClubAddedListSection({
                       )}
                     </div>
 
-                    <div className="min-w-0 font-mono text-sm text-[#374151]">
-                      <span className="mb-0.5 block text-xs text-[#6B7280] sm:hidden">
+                    <div className="flex min-w-0 items-center gap-1 font-mono text-sm text-[#374151]">
+                      <span className="mb-0.5 block w-full text-xs text-[#6B7280] sm:hidden">
                         クラブID
                       </span>
-                      {club.id}
+                      <span className="min-w-0 truncate select-none">{club.id}</span>
+                      <SchoolInlineCopyButton value={club.id} label="クラブID" />
                     </div>
 
-                    <div className="min-w-0 font-mono text-xs text-[#6B7280]">
-                      <span className="mb-0.5 block text-[#9CA3AF] sm:hidden">
+                    <div className="flex min-w-0 items-center gap-1 font-mono text-xs text-[#6B7280]">
+                      <span className="mb-0.5 block w-full text-[#9CA3AF] sm:hidden">
                         初期PW
                       </span>
-                      {club.initialPassword}
+                      <span className="min-w-0 truncate select-none">
+                        {club.initialPassword}
+                      </span>
+                      <SchoolInlineCopyButton
+                        value={club.initialPassword}
+                        label="初期PW"
+                      />
                     </div>
 
                     <div className="min-w-0">

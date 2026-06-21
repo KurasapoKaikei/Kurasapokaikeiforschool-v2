@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Check, Copy, X } from "lucide-react"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
@@ -55,9 +56,15 @@ export function SchoolLoginCredentialsModal({
     }
   }, [])
 
-  if (!open) return null
+  const [mounted, setMounted] = useState(false)
 
-  return (
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!open || !mounted) return null
+
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
       role="dialog"
@@ -130,7 +137,8 @@ export function SchoolLoginCredentialsModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

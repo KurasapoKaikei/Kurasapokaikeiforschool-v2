@@ -39,17 +39,17 @@ export function SchoolAppShell({ children }: { children: ReactNode }) {
 
   return (
     <PortalFiscalYearProvider>
-    <SchoolClubGroupsProvider>
-      <SchoolClubsProvider>
-        <div className="flex min-h-screen bg-[#F5F5F0]">
-          <SchoolSidebar />
-          <main className="flex-1 ml-64">
-            <SchoolHeader key={headerKey} />
-            {children}
-          </main>
-        </div>
-      </SchoolClubsProvider>
-    </SchoolClubGroupsProvider>
+      <SchoolClubGroupsProvider>
+        <SchoolClubsProvider>
+          <div className="flex min-h-screen bg-[#F5F5F0]">
+            <SchoolSidebar />
+            <main className="ml-64 flex-1">
+              <SchoolHeader key={headerKey} />
+              {children}
+            </main>
+          </div>
+        </SchoolClubsProvider>
+      </SchoolClubGroupsProvider>
     </PortalFiscalYearProvider>
   )
 }

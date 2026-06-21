@@ -16,6 +16,7 @@ import {
 } from "@/lib/schoolAuditors"
 import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
 import { cn } from "@/lib/utils"
+import { SchoolInlineCopyButton } from "@/components/school/SchoolInlineCopyButton"
 
 /** 順序｜氏名｜部署｜ID｜初期PW｜電話｜メール｜担当クラブ｜担当クラブ数｜操作 */
 const BACKUP_TABLE_GRID =
@@ -207,11 +208,18 @@ export function SchoolAuditorsAccountBackupSection({
                       >
                         {auditor.department}
                       </span>
-                      <span className="font-mono text-xs text-[#374151]">
-                        {auditor.id}
+                      <span className="flex min-w-0 items-center gap-1 font-mono text-xs text-[#374151]">
+                        <span className="truncate select-none">{auditor.id}</span>
+                        <SchoolInlineCopyButton value={auditor.id} label="ログインID" />
                       </span>
-                      <span className="font-mono text-xs text-[#6B7280]">
-                        {auditor.initialPassword}
+                      <span className="flex min-w-0 items-center gap-1 font-mono text-xs text-[#6B7280]">
+                        <span className="truncate select-none">
+                          {auditor.initialPassword}
+                        </span>
+                        <SchoolInlineCopyButton
+                          value={auditor.initialPassword}
+                          label="初期PW"
+                        />
                       </span>
                       <span className="tabular-nums text-[#374151]">
                         {auditor.phone}
