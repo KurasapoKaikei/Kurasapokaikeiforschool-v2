@@ -52,10 +52,40 @@ function migrateClubFields(c: SchoolClub): SchoolClub {
   return { ...c, initialPassword: initial, password }
 }
 
+function compareClubDisplayOrder(a: SchoolClub, b: SchoolClub): number {
+  const orderDiff = (a.order ?? 0) - (b.order ?? 0)
+  if (orderDiff !== 0) return orderDiff
+  const timeDiff = a.registeredAt.localeCompare(b.registeredAt)
+  if (timeDiff !== 0) return timeDiff
+  return a.id.localeCompare(b.id)
+}
+
+/** order が登録日時の逆順になっている既存データを昇順に修復 */
+function repairClubOrderIfInverted(clubs: SchoolClub[]): SchoolClub[] {
+  const byOrder = [...clubs].sort(compareClubDisplayOrder)
+  if (byOrder.length < 2) return byOrder
+  let descendingRegistered = true
+  for (let i = 1; i < byOrder.length; i++) {
+    if (
+      byOrder[i]!.registeredAt.localeCompare(byOrder[i - 1]!.registeredAt) > 0
+    ) {
+      descendingRegistered = false
+      break
+    }
+  }
+  if (descendingRegistered) {
+    return [...clubs].sort((a, b) =>
+      a.registeredAt.localeCompare(b.registeredAt)
+    )
+  }
+  return byOrder
+}
+
 function normalizeClubOrders(clubs: SchoolClub[]): SchoolClub[] {
-  return [...clubs]
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((c, idx) => ({ ...c, order: idx + 1 }))
+  return repairClubOrderIfInverted(clubs).map((c, idx) => ({
+    ...c,
+    order: idx + 1,
+  }))
 }
 
 const STORAGE_KEY = "kurasaokaikei-school-clubs"

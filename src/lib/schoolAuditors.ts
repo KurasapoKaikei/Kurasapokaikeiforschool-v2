@@ -184,10 +184,33 @@ function normalizeAuditor(raw: unknown): SchoolAuditor | null {
   }
 }
 
+function compareAuditorDisplayOrder(a: SchoolAuditor, b: SchoolAuditor): number {
+  const orderDiff = (a.order ?? 0) - (b.order ?? 0)
+  if (orderDiff !== 0) return orderDiff
+  const createdDiff = a.createdAt.localeCompare(b.createdAt)
+  if (createdDiff !== 0) return createdDiff
+  return a.id.localeCompare(b.id)
+}
+
+/** order が作成日時の逆順になっている既存データを昇順に修復 */
+function repairAuditorOrderIfInverted(auditors: SchoolAuditor[]): SchoolAuditor[] {
+  const byOrder = [...auditors].sort(compareAuditorDisplayOrder)
+  if (byOrder.length < 2) return byOrder
+  let descendingCreated = true
+  for (let i = 1; i < byOrder.length; i++) {
+    if (byOrder[i]!.createdAt.localeCompare(byOrder[i - 1]!.createdAt) > 0) {
+      descendingCreated = false
+      break
+    }
+  }
+  if (descendingCreated) {
+    return [...auditors].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  }
+  return byOrder
+}
+
 function normalizeAuditorOrders(auditors: SchoolAuditor[]): SchoolAuditor[] {
-  return applyAuditorDisplayOrder(
-    [...auditors].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  )
+  return applyAuditorDisplayOrder(repairAuditorOrderIfInverted(auditors))
 }
 
 /** 配列の並び順を order に反映（並び替え保存用） */
@@ -287,6 +310,10 @@ export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | nul
   if (!lastName || !firstName || !department || !phone || !email) return null
   if (isDuplicateAuditorEmail(email, auditors)) return null
   const now = new Date().toISOString()
+  const maxOrder = auditors.reduce(
+    (max, a) => Math.max(max, a.order ?? 0),
+    0
+  )
   const created: SchoolAuditor = {
     id: newAuditorId(auditors),
     lastName,
@@ -296,12 +323,12 @@ export function addSchoolAuditor(input: SchoolAuditorInput): SchoolAuditor | nul
     email,
     initialPassword: generateInitialAuditorPassword(),
     assignedClubIds: [...new Set(input.assignedClubIds)],
-    order: 1,
+    order: maxOrder + 1,
     auditStatus: "before",
     createdAt: now,
     updatedAt: now,
   }
-  if (!saveAll(normalizeAuditorOrders([created, ...auditors]))) return null
+  if (!saveAll([...auditors, created])) return null
   return created
 }
 
