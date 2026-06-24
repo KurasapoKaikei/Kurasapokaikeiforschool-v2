@@ -8,7 +8,7 @@ import { useUserInfo } from "@/contexts/UserInfoContext"
 import { logoutClubSession } from "@/lib/clubLogout"
 import { mockUserInfo } from "@/constants/userInfo"
 
-const FALLBACK_PORTAL_TITLE = "クラブポータル"
+const FALLBACK_PORTAL_TITLE = "クラブ"
 
 /** クラブポータル共通ヘッダー（3段・ピンク帯） */
 export function ClubPortalHeader() {
@@ -21,7 +21,7 @@ export function ClubPortalHeader() {
     if (!isHydrated) return
     const name =
       activeClub?.name ?? userInfo.organizationName ?? mockUserInfo.organizationName
-    setPortalTitle(name ? `${name}ポータル` : FALLBACK_PORTAL_TITLE)
+    setPortalTitle(name?.trim() || FALLBACK_PORTAL_TITLE)
   }, [isHydrated, activeClub, userInfo.organizationName])
 
   const handleLogout = () => {

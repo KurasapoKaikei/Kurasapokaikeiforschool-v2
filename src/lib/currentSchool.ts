@@ -157,10 +157,19 @@ export function resolveActiveSchoolContract(): SchoolContractInfo | null {
   }
 
   const saved = loadContractInfo()
-  if (!saved) return null
-  if (!loginId || !saved.schoolId || saved.schoolId === loginId) {
+  if (saved && (!loginId || !saved.schoolId || saved.schoolId === loginId)) {
     return normalizeSchoolContractInfo(saved)
   }
+
+  const current = loadCurrentSchool()
+  if (current?.contract) {
+    const schoolId =
+      current.schoolId?.trim() ||
+      current.contract.schoolId?.trim() ||
+      undefined
+    return normalizeSchoolContractInfo({ ...current.contract, schoolId })
+  }
+
   return null
 }
 
