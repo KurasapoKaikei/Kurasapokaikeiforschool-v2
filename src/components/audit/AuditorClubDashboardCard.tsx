@@ -4,12 +4,9 @@ import type { ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAuditorSettlementState } from "@/components/audit/useAuditorSettlementState"
+import { SettlementAuditStatusBadge } from "@/components/school/SettlementAuditStatusBadge"
 import {
-  AUDITOR_APPROVED_BADGE_CLASSES,
   AUDITOR_APPROVED_CARD_CLASSES,
-  SETTLEMENT_IN_AUDIT_BADGE_CLASSES,
-  SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES,
-  SETTLEMENT_REJECTED_BADGE_CLASSES,
   type AuditorAuditBadgeVariant,
 } from "@/lib/clubSettlementPortalSync"
 import { useClubMemberCount } from "@/hooks/useClubMemberCount"
@@ -40,28 +37,6 @@ function DataRow({
   )
 }
 
-function StatusBadge({
-  label,
-  variant,
-}: {
-  label: string
-  variant: "muted" | "navy" | "rejected" | "approved"
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex min-w-[3.5rem] justify-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
-        variant === "navy" && SETTLEMENT_IN_AUDIT_BADGE_CLASSES,
-        variant === "approved" && AUDITOR_APPROVED_BADGE_CLASSES,
-        variant === "rejected" && SETTLEMENT_REJECTED_BADGE_CLASSES,
-        variant === "muted" && SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES
-      )}
-    >
-      {label}
-    </span>
-  )
-}
-
 export function AuditorClubDashboardCard({
   club,
   onApprove,
@@ -69,7 +44,6 @@ export function AuditorClubDashboardCard({
 }: AuditorClubDashboardCardProps) {
   const router = useRouter()
   const {
-    isClubSubmitted,
     auditLabel,
     auditBadgeVariant,
     canReview,
@@ -102,23 +76,26 @@ export function AuditorClubDashboardCard({
         <p className="mt-1 font-mono text-xs text-[#9CA3AF]">{clubId}</p>
       </header>
 
+      <div
+        className="mb-4 rounded-lg border border-gray-200 bg-[#FAFAF8] px-4 py-3.5"
+        aria-label={`監査ステータス: ${auditLabel}`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-[#374151]">
+            監査ステータス
+          </span>
+          <SettlementAuditStatusBadge
+            label={auditLabel}
+            variant={auditBadgeVariant as AuditorAuditBadgeVariant}
+          />
+        </div>
+      </div>
+
       <div className="flex-1">
         <DataRow label="部員数">
           <span className="font-semibold tabular-nums text-[#374151]">
             {memberCount}名
           </span>
-        </DataRow>
-        <DataRow label="当期の決算提出状況">
-          <StatusBadge
-            label={isClubSubmitted ? "監査中" : "未提出"}
-            variant={isClubSubmitted ? "navy" : "muted"}
-          />
-        </DataRow>
-        <DataRow label="監査ステータス">
-          <StatusBadge
-            label={auditLabel}
-            variant={auditBadgeVariant as AuditorAuditBadgeVariant}
-          />
         </DataRow>
       </div>
 
