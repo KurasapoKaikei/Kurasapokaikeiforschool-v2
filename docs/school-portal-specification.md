@@ -486,9 +486,11 @@ SchoolMessageHistoryList（共通テーブルUI）
 
 プロジェクト内のその他仕様書（参考）:
 
+- `docs/README.md` — ドキュメント索引
+- `docs/spec_latest.md` — 直近の確定仕様
 - `docs/system-grand-spec.md` — 全システム統合仕様
 - `docs/LATEST_SYSTEM_SPEC.md` — 最新システム仕様
-- `ROUTES.md` — ルート一覧
-- `PROJECT_STRUCTURE.md` — プロジェクト構造
+- `docs/routes.md` — ルート一覧
+- `docs/project-structure.md` — プロジェクト構造
 
-本 `SPECIFICATION.md` は、**監査人管理・メッセージBOX UI 修正完了後（2026-06-19 セーブポイント）の安定スナップショット** を目的としたドキュメントです。コードが壊れた場合は、このコミット（`feat: 監査人管理・メッセージBOXのUI修正完了（正常動作のセーブポイント）`）へ戻すことで本仕様の状態を復元できます。
+本 `school-portal-specification.md` は、**学校管理者ポータル（監査人管理・メッセージBOX UI 含む）の詳細仕様** を記録したドキュメントです。直近の横断的な変更は `docs/spec_latest.md` を正本として参照してください。
