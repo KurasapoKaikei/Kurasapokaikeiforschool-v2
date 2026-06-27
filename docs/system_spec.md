@@ -175,8 +175,8 @@
 ### 4.1 カード情報レイアウト
 
 - **削除済**: 重複していた「進捗状況」セクションは表示しない。
-- **当期の決算提出状況**: テキストではなく角丸バッジ（提出済＝青、未提出＝灰）。
-- **監査ステータス**: `ClubSettlementAuditBadge`（監査中 / 承認済 / 差戻 等）。
+- **削除済（2026-06-20）**: 「当期の決算提出状況」行は監査ステータスと重複するため **表示しない**（`AuditorClubDashboardCard`）。
+- **監査ステータス**: `SettlementAuditStatusBadge` のみ（未提出 / 監査中 / 差戻 / 承認済）。学校管理者ポータルの `SchoolClubDashboardCard` と同型のハイライト枠内に配置。
 
 ### 4.2 下部アクションボタン（左→右）
 
@@ -241,12 +241,13 @@ src/components/audit/ClubSettlementAuditBadge.tsx
 | 2026-05 | ポータル間 localStorage キー分離、セッション衝突・サイドメニューフリーズ修正 |
 | 2026-05 | `club_workflow_status` 正本化、監査人承認・差戻し、5ステップ進捗 UI |
 | 2026-05 | サイドメニュー開閉とワークフロー分離、APPROVED 全域ロック・承認済警告文 |
-| 2026-05 | 監査人承認済カード `bg-gray-50` アーカイブ（視認性維持） |
+| 2026-06-20 | 監査人ダッシュボードカードから「当期の決算提出状況」を削除、監査ステータスへ一本化 |
 
 ---
 
 ## 7. 関連ドキュメント
 
+- `docs/spec_latest.md` — **直近仕様の正本**（2026-06-20 以降）
 - `docs/spec.md` — 会計・集金・帳簿の機能詳細（v2 系）
 - `docs/specifications/club_portal_message_box.md` — メッセージ BOX
 - `docs/specifications/school_onboarding_spec.md` — 学校オンボーディング

@@ -132,7 +132,7 @@
 | 初期パスワード | 英数字6桁（大文字+小文字+数字必須）— `generateInitialPassword()` |
 | ストレージ | デモ校=グローバル `kurasaokaikei-school-clubs` / 新規校=ワークスペース分離 |
 | 登録画面 | `/school/clubs/register` — `SchoolClubRegisterView` |
-| 配布UI | `SchoolClubAccountPrintModal` — 印刷用一覧（クラブ名・ID・初期PW） |
+| 配布UI | `SchoolLoginCredentialsModal` — 登録完了時にログインID・初期PWをクリップボードコピー（**印刷機能は廃止**）。一覧は `SchoolInlineCopyButton` で個別コピー |
 | グループ | `/school/clubs/groups` — 運動部/文化部等の大分類（登録時ラジオ選択） |
 
 クラブ側で期首残高、部員名簿、集金スケジュールを登録後、日々の入出金と予実が一貫する。
@@ -187,7 +187,7 @@
 |----------|--------|--------|
 | 学校管理者ポータル | ネイビー `#001e43` | 学校管理者ポータル |
 | 監査人ポータル | オレンジ `#ff9800` | 監査人ポータル |
-| クラブポータル | くすみピンク `#E66A84`（サイドメニューアクティブ色と100%シンクロ） | `{クラブ名}ポータル` |
+| クラブポータル | くすみピンク `#E66A84`（サイドメニューアクティブ色と100%シンクロ） | **クラブ名のみ**（例：「ラグビー部」。「ポータル」文言は付けない） |
 
 右側に `会計期間 : 2026.4.1 〜 2027.3.31` と白枠の「ログアウト」ボタンを配置。
 
@@ -473,6 +473,16 @@ lg以上における画面配置イメージ：
 | 決算 | `#005088` |
 | 設定 | `#77B8DA` |
 
+### 7.7 クラブ設定（`/club/settings/club`）
+
+**実装**: `src/app/club/settings/club/page.tsx`
+
+| セクション | 仕様 |
+|------------|------|
+| ご契約情報 | `ClubContractInfoSection` — 学校契約データ連動（`getSchoolContractDisplay`）、レイアウトは `SchoolContractView` と統一 |
+| 団体情報 | `ClubOrganizationInfoSection` — 団体名（編集不可）、代表者役職・氏名（姓/名）・電話（編集可）。保存先: `kurasaokaikei-club-organization-profiles` |
+| ログイン情報 | ログインID（クラブID）の表示のみ。パスワード変更・メールアドレス変更は **削除済** |
+
 ---
 
 ## 8. 監査人ポータル詳細
@@ -493,6 +503,8 @@ lg以上における画面配置イメージ：
 - 登録: `/school/clubs/auditors/register`
 
 ### 8.3 ダッシュボードカード（`AuditorClubDashboardCard`）
+
+**表示（2026-06-20 改定）**: ハイライト枠内に **監査ステータス**（`SettlementAuditStatusBadge`）のみ。「当期の決算提出状況」行は削除（学校管理者ポータルと統一）。部員数・下部アクションボタンは従来どおり。
 
 **下部 3 ボタン（2:1:1 = 50%:25%:25%）**:
 
@@ -640,7 +652,7 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 | 項目 | 内容 |
 |------|------|
 | キー | `kurasaokaikei-last-active-club-session` |
-| 目的 | リロード/HMR直後にデフォルトクラブ（ラグビー部デモ）へ逆戻りするのを防止 |
+| 目的 | リロード/HMR直後に直前のクラブセッションへ復元する（デモデータの自動投入は廃止済） |
 | 優先順位 | ① `getCurrentClub()`（正規ログイン）→ ② `getImpersonatedClub()`（なりすまし）→ ③ `readLastActiveClub()`（直前セッション復元） |
 | Context | `ClubSessionContext` が 400ms 間隔で `refresh()` + `isHydrated` フラグ |
 
@@ -707,7 +719,7 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 | カテゴリー | `/club/settings/category` |
 | 科目設定 | `/club/settings/account-titles` |
 | 会計年度 | `/club/settings/fiscal-years` |
-| クラブ設定 | `/club/settings/club`（パスワード変更含む） |
+| クラブ設定 | `/club/settings/club`（ご契約情報・団体情報・ログインID表示。パスワード変更・メール変更は **削除済**） |
 
 ### 11.3 科目体系
 

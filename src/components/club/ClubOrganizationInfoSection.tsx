@@ -78,7 +78,7 @@ export function ClubOrganizationInfoSection({
           />
         </FormInfoRow>
 
-        <FormInfoRow label="代表者肩書" required>
+        <FormInfoRow label="代表者役職" required>
           <input
             type="text"
             id="representativeTitle"
@@ -86,7 +86,7 @@ export function ClubOrganizationInfoSection({
             onChange={(e) => setField("representativeTitle", e.target.value)}
             disabled={disabled}
             className={inputClass}
-            placeholder="例：顧問、部長"
+            placeholder="例：顧問、部長、監督など"
             required
           />
         </FormInfoRow>

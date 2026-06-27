@@ -57,7 +57,7 @@ export default function ClubSettingsPage() {
     const phone = orgProfile.representativePhone.trim()
 
     if (!title || !lastName || !firstName || !phone) {
-      alert("代表者肩書・氏名・電話番号をすべて入力してください。")
+      alert("代表者役職・氏名・電話番号をすべて入力してください。")
       return
     }
 
