@@ -152,6 +152,10 @@ export default function DashboardPage() {
   // 次期繰越金 = 現金預金合計 + 資産合計 - 負債合計
   const carryOverAmount = cashDepositTotal + assetTotal - liabilityTotal
 
+  // 通常時は現金預金のみ。決算時の繰延で資産・負債残高がある場合のみ表示
+  const showDeferredBalanceSections =
+    assetBalances.length > 0 || liabilityBalances.length > 0
+
   // 部員統計（在籍中のみ）
   const activeMembers = useMemo(() => members.filter((m) => m.status === "active"), [members])
   const memberCountsByGrade = useMemo(() => {
@@ -248,79 +252,77 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 入る予定（資産） */}
-            <div className="mb-2">
-              <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
-                <h3 className="text-xs font-semibold text-[#6B7280]">入る予定（資産）</h3>
-              </div>
-              <div className="space-y-1">
-                {assetBalances.length > 0 ? (
-                  assetBalances.map((asset) => (
+            {/* 入る予定（資産）— 繰延残高がある場合のみ */}
+            {assetBalances.length > 0 ? (
+              <div className="mb-2">
+                <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
+                  <h3 className="text-xs font-semibold text-[#6B7280]">入る予定（資産）</h3>
+                </div>
+                <div className="space-y-1">
+                  {assetBalances.map((asset) => (
                     <div key={asset.name} className="flex items-center justify-between px-2">
                       <span className="text-sm text-[#374151]">{asset.name}</span>
                       <span className="text-sm font-semibold text-[#374151] text-right min-w-[120px] tabular-nums">
                         {formatAmount(asset.amount)}
                       </span>
                     </div>
-                  ))
-                ) : (
-                  <div className="px-2 text-sm text-[#6B7280]">データがありません</div>
-                )}
-                <div className="border-t border-gray-200 pt-1 mt-1 px-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-[#374151]">資産合計</span>
-                    <span className="text-base font-bold text-[#374151] text-right min-w-[120px] tabular-nums">
-                      {formatAmount(assetTotal)}
-                    </span>
+                  ))}
+                  <div className="border-t border-gray-200 pt-1 mt-1 px-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-[#374151]">資産合計</span>
+                      <span className="text-base font-bold text-[#374151] text-right min-w-[120px] tabular-nums">
+                        {formatAmount(assetTotal)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
-            {/* 支払う予定（負債） */}
-            <div className="mb-2">
-              <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
-                <h3 className="text-xs font-semibold text-[#6B7280]">支払う予定（負債）</h3>
-              </div>
-              <div className="space-y-1">
-                {liabilityBalances.length > 0 ? (
-                  liabilityBalances.map((liability) => (
+            {/* 支払う予定（負債）— 繰延残高がある場合のみ */}
+            {liabilityBalances.length > 0 ? (
+              <div className="mb-2">
+                <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
+                  <h3 className="text-xs font-semibold text-[#6B7280]">支払う予定（負債）</h3>
+                </div>
+                <div className="space-y-1">
+                  {liabilityBalances.map((liability) => (
                     <div key={liability.name} className="flex items-center justify-between px-2">
                       <span className="text-sm text-[#374151]">{liability.name}</span>
                       <span className="text-sm font-semibold text-[#374151] text-right min-w-[120px] tabular-nums">
                         {formatAmount(liability.amount)}
                       </span>
                     </div>
-                  ))
-                ) : (
-                  <div className="px-2 text-sm text-[#6B7280]">データがありません</div>
-                )}
-                <div className="border-t border-gray-200 pt-1 mt-1 px-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-[#374151]">負債合計</span>
-                    <span className="text-base font-bold text-[#374151] text-right min-w-[120px] tabular-nums">
-                      {formatAmount(liabilityTotal)}
-                    </span>
+                  ))}
+                  <div className="border-t border-gray-200 pt-1 mt-1 px-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-[#374151]">負債合計</span>
+                      <span className="text-base font-bold text-[#374151] text-right min-w-[120px] tabular-nums">
+                        {formatAmount(liabilityTotal)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
-            {/* 実質残高（次期繰越金）- 会計上の最終値（最も強調） */}
-            <div className="mt-2 rounded-lg border-2 border-double border-[#E66A84] bg-[#FCE7F3] p-2 pt-2">
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-base font-bold text-[#374151]">実質残高（次期繰越金）</span>
-                <span className="text-2xl font-bold text-[#E66A84] text-right min-w-[120px] tabular-nums">
-                  {isEmptyPortal ? "0" : formatAmount(carryOverAmount)}
-                </span>
+            {/* 実質残高（次期繰越金）— 繰延残高がある場合のみ */}
+            {showDeferredBalanceSections ? (
+              <div className="mt-2 rounded-lg border-2 border-double border-[#E66A84] bg-[#FCE7F3] p-2 pt-2">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-base font-bold text-[#374151]">実質残高（次期繰越金）</span>
+                  <span className="text-2xl font-bold text-[#E66A84] text-right min-w-[120px] tabular-nums">
+                    {isEmptyPortal ? "0" : formatAmount(carryOverAmount)}
+                  </span>
+                </div>
+                <p className="text-xs text-[#6B7280] mt-0.5 mb-0.5">
+                  (現金預金合計 + 資産合計 - 負債合計)
+                </p>
+                <p className="text-xs italic text-[#6B7280]">
+                  ※手元の現金に、入る予定を足し、支払う予定を引いた金額です
+                </p>
               </div>
-              <p className="text-xs text-[#6B7280] mt-0.5 mb-0.5">
-                (現金預金合計 + 資産合計 - 負債合計)
-              </p>
-              <p className="text-xs italic text-[#6B7280]">
-                ※手元の現金に、入る予定を足し、支払う予定を引いた金額です
-              </p>
-            </div>
+            ) : null}
             </div>
           </div>
 

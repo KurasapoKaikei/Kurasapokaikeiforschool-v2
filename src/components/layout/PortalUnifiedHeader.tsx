@@ -10,9 +10,14 @@ import { cn } from "@/lib/utils"
 
 export type PortalUnifiedHeaderProps = {
   portal: PortalKind
-  /** 第2段左：ポータル名（クラブは `{name}ポータル` を渡す） */
+  /** 第2段左：ポータル名（クラブはクラブ名のみを渡す） */
   portalTitle: string
   onLogout: () => void
+  /**
+   * クラブポータル第1段右端の「現在の作業者」表示名。
+   * 未宣言時は「未選択」。学校・監査人では渡さない。
+   */
+  currentWorkerLabel?: string
 }
 
 /**
@@ -23,6 +28,7 @@ export function PortalUnifiedHeader({
   portal,
   portalTitle,
   onLogout,
+  currentWorkerLabel,
 }: PortalUnifiedHeaderProps) {
   const brandColor = PORTAL_BRAND[portal]
   const { selectedYear, setSelectedYear, fiscalYears } = usePortalFiscalYear()
@@ -52,13 +58,24 @@ export function PortalUnifiedHeader({
     <header className="sticky top-0 z-50 shadow-sm">
       {/* 第1段：学校コンテキスト */}
       <div className="border-b border-gray-100 bg-[#FAFAFA] px-6 py-2.5">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <span className="text-xl font-bold tracking-tight text-[#4B5563]">
-            {hydrated ? schoolName : "\u00a0"}
-          </span>
-          <span className="text-xs text-[#9CA3AF]">
-            {hydrated ? fiscalPeriod : "\u00a0"}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+            <span className="text-xl font-bold tracking-tight text-[#4B5563]">
+              {hydrated ? schoolName : "\u00a0"}
+            </span>
+            <span className="text-xs text-[#9CA3AF]">
+              {hydrated ? fiscalPeriod : "\u00a0"}
+            </span>
+          </div>
+          {portal === "club" && currentWorkerLabel != null ? (
+            <p
+              className="shrink-0 text-sm text-[#374151]"
+              aria-live="polite"
+            >
+              <span className="text-[#6B7280]">現在の作業者：</span>
+              <span className="font-medium">{currentWorkerLabel}</span>
+            </p>
+          ) : null}
         </div>
       </div>
 

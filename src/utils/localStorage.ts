@@ -14,6 +14,10 @@ export interface Category {
   name: string
   order: number
   isUsed: boolean
+  /** 学校共通カテゴリー由来。クラブポータルでは編集・削除不可 */
+  fromSchool?: boolean
+  /** クラブが追加した日時（ISO）。学校共通には通常付けない */
+  createdAt?: string
 }
 
 export interface AccountTitle {

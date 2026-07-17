@@ -174,10 +174,10 @@
 | 仕様 | 値 |
 |------|-----|
 | 背景色 | 非常に薄いグレー `#FAFAFA`（または白） |
-| 左側 | 学校名「**クラクラサポサポ大学**」— `text-xl font-bold text-[#4B5563]`（従来の2倍強調） |
-| 右側 | 会計期間をインライン表示「**2026.4.1 〜 2027.3.31**」 |
+| 左側 | 学校名（大学名）— `text-xl font-bold text-[#4B5563]` ＋ 会計期間（小さめグレー） |
+| 右側（**クラブポータルのみ**） | **現在の作業者：〇〇〇** — 作業者選択モーダルで宣言した担当者名（複数時は「、」区切り）。未宣言時は「未選択」 |
 
-> **実装定数との対応**: デモ実装では `SCHOOL_DISPLAY_NAME`（`"東京都市大学"`）および `SCHOOL_FISCAL_PERIOD`（`"2026.8.1～2027.7.31"`）を `src/lib/schoolTheme.ts` で保持。本番・デモ切替時は `schoolHeaderDisplay.ts` / `currentSchool.ts` 経由で表示。
+> **実装定数との対応**: デモ実装では `SCHOOL_DISPLAY_NAME`（`"東京都市大学"`）および `SCHOOL_FISCAL_PERIOD`（`"2026.8.1～2027.7.31"`）を `src/lib/schoolTheme.ts` で保持。本番・デモ切替時は `schoolHeaderDisplay.ts` / `currentSchool.ts` 経由で表示。クラブの作業者表示は `ClubPortalHeader` → `UserInfoContext.currentWorkers`（`kurasaokaikei-current-workers`）。
 
 ### 4.2 第2段：ポータル・アイデンティティ帯（カラーブランディング層）
 
@@ -419,9 +419,10 @@ lg以上における画面配置イメージ：
 └─────────────────┴─────────────────┴─────────────────┘
 ```
 
-### 7.3 左列：現在の残高（従来維持）
+### 7.3 左列：現在の残高
 
-- 現金預金内訳・合計、入る予定（資産）、支払う予定（負債）、実質残高（次期繰越金）
+- **通常時**: 現金預金内訳・合計のみを表示（「入る予定（資産）」「支払う予定（負債）」「実質残高（次期繰越金）」は非表示）
+- **繰延後**: 繰延により資産・負債に非ゼロ残高がある場合のみ、該当セクションと実質残高（次期繰越金）を追加表示
 - データ: `getPortalTransactions`, `getPortalAccountTitles`（`clubPortalData.ts`）
 - 左縦線: ピンク `#E66A84`
 - 科目行クリック → 現金預金出納帳（`/club/accounting/ledger/cash-bank`）
@@ -709,19 +710,29 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 
 | 画面 | パス | 役割 |
 |------|------|------|
-| 共通カテゴリー | `/school/settings/category` | カテゴリー雛形の一括定義 |
-| 共通科目 | `/school/settings/account-titles` | 勘定科目マスタの一括定義 |
+| 共通カテゴリー | `/school/settings/category` | 全クラブ共通カテゴリーの定義・編集（**実装済**） |
+| 共通科目 | `/school/settings/account-titles` | 勘定科目マスタの一括定義（プレースホルダ） |
 
-学校が登録したマスタは、配布操作により各クラブの科目設定に反映される（for school 契約ではクラブ側の削除・改名不可）。
+**共通カテゴリー（2026-07-17）**:
+
+| 項目 | 仕様 |
+|------|------|
+| 正本 | `kurasaokaikei-school-common-categories`（`src/lib/schoolCommonCategories.ts`） |
+| 全クラブ反映 | 保存時にクラブ参照キー `classapo_categories` へ同期 |
+| UI | `CategorySettingsEditor`（追加・編集・削除・並び替え） |
+| イベント | `SCHOOL_COMMON_CATEGORIES_CHANGED_EVENT` |
+| 削除制限 | 選択年度に全クラブ横断で仕訳が1件でもあれば削除不可（`schoolCategoryUsage.ts`）。過年度は判定対象外 |
+| 名称編集 | いつでも可。当年度仕訳のみ名称波及、過年度は不変 |
+| クラブ追加権限 | 「クラブごとにカテゴリーの追加権限を与える」許可する／許可しない（既定: 許可しない）。選択年度にクラブ独自カテゴリーが残っている間は許可しないへ変更不可 |
 
 ### 11.2 クラブ実務（配布先）
 
-| 画面 | パス |
-|------|------|
-| カテゴリー | `/club/settings/category` |
-| 科目設定 | `/club/settings/account-titles` |
-| 会計年度 | `/club/settings/fiscal-years` |
-| クラブ設定 | `/club/settings/club`（ご契約情報・団体情報・ログインID表示。パスワード変更・メール変更は **削除済**） |
+| 画面 | パス | 備考 |
+|------|------|------|
+| カテゴリー | `/club/settings/category` | 学校登録カテゴリーは **編集・削除不可**（「学校共通」バッジ）。独自追加は学校の追加権限スイッチが ON のときのみ |
+| 科目設定 | `/club/settings/account-titles` | |
+| 会計年度 | `/club/settings/fiscal-years` | |
+| クラブ設定 | `/club/settings/club` | ご契約情報・団体情報・ログインID表示。パスワード変更・メール変更は **削除済** |
 
 ### 11.3 科目体系
 
@@ -1032,7 +1043,8 @@ npm run db:push
 
 | 項目 | 仕様 | 現行実装 |
 |------|------|----------|
-| 学校共通科目/カテゴリー配布UI | マスタ一括配布 | プレースホルダ画面 |
+| 学校共通カテゴリー配布UI | マスタ一括配布 | **実装済**（`/school/settings/category` → 全クラブ同期） |
+| 学校共通科目配布UI | マスタ一括配布 | プレースホルダ画面 |
 | `/parent/view?token=` | 保護者閲覧 | 未実装（Prisma スキーマのみ） |
 | `/member` | 部員マイページ | プレースホルダ |
 | 学校最終完全ロック | 承認済年度 | localStorage デモのみ（Prisma `fiscalYearLock.ts` は別系統） |
