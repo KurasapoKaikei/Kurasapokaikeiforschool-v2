@@ -19,6 +19,8 @@ import {
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import { transactionMatchesCashAccount } from "@/lib/cashAccountBalance"
+import { getCashLedgerOpeningLabel } from "@/lib/openingBalanceLabel"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -38,19 +40,6 @@ function getFiscalYearStart(): string {
 /** 本日を YYYY-MM-DD で返す */
 function getTodayString(): string {
   return new Date().toISOString().slice(0, 10)
-}
-
-/** 現金・預金出納帳に載せるか（counterparty 一致、または集金設定の入金先口座と一致） */
-function transactionMatchesCashAccount(
-  t: Transaction,
-  cashName: string,
-  scheduleById: Map<string, CollectionSchedule>
-): boolean {
-  if (t.counterparty === cashName) return true
-  if (t.type !== "collection" || !t.collectionScheduleId) return false
-  const schedule = scheduleById.get(t.collectionScheduleId)
-  const scheduleCash = (schedule?.counterpartyName ?? "").trim()
-  return scheduleCash === cashName
 }
 
 type RowKind = "opening" | "data" | "subtotal"
@@ -263,17 +252,19 @@ export default function LedgerCashBankPage() {
     return balance
   }, [selectedCashAccount, transactions, openingBalance, startDate, fiscalYearStartDate, collectionScheduleById])
 
+  const openingLabel = getCashLedgerOpeningLabel()
+
   const tableRows = useMemo((): TableRow[] => {
     const rows: TableRow[] = []
     if (!selectedCashAccount) return rows
 
-    // 1行目: 期首残高（または表示開始時点の残高）
+    // 1行目: 利用初年度は「初期残高」、繰越後は「期首残高」
     rows.push({
       kind: "opening",
       key: "opening-balance",
       date: startDate,
       category: "",
-      accountTitle: "期首残高",
+      accountTitle: openingLabel,
       incomeAmount: startingBalance > 0 ? startingBalance : undefined,
       expenseAmount: undefined,
       balance: startingBalance,
@@ -344,7 +335,7 @@ export default function LedgerCashBankPage() {
       })
     }
     return rows
-  }, [selectedCashAccount, filteredTransactions, startingBalance, startDate])
+  }, [selectedCashAccount, filteredTransactions, startingBalance, startDate, openingLabel])
 
   const dynamicTitle = useMemo(() => {
     const accountName = selectedCashAccount?.name ?? "口座未選択"
@@ -535,7 +526,11 @@ export default function LedgerCashBankPage() {
                       </td>
                       {/* 科目 */}
                       <td className={`px-2 py-2 text-left text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isOpening ? "font-semibold" : ""}`}>
-                        {row.isOpening ? "期首残高" : row.kind === "data" ? row.accountTitle ?? "-" : ""}
+                        {row.isOpening
+                          ? row.accountTitle ?? openingLabel
+                          : row.kind === "data"
+                            ? row.accountTitle ?? "-"
+                            : ""}
                       </td>
                       {/* 入金額 */}
                       <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden`}>

@@ -17,6 +17,10 @@ import {
   type CollectionSchedule,
   type CollectionRecord,
 } from "@/utils/localStorage"
+import {
+  FISCAL_OPENING_MONTH,
+  getSubjectOpeningForSummary,
+} from "@/lib/accountTitleBalances"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -298,8 +302,26 @@ export default function SummaryAnnualPage() {
         }
       })
 
+    const categoryTab = selectedCategoryId === "all" ? "all" : selectedCategoryId
+    incomeTitles.forEach((t) => {
+      const full = accountTitles.find((a) => a.group === "income" && a.name === t.name)
+      const opening = getSubjectOpeningForSummary(full, categoryTab)
+      if (opening !== 0) {
+        map[FISCAL_OPENING_MONTH][t.name] =
+          (map[FISCAL_OPENING_MONTH][t.name] ?? 0) + opening
+      }
+    })
+
     return map
-  }, [transactions, collectionIncomeEntries, fiscalYear, selectedCategoryName, incomeTitles])
+  }, [
+    transactions,
+    collectionIncomeEntries,
+    fiscalYear,
+    selectedCategoryName,
+    selectedCategoryId,
+    incomeTitles,
+    accountTitles,
+  ])
 
   // 月別・科目別集計（支出）
   const expenseByMonthAndTitle = useMemo(() => {
@@ -324,8 +346,25 @@ export default function SummaryAnnualPage() {
         }
       })
 
+    const categoryTab = selectedCategoryId === "all" ? "all" : selectedCategoryId
+    expenseTitles.forEach((t) => {
+      const full = accountTitles.find((a) => a.group === "expense" && a.name === t.name)
+      const opening = getSubjectOpeningForSummary(full, categoryTab)
+      if (opening !== 0) {
+        map[FISCAL_OPENING_MONTH][t.name] =
+          (map[FISCAL_OPENING_MONTH][t.name] ?? 0) + opening
+      }
+    })
+
     return map
-  }, [transactions, fiscalYear, selectedCategoryName, expenseTitles])
+  }, [
+    transactions,
+    fiscalYear,
+    selectedCategoryName,
+    selectedCategoryId,
+    expenseTitles,
+    accountTitles,
+  ])
 
   // 月別合計（収入・支出）
   const incomeTotalByMonth = useMemo(() => {

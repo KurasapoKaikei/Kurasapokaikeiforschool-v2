@@ -11,30 +11,40 @@ import {
   getPortalMessages,
   getPortalTransactions,
 } from "@/lib/clubPortalData"
+import { computeCashAccountCurrentBalance } from "@/lib/cashAccountBalance"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
 import {
   CLUB_MEMBERS_CHANGED_EVENT,
   isClubMembersChangedForClub,
 } from "@/lib/clubMembers"
+import { SCHOOL_COMMON_ACCOUNT_TITLES_CHANGED_EVENT } from "@/lib/schoolCommonAccountTitles"
 import { ClubDashboardSettlementSummary } from "@/components/club/ClubDashboardSettlementSummary"
 import { ClubDashboardVoucherStats } from "@/components/club/ClubDashboardVoucherStats"
 import { ClubMessageInboxList } from "@/components/club/ClubMessageInboxList"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import type { ClubPortalMessageView } from "@/lib/portalMessages"
-import { type Transaction, type AccountTitle, type Member } from "@/utils/localStorage"
+import {
+  getCollectionSchedules,
+  type Transaction,
+  type AccountTitle,
+  type Member,
+  type CollectionSchedule,
+} from "@/utils/localStorage"
 
 export default function DashboardPage() {
   const router = useRouter()
   const { activeClub, isEmptyPortal, refresh } = useClubSession()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
+  const [collectionSchedules, setCollectionSchedules] = useState<CollectionSchedule[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [messages, setMessages] = useState<ClubPortalMessageView[]>([])
   const isLocked = useClubSettlementLock()
   const loadPortalData = useCallback(() => {
     setTransactions(getPortalTransactions(activeClub))
     setAccountTitles(getPortalAccountTitles(activeClub))
+    setCollectionSchedules(getCollectionSchedules())
     setMembers(getPortalMembers(activeClub))
     setMessages(getPortalMessages(activeClub))
     refresh()
@@ -46,53 +56,50 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const clubId = activeClub?.id ?? ""
-    const onMessagesChange = () => loadPortalData()
+    const onReload = () => loadPortalData()
     const onMembersChange = (e: Event) => {
       if (!clubId || isClubMembersChangedForClub(clubId, e)) {
         loadPortalData()
       }
     }
-    window.addEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onMessagesChange)
+    window.addEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onReload)
+    window.addEventListener(SCHOOL_COMMON_ACCOUNT_TITLES_CHANGED_EVENT, onReload)
     window.addEventListener(CLUB_MEMBERS_CHANGED_EVENT, onMembersChange)
-    window.addEventListener("storage", onMembersChange)
+    window.addEventListener("storage", onReload)
+    window.addEventListener("focus", onReload)
     return () => {
-      window.removeEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onMessagesChange)
+      window.removeEventListener(PORTAL_MESSAGES_CHANGED_EVENT, onReload)
+      window.removeEventListener(SCHOOL_COMMON_ACCOUNT_TITLES_CHANGED_EVENT, onReload)
       window.removeEventListener(CLUB_MEMBERS_CHANGED_EVENT, onMembersChange)
-      window.removeEventListener("storage", onMembersChange)
+      window.removeEventListener("storage", onReload)
+      window.removeEventListener("focus", onReload)
     }
   }, [loadPortalData, activeClub?.id])
 
-  // 現金・預金科目のみを取得
+  // 現金・預金科目のみを取得（登録時点で表示）
   const cashAccountTitles = useMemo(
     () => accountTitles.filter((t) => t.group === "cash").sort((a, b) => a.order - b.order),
     [accountTitles]
   )
 
-  // 各現金・預金科目の残高を計算（出納帳と同じロジック）
+  const collectionScheduleById = useMemo(
+    () => new Map(collectionSchedules.map((s) => [s.id, s])),
+    [collectionSchedules]
+  )
+
+  // 各現金・預金科目の残高（現金預金出納帳と同じ集計）
   const cashBalances = useMemo(() => {
-    return cashAccountTitles.map((account) => {
-      const accountName = account.name
-      const openingBalance = account.balance ?? 0
-
-      // この科目が counterparty（入金先/出金元）として登録されている取引を計算
-      let balance = openingBalance
-      transactions.forEach((t) => {
-        if (t.counterparty !== accountName) return
-
-        const isIncome = t.type === "income" || t.type === "collection"
-        const isExpense = t.type === "expense" || t.type === "transfer" || t.type === "deferred"
-
-        if (isIncome) balance += t.amount
-        if (isExpense) balance -= t.amount
-      })
-
-      return {
-        id: account.id,
-        name: accountName,
-        currentBalance: balance,
-      }
-    })
-  }, [cashAccountTitles, transactions])
+    return cashAccountTitles.map((account) => ({
+      id: account.id,
+      name: account.name,
+      currentBalance: computeCashAccountCurrentBalance(
+        account.balance,
+        account.name,
+        transactions,
+        collectionScheduleById
+      ),
+    }))
+  }, [cashAccountTitles, transactions, collectionScheduleById])
 
   // 総残高（全科目の現在残高の合計）
   const cashDepositTotal = useMemo(
@@ -204,21 +211,18 @@ export default function DashboardPage() {
       {/* ダッシュボード本体のみ 67vh（サイドバーには適用しない） */}
       <div className="flex h-[67vh] max-h-[67vh] min-h-0 flex-col overflow-hidden px-6 pb-3 pt-2">
         <div className="grid h-full min-h-0 grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* 左ブロック: 現在の残高（科目多数時はこのカード内のみスクロール） */}
+          {/* 左ブロック: 現在の現金預金残高（科目多数時はこのカード内のみスクロール） */}
           <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#E66A84] bg-white p-3 shadow-sm">
             <div className="mb-2 flex shrink-0 items-center justify-between">
               <h2 className="border-b-2 border-[#E66A84] pb-1 text-base font-semibold text-[#E66A84]">
-                現在の残高
+                現在の現金預金残高
               </h2>
               <span className="text-xs text-[#9CA3AF]">（単位：円）</span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {/* 現金預金の内訳 */}
+            {/* 現金・預金科目の内訳 */}
             <div className="mb-2">
-              <div className="bg-[#F3F4F6] px-2 py-1 mb-1 rounded">
-                <h3 className="text-xs font-semibold text-[#6B7280]">現金預金</h3>
-              </div>
               <div className="space-y-1">
                 {cashBalances.length > 0 ? (
                   cashBalances.map((item) => (
@@ -247,7 +251,6 @@ export default function DashboardPage() {
                       {formatAmount(cashDepositTotal)}
                     </span>
                   </div>
-                  <p className="text-xs text-[#6B7280] mt-0.5">現在のキャッシュ</p>
                 </div>
               </div>
             </div>

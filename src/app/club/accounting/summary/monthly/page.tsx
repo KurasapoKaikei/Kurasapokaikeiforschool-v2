@@ -18,6 +18,10 @@ import {
   type CollectionSchedule,
   type CollectionRecord,
 } from "@/utils/localStorage"
+import {
+  FISCAL_OPENING_MONTH,
+  getSubjectOpeningForSummary,
+} from "@/lib/accountTitleBalances"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -338,8 +342,10 @@ export default function SummaryMonthlyPage() {
     })
   }, [collectionIncomeEntries, monthStart, monthEnd, selectedCategoryName])
 
-  // 科目別に集計（収入）- 0円の科目も表示
+  // 科目別に集計（収入）- 0円の科目も表示。期首月は科目別台帳と同じ初期残高を加算
   const incomeRows = useMemo((): SummaryRow[] => {
+    const categoryTab = selectedCategoryId === "all" ? "all" : selectedCategoryId
+    const includeOpening = selectedMonth === FISCAL_OPENING_MONTH
     return incomeTitles.map((title) => {
       const txs = filteredTransactions.filter(
         (t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t) && t.accountTitle === title.name
@@ -347,9 +353,14 @@ export default function SummaryMonthlyPage() {
       const fallbackCollections = filteredCollectionIncomeEntries.filter(
         (t) => t.accountTitle === title.name
       )
+      const full = accountTitles.find((a) => a.group === "income" && a.name === title.name)
+      const opening = includeOpening
+        ? getSubjectOpeningForSummary(full, categoryTab)
+        : 0
       const totalAmount =
         txs.reduce((s, t) => s + t.amount, 0) +
-        fallbackCollections.reduce((s, t) => s + t.amount, 0)
+        fallbackCollections.reduce((s, t) => s + t.amount, 0) +
+        opening
       return {
         subjectId: title.id,
         subjectName: title.name,
@@ -357,15 +368,28 @@ export default function SummaryMonthlyPage() {
         type: "income",
       }
     })
-  }, [incomeTitles, filteredTransactions, filteredCollectionIncomeEntries])
+  }, [
+    incomeTitles,
+    filteredTransactions,
+    filteredCollectionIncomeEntries,
+    selectedMonth,
+    selectedCategoryId,
+    accountTitles,
+  ])
 
   // 科目別に集計（支出）- 0円の科目も表示
   const expenseRows = useMemo((): SummaryRow[] => {
+    const categoryTab = selectedCategoryId === "all" ? "all" : selectedCategoryId
+    const includeOpening = selectedMonth === FISCAL_OPENING_MONTH
     return expenseTitles.map((title) => {
       const txs = filteredTransactions.filter(
         (t) => t.type === "expense" && !isTransferLeg(t) && t.accountTitle === title.name
       )
-      const totalAmount = txs.reduce((s, t) => s + t.amount, 0)
+      const full = accountTitles.find((a) => a.group === "expense" && a.name === title.name)
+      const opening = includeOpening
+        ? getSubjectOpeningForSummary(full, categoryTab)
+        : 0
+      const totalAmount = txs.reduce((s, t) => s + t.amount, 0) + opening
       return {
         subjectId: title.id,
         subjectName: title.name,
@@ -373,7 +397,13 @@ export default function SummaryMonthlyPage() {
         type: "expense",
       }
     })
-  }, [expenseTitles, filteredTransactions])
+  }, [
+    expenseTitles,
+    filteredTransactions,
+    selectedMonth,
+    selectedCategoryId,
+    accountTitles,
+  ])
 
   // 合計
   const totalIncome = useMemo(

@@ -347,9 +347,8 @@ export function CategorySettingsEditor({
           <div className="space-y-2">
             {sorted.map((category, index) => {
               const readOnly = isReadOnly(category)
-              const schoolCommon = Boolean(
-                category.fromSchool || isCategoryReadOnly?.(category)
-              )
+              // クラブ側のみ表示（学校管理者ポータルでは isCategoryReadOnly 未指定のため出さない）
+              const schoolCommon = Boolean(isCategoryReadOnly?.(category))
               return (
                 <div
                   key={category.id}

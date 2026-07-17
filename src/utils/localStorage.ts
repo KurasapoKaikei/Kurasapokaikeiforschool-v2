@@ -26,9 +26,23 @@ export interface AccountTitle {
   name: string
   /** 紐づけるカテゴリーID。現金・預金（group===cash）の場合は空配列（共通）を許容する */
   categoryIds: string[]
+  /**
+   * 初期残高。
+   * - 現金・預金: 科目単位の残高
+   * - 収入・支出: カテゴリー別残高（categoryBalances）の合計（互換・表示用）
+   */
   balance: number | null
+  /**
+   * 収入・支出のカテゴリー別初期残高（categoryId → 金額）。
+   * 「すべて」タブでは合計を表示し、カテゴリー別タブで入力する。
+   */
+  categoryBalances?: Record<string, number>
   order: number
   isUsed: boolean
+  /** 学校共通科目由来。クラブポータルでは編集・削除不可 */
+  fromSchool?: boolean
+  /** クラブが追加した日時（ISO） */
+  createdAt?: string
 }
 
 export interface Transaction {
@@ -137,7 +151,7 @@ export interface CollectionRecord {
 }
 
 export interface SystemSettings {
-  /** システム利用初年度の前期繰越金（期首残高） */
+  /** システム利用初年度の前期繰越金（初期残高） */
   openingCarryover: number | null
   /** 旧ロックフラグ（互換維持用）。実際の編集可否は年度判定で制御する */
   openingCarryoverLocked: boolean

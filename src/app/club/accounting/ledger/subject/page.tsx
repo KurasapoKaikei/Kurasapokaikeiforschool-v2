@@ -17,6 +17,11 @@ import {
 import { getEditUrl, isCsvLinkedTransaction } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import { getTitleBalanceForTab } from "@/lib/accountTitleBalances"
+import {
+  getSubjectLedgerOpeningLabel,
+  isSystemInitialYear,
+} from "@/lib/openingBalanceLabel"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -37,7 +42,7 @@ function getTodayString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-type RowKind = "data" | "subtotal" | "grandTotal"
+type RowKind = "opening" | "data" | "subtotal" | "grandTotal"
 
 interface TableRow {
   kind: RowKind
@@ -49,6 +54,7 @@ interface TableRow {
   /** 単式簿記：取引の増減を符号付きで表示・合計（プラスの入金・マイナスの返金など） */
   amount?: number
   isSubtotal?: boolean
+  isOpening?: boolean
   transactionId?: string
   receiptUrl?: string | null
   transaction?: Transaction
@@ -192,6 +198,26 @@ export default function LedgerSubjectPage() {
     [categories, categoryId]
   )
 
+  const fiscalYearStartDate = useMemo(() => getFiscalYearStart(), [])
+
+  /** 利用初年度のみ：科目設定のカテゴリー別初期残高 */
+  const subjectOpeningBalance = useMemo(() => {
+    if (!selectedSubject) return null
+    if (!isSystemInitialYear()) return null
+    if (selectedSubject.group !== "income" && selectedSubject.group !== "expense") {
+      return null
+    }
+    const tabKey = categoryId === "all" ? "all" : categoryId
+    return getTitleBalanceForTab(selectedSubject, tabKey)
+  }, [selectedSubject, categoryId])
+
+  const showSubjectOpeningRow = useMemo(() => {
+    if (subjectOpeningBalance === null) return false
+    return (
+      fiscalYearStartDate >= startDate && fiscalYearStartDate <= endDate
+    )
+  }, [subjectOpeningBalance, fiscalYearStartDate, startDate, endDate])
+
   const filteredTransactions = useMemo(() => {
     if (!selectedSubject) return []
     const subjectName = selectedSubject.name
@@ -212,7 +238,25 @@ export default function LedgerSubjectPage() {
 
   const tableRows = useMemo((): TableRow[] => {
     const rows: TableRow[] = []
-    if (filteredTransactions.length === 0) return rows
+    if (!selectedSubject) return rows
+
+    const openingLabel = getSubjectLedgerOpeningLabel()
+    const openingAmount = showSubjectOpeningRow ? subjectOpeningBalance : null
+
+    if (openingAmount !== null) {
+      rows.push({
+        kind: "opening",
+        key: "opening-balance",
+        date: fiscalYearStartDate,
+        counterparty: openingLabel,
+        amount: openingAmount,
+        isOpening: true,
+      })
+    }
+
+    if (filteredTransactions.length === 0 && openingAmount === null) {
+      return rows
+    }
 
     const byMonth = new Map<string, Transaction[]>()
     for (const t of filteredTransactions) {
@@ -249,7 +293,9 @@ export default function LedgerSubjectPage() {
       })
     }
 
-    const periodSum = filteredTransactions.reduce((s, t) => s + t.amount, 0)
+    const periodSum =
+      (openingAmount ?? 0) +
+      filteredTransactions.reduce((s, t) => s + t.amount, 0)
     rows.push({
       kind: "grandTotal",
       key: "grand-total",
@@ -258,7 +304,13 @@ export default function LedgerSubjectPage() {
     })
 
     return rows
-  }, [filteredTransactions])
+  }, [
+    selectedSubject,
+    filteredTransactions,
+    showSubjectOpeningRow,
+    subjectOpeningBalance,
+    fiscalYearStartDate,
+  ])
 
   const dynamicTitle = useMemo(() => {
     const categoryLabel = categoryId === "all" ? "すべて" : selectedCategory?.name ?? "すべて"
@@ -431,22 +483,28 @@ export default function LedgerSubjectPage() {
                           ? "bg-[#68A384]/25 font-semibold border-t-2 border-[#68A384]/40"
                           : row.isSubtotal
                             ? "bg-[#68A384]/15 font-semibold"
-                            : index % 2 === 0
-                              ? "bg-white"
-                              : "bg-gray-50/70"
+                            : row.isOpening
+                              ? "bg-white font-semibold"
+                              : index % 2 === 0
+                                ? "bg-white"
+                                : "bg-gray-50/70"
                       }`}
                     >
                       {/* 日付 */}
-                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isSubtotal || row.kind === "grandTotal" ? "font-medium" : ""} ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
-                        {row.kind === "data" && row.date ? formatDateDisplay(row.date) : row.monthLabel}
+                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isSubtotal || row.kind === "grandTotal" || row.isOpening ? "font-medium" : ""} ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
+                        {(row.kind === "data" || row.isOpening) && row.date
+                          ? formatDateDisplay(row.date)
+                          : row.monthLabel}
                       </td>
-                      {/* 現金/預金 */}
-                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
-                        {row.kind === "data" ? row.counterparty ?? "-" : ""}
+                      {/* 現金/預金（初期残高行は科目名として「初期残高」を表示） */}
+                      <td className={`px-2 py-2 text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${row.isOpening ? "font-semibold" : ""} ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
+                        {row.kind === "data" || row.isOpening
+                          ? row.counterparty ?? "-"
+                          : ""}
                       </td>
                       {/* 金額（符号付き・単式簿記） */}
                       <td className={`px-2 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 text-xs whitespace-nowrap overflow-hidden ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`}>
-                        {row.kind === "data" && row.amount != null
+                        {(row.kind === "data" || row.isOpening) && row.amount != null
                           ? formatSignedLedgerAmount(row.amount)
                           : row.isSubtotal || row.kind === "grandTotal"
                             ? row.amount != null
@@ -457,13 +515,13 @@ export default function LedgerSubjectPage() {
                       {/* メモ */}
                       <td className={`px-2 py-2 text-left text-[#374151] border-r border-gray-200 text-xs overflow-hidden ${index % 2 === 0 && !row.isSubtotal && row.kind !== "grandTotal" ? "bg-white" : row.isSubtotal || row.kind === "grandTotal" ? "" : "bg-gray-50/70"}`} title={row.kind === "data" ? row.memo ?? undefined : undefined}>
                         <span className="block truncate max-w-full">
-                          {row.kind === "data" ? row.memo ?? "-" : ""}
+                          {row.kind === "data" ? row.memo ?? "-" : row.isOpening ? "-" : ""}
                         </span>
                       </td>
                       {/* レシート・証憑 */}
                       <td
                         className={`px-2 py-2 text-center border-r border-gray-200 text-xs ${
-                          row.isSubtotal || row.kind === "grandTotal"
+                          row.isSubtotal || row.kind === "grandTotal" || row.isOpening
                             ? ""
                             : row.receiptUrl
                               ? index % 2 === 0
@@ -474,13 +532,14 @@ export default function LedgerSubjectPage() {
                         style={
                           !row.isSubtotal &&
                           row.kind !== "grandTotal" &&
+                          !row.isOpening &&
                           !row.receiptUrl &&
                           row.transaction?.type !== "collection"
                             ? { backgroundColor: RECEIPT_ALERT_BG }
                             : undefined
                         }
                       >
-                        {row.isSubtotal || row.kind === "grandTotal" ? (
+                        {row.isSubtotal || row.kind === "grandTotal" || row.isOpening ? (
                           ""
                         ) : row.transaction?.type === "collection" ? (
                           <span className="text-[#9CA3AF] text-xs">ー</span>

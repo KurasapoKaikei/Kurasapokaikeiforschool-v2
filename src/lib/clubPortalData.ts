@@ -14,7 +14,17 @@ import {
 import { resolveActiveClubSession, type ActiveClubSession } from "@/lib/activeClubSession"
 import { getClubMembersById } from "@/lib/clubMembers"
 import { loadSchoolClubs } from "@/lib/schoolClubs"
-import type { AccountTitle, Member, Transaction } from "@/utils/localStorage"
+import {
+  hasSchoolCommonAccountTitlesConfigured,
+  mergeSchoolAndClubAccountTitles,
+} from "@/lib/schoolCommonAccountTitles"
+import {
+  getAccountTitles,
+  getTransactions,
+  type AccountTitle,
+  type Member,
+  type Transaction,
+} from "@/utils/localStorage"
 
 const BASE_KEYS = {
   TRANSACTIONS: "classapo_transactions",
@@ -73,23 +83,31 @@ export function isLegacyGlobalPortal(active: ActiveClubSession | null): boolean 
 export function getPortalTransactions(
   active: ActiveClubSession | null
 ): Transaction[] {
-  if (isEmptyPortalForClub(active)) return []
   if (isLegacyGlobalPortal(active)) return []
-  return readStorageJson(
-    scopedKey(BASE_KEYS.TRANSACTIONS, active!.id),
+  if (!active) return []
+  if (isEmptyPortalForClub(active)) return []
+  const scoped = readStorageJson<Transaction[]>(
+    scopedKey(BASE_KEYS.TRANSACTIONS, active.id),
     []
   )
+  // 出納帳・入出金登録と同じ正本（グローバル）へフォールバック
+  if (scoped.length > 0) return scoped
+  return getTransactions()
 }
 
+/**
+ * 科目マスタは科目設定・現金預金出納帳と同じ正本を返す。
+ * 空ポータルでも現金・預金科目と初期残高を表示できるよう、空配列にしない。
+ */
 export function getPortalAccountTitles(
   active: ActiveClubSession | null
 ): AccountTitle[] {
-  if (isEmptyPortalForClub(active)) return []
   if (isLegacyGlobalPortal(active)) return []
-  return readStorageJson(
-    scopedKey(BASE_KEYS.ACCOUNT_TITLES, active!.id),
-    []
-  )
+  if (!active) return []
+  if (hasSchoolCommonAccountTitlesConfigured()) {
+    return mergeSchoolAndClubAccountTitles()
+  }
+  return getAccountTitles()
 }
 
 export function getPortalMembers(active: ActiveClubSession | null): Member[] {

@@ -146,3 +146,70 @@ export function renameCategoryInFiscalYearAcrossClubs(
   }
   return changed
 }
+
+/**
+ * 科目が当年度仕訳で使用されているか
+ * （accountTitle または現金預金の counterparty）
+ */
+export function isAccountTitleUsedInFiscalYear(
+  titleName: string,
+  fiscalYearLabel: PortalFiscalYearLabel | string
+): boolean {
+  const name = titleName.trim()
+  if (!name) return false
+  const fiscalYear = parsePortalFiscalYearLabel(fiscalYearLabel)
+  return loadAllClubTransactions().some(
+    (t) =>
+      isDateInFiscalYear(t.date, fiscalYear) &&
+      (categoryNamesMatch(t.accountTitle, name) ||
+        categoryNamesMatch(t.counterparty, name))
+  )
+}
+
+export function applyFiscalYearUsageToAccountTitles<
+  T extends { name: string; isUsed: boolean },
+>(titles: T[], fiscalYearLabel: PortalFiscalYearLabel | string): T[] {
+  return titles.map((t) => ({
+    ...t,
+    isUsed: isAccountTitleUsedInFiscalYear(t.name, fiscalYearLabel),
+  }))
+}
+
+/** 科目名変更を当年度仕訳のみ全クラブへ波及（accountTitle / counterparty） */
+export function renameAccountTitleInFiscalYearAcrossClubs(
+  oldName: string,
+  newName: string,
+  fiscalYearLabel: PortalFiscalYearLabel | string
+): number {
+  const oldTrimmed = oldName.trim()
+  const newTrimmed = newName.trim()
+  if (!oldTrimmed || !newTrimmed || categoryNamesMatch(oldTrimmed, newTrimmed)) {
+    return 0
+  }
+  const fiscalYear = parsePortalFiscalYearLabel(fiscalYearLabel)
+  let changed = 0
+  for (const key of listTransactionStorageKeys()) {
+    const txs = readJsonArray<Transaction>(key)
+    let keyChanged = 0
+    const updated = txs.map((t) => {
+      if (!isDateInFiscalYear(t.date, fiscalYear)) return t
+      let next = t
+      let touched = false
+      if (categoryNamesMatch(t.accountTitle, oldTrimmed)) {
+        next = { ...next, accountTitle: newTrimmed }
+        touched = true
+      }
+      if (categoryNamesMatch(t.counterparty, oldTrimmed)) {
+        next = { ...next, counterparty: newTrimmed }
+        touched = true
+      }
+      if (touched) keyChanged++
+      return next
+    })
+    if (keyChanged > 0) {
+      writeJsonArray(key, updated)
+      changed += keyChanged
+    }
+  }
+  return changed
+}
