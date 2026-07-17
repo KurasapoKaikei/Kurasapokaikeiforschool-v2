@@ -19,7 +19,6 @@ import { Building2 } from "lucide-react"
 type StatCardConfig = {
   key: keyof SchoolAuditProgressCounts
   label: string
-  description: string
   badgeVariant: AuditorAuditBadgeVariant
   cardClass: string
   valueClass: string
@@ -30,7 +29,6 @@ const STAT_CARDS: StatCardConfig[] = [
   {
     key: "preparing",
     label: "未提出",
-    description: "未提出・ロックなし",
     badgeVariant: "muted",
     cardClass: "border-red-200 bg-red-50",
     valueClass: "text-red-700",
@@ -39,7 +37,6 @@ const STAT_CARDS: StatCardConfig[] = [
   {
     key: "inAudit",
     label: "監査中",
-    description: "監査中かつ未承認",
     badgeVariant: "navy",
     cardClass: "border-green-200 bg-green-50",
     valueClass: "text-green-700",
@@ -48,7 +45,6 @@ const STAT_CARDS: StatCardConfig[] = [
   {
     key: "rejected",
     label: "差戻し",
-    description: "監査人差戻し中",
     badgeVariant: "rejected",
     cardClass: "border-amber-200 bg-amber-50",
     valueClass: "text-amber-800",
@@ -57,7 +53,6 @@ const STAT_CARDS: StatCardConfig[] = [
   {
     key: "approved",
     label: "承認済",
-    description: "監査人承認・完全ロック",
     badgeVariant: "approved",
     cardClass: "border-blue-600/25 bg-blue-50",
     valueClass: "text-blue-700",
@@ -162,7 +157,7 @@ export function SchoolAuditProgressSummary() {
         </div>
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-[#6B7280]">
-            学内全クラブの監査ステータス（localStorage から自動集計）
+            全クラブの監査ステータス
           </p>
           <div className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
             <Building2 className="h-3.5 w-3.5" aria-hidden />
@@ -205,10 +200,6 @@ export function SchoolAuditProgressSummary() {
                     クラブ
                   </span>
                 ) : null}
-              </p>
-
-              <p className="mt-2 w-full text-left text-[10px] leading-snug text-[#9CA3AF] sm:text-xs">
-                {card.description}
               </p>
 
               {showBar ? (

@@ -324,27 +324,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 中央ブロック: メッセージBOX（上）→ 現在の部員数（下） */}
+          {/* 中央ブロック: 現在の部員数（上）→ メッセージBOX（下） */}
           <div className="flex min-h-0 flex-col gap-3">
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white p-3 shadow-sm">
-              <div className="mb-2 flex shrink-0 items-center justify-between gap-2 border-b-2 border-[#4A90E2] pb-1">
-                <h2 className="text-base font-semibold text-[#4A90E2]">メッセージBOX</h2>
-                <Link
-                  href={clubPath("/messages")}
-                  className="shrink-0 text-xs font-medium text-[#4A90E2] transition-colors hover:text-[#3A7BC8] hover:underline"
-                >
-                  一覧はこちら ➔
-                </Link>
-              </div>
-              <ClubMessageInboxList
-                messages={messages}
-                variant="compact"
-                maxItems={5}
-                showUnreadSummary={unreadMessageCount > 0}
-                className="min-h-0 flex-1"
-              />
-            </div>
-
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#9D8CC3] bg-white p-3 shadow-sm">
               <div className="mb-2 shrink-0">
                 <div className="mb-1 flex items-center justify-between">
@@ -384,15 +365,34 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white p-3 shadow-sm">
+              <div className="mb-2 flex shrink-0 items-center justify-between gap-2 border-b-2 border-[#4A90E2] pb-1">
+                <h2 className="text-base font-semibold text-[#4A90E2]">メッセージBOX</h2>
+                <Link
+                  href={clubPath("/messages")}
+                  className="shrink-0 text-xs font-medium text-[#4A90E2] transition-colors hover:text-[#3A7BC8] hover:underline"
+                >
+                  一覧はこちら ➔
+                </Link>
+              </div>
+              <ClubMessageInboxList
+                messages={messages}
+                variant="compact"
+                maxItems={5}
+                showUnreadSummary={unreadMessageCount > 0}
+                className="min-h-0 flex-1"
+              />
+            </div>
           </div>
 
-          {/* 右ブロック: 決算ステータス（上）→ 証憑未登録数（下） */}
+          {/* 右ブロック: 証憑未登録数（上）→ 決算ステータス（下） */}
           <div className="flex min-h-0 flex-col gap-3">
-            <ClubDashboardSettlementSummary />
             <ClubDashboardVoucherStats
               transactions={transactions}
               isEmptyPortal={isEmptyPortal}
             />
+            <ClubDashboardSettlementSummary />
           </div>
         </div>
       </div>

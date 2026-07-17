@@ -137,10 +137,10 @@
 ```
 ┌─────────────────┬─────────────────┬─────────────────┐
 │  左列           │  中央列         │  右列           │
-│  現在の残高     │  メッセージBOX  │  決算ステータス │
+│  現在の残高     │  現在の部員数   │  証憑未登録数   │
 │  （スクロール） │  （上半分）     │  （上半分）     │
 │                 ├─────────────────┼─────────────────┤
-│                 │  現在の部員数   │  証憑未登録数   │
+│                 │  メッセージBOX  │  決算ステータス │
 │                 │  （下半分）     │  （下半分）     │
 └─────────────────┴─────────────────┴─────────────────┘
 ```
@@ -153,33 +153,33 @@
 
 #### 中央列（上下 2 分割、`flex-1` ずつ）
 
-**上半分 — メッセージBOX**
+**上半分 — 現在の部員数**
+
+- 4 学年別人数 + 合計（在籍 `active` のみ）
+- データ: `getPortalMembers(activeClub)`
+
+**下半分 — メッセージBOX**
 
 - 最大 **5 件** 表示（`ClubMessageInboxList` の `maxItems={5}`、`variant="compact"`）
 - ヘッダーに「一覧はこちら ➔」→ `/club/messages`
 - データ: `getPortalMessages(activeClub)`、`PORTAL_MESSAGES_CHANGED_EVENT` で更新
 
-**下半分 — 現在の部員数**
-
-- 4 学年別人数 + 合計（在籍 `active` のみ）
-- データ: `getPortalMembers(activeClub)`
-
 #### 右列（上下 2 分割）
 
-**上半分 — 決算ステータス**
-
-- コンポーネント: `ClubDashboardSettlementSummary`（`src/components/club/ClubDashboardSettlementSummary.tsx`）
-- 4 色ルールのステップ進捗（`ClubSettlementProgressSteps`）、スタッキングバー、現在ステータスバッジ（`ClubWorkflowStatusBadge`）
-- 通常: `[未提出] → [監査中] → [承認済]`  
-  差戻履歴あり: `[未提出] → [監査中] → [差戵] → [監査中(再)] → [承認済]`
-- `club_workflow_status` を購読してリアルタイム更新
-
-**下半分 — 証憑未登録数（新規）**
+**上半分 — 証憑未登録数**
 
 - コンポーネント: `ClubDashboardVoucherStats`（`src/components/club/ClubDashboardVoucherStats.tsx`）
 - 表示形式: **`証憑未登録数： {未登録} / {支出仕訳総数} 件`**（データ未投入時は `0 / 0`）
 - 集計: `computeClubReceiptStats(transactions)`（`src/lib/clubReceiptStats.ts`）
 - 「出納帳へ ➔」リンク: `/club/accounting/ledger/cash-bank`
+
+**下半分 — 決算ステータス**
+
+- コンポーネント: `ClubDashboardSettlementSummary`（`src/components/club/ClubDashboardSettlementSummary.tsx`）
+- 4 色ルールのステップ進捗（`ClubSettlementProgressSteps`）、スタッキングバー、現在ステータスバッジ（`ClubWorkflowStatusBadge`）
+- 通常: `[未提出] → [監査中] → [承認済]`  
+  差戻履歴あり: `[未提出] → [監査中] → [差戻] → [監査中(再)] → [承認済]`
+- `club_workflow_status` を購読してリアルタイム更新
 
 ### 3.2 学校管理者ポータル — トップ（参考）
 
