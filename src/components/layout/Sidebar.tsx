@@ -200,7 +200,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className="sticky top-0 z-[100] flex h-screen min-h-screen w-64 shrink-0 flex-col self-start border-r border-gray-200 bg-white isolate pointer-events-auto"
+      className="z-[100] flex min-h-screen w-64 shrink-0 flex-col self-stretch border-r border-gray-200 bg-white isolate pointer-events-auto"
       aria-label="クラブポータル メニュー"
     >
       {/* ロゴ・ヘッダー */}
@@ -209,8 +209,8 @@ export function Sidebar() {
         <p className="mt-2 text-xs font-medium text-[#6B7280]">クラブポータル</p>
       </div>
 
-      {/* ナビゲーションメニュー（項目が多い場合はサイドバー内のみスクロール） */}
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-4">
+      {/* ナビゲーション：本体（main）の高さに合わせてサイドバー全体が伸長する */}
+      <nav className="flex-1 space-y-1 px-3 py-4">
           {menuItems.map((item) => {
             const Icon = item.icon
             const hasSubItems = item.subItems && item.subItems.length > 0

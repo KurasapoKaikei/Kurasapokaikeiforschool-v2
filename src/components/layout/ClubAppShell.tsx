@@ -42,8 +42,8 @@ export function ClubAppShell({ children }: { children: ReactNode }) {
   return (
     <PortalFiscalYearProvider>
     <ClubCurrentWorkersGate />
-    <div className="flex min-h-screen overflow-x-hidden bg-[#F5F5F0]">
-      {/* サイドバー：メイン領域より前面に固定し、リンククリックを確実に通す */}
+    <div className="flex min-h-screen items-stretch overflow-x-hidden bg-[#F5F5F0]">
+      {/* サイドバー：メインと同じ列高（本体が長いときも途中で切れない） */}
       <Sidebar />
       <main className="relative z-0 flex min-h-screen min-w-0 flex-1 flex-col">
         <AppShellHeader />
