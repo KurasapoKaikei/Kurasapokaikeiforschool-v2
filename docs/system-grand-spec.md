@@ -427,7 +427,7 @@ lg以上における画面配置イメージ：
 - データ: `getPortalTransactions`, `getPortalAccountTitles`（`clubPortalData.ts`）。残高集計は現金預金出納帳と同じ
 - 左縦線: ピンク `#E66A84`
 - 科目行クリック → 現金預金出納帳（`/club/accounting/ledger/cash-bank`）
-- **繰延固定4科目**: 未収入金、仮払金、未払金、仮受金
+- **繰延固定4科目**: 未収入金、未払金、預り金、仮払金（旧称「仮受金」は預り金に合算）
 
 ### 7.4 中央列（上下 2 分割、`flex-1` ずつ）
 
@@ -607,7 +607,7 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 |------|------|------|
 | 現金預金出納帳 | `/club/accounting/ledger/cash-bank` | `isExpenseMissingReceipt` → `bg-red-50 text-red-600` |
 | 科目別台帳 | `/club/accounting/ledger/subject` | 同上 + 証憑列「未登録」 |
-| 繰延（計上・精算） | `/club/accounting/ledger/deferred` | 未収入金・仮払金・預り金・未払金の計上／精算一覧 |
+| 繰延（計上・精算） | `/club/accounting/ledger/deferred` | 未収入金・未払金・預り金・仮払金の計上／精算一覧 |
 
 ---
 
@@ -756,11 +756,11 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 |----------|------|
 | 現金預金 | 現金、普通預金等 |
 | 資産 | 未収入金、仮払金等 |
-| 負債 | 未払金、仮受金等 |
+| 負債 | 未払金、預り金等 |
 | 収入 | 会費収入、寄付金等 |
 | 支出 | 遠征費、備品費等 |
 
-**繰延固定4科目**: 未収入金、仮払金、未払金、仮受金 — ダッシュボード残高計算で使用
+**繰延固定4科目**: 未収入金、未払金、預り金、仮払金（表示順。旧称「仮受金」は預り金に合算）— ダッシュボード残高・繰延台帳で使用。計上は科目別台帳・収支集計表に符号付きで反映し、現金預金出納帳からは除外（`deferredAccounting.ts`）
 
 ### 11.4 データスコープ
 
