@@ -607,6 +607,7 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 |------|------|------|
 | 現金預金出納帳 | `/club/accounting/ledger/cash-bank` | `isExpenseMissingReceipt` → `bg-red-50 text-red-600` |
 | 科目別台帳 | `/club/accounting/ledger/subject` | 同上 + 証憑列「未登録」 |
+| 繰延（計上・精算） | `/club/accounting/ledger/deferred` | 未収入金・仮払金・預り金・未払金の計上／精算一覧 |
 
 ---
 
@@ -951,6 +952,7 @@ kurasaokaikei/
 | `/club/accounting/register/edit/[id]` | 編集 |
 | `/club/accounting/ledger/cash-bank` | 現金預金出納帳 |
 | `/club/accounting/ledger/subject` | 科目別台帳 |
+| `/club/accounting/ledger/deferred` | 繰延（計上・精算）台帳 |
 | `/club/accounting/summary` | 収支集計表 |
 | `/club/accounting/report` | 収支報告書 |
 | `/club/collection` | 集金管理 |

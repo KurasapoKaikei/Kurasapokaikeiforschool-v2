@@ -69,6 +69,7 @@ npm run routes
 | `/club/accounting/register/history` | 登録履歴 |
 | `/club/accounting/ledger/cash-bank` | 現金・預金出納帳 |
 | `/club/accounting/ledger/subject` | 科目別台帳 |
+| `/club/accounting/ledger/deferred` | 繰延（計上・精算）台帳 |
 | `/club/accounting/summary/annual` | 年間収支集計表 |
 | `/club/accounting/summary/monthly` | 月次収支集計表 |
 | `/club/collection/history` | 集金実績 |
