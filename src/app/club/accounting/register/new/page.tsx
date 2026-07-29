@@ -45,6 +45,7 @@ import {
   parseSubmitAmount,
 } from "@/utils/amountInput"
 import { formatDateDisplay as formatColDateDisplay } from "@/utils/dateDisplay"
+import { parseDeferredMemo } from "@/lib/deferredAccounting"
 
 const THEME_COLOR = "#A3BC68"
 const FISCAL_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
@@ -343,29 +344,31 @@ const DEFERRED_ACCOUNTS = [
     value: "未収入金",
     label: "未収入金",
     type: "asset" as const,
-    description: "あとで入ってくるお金（集金予定の部費など）",
+    description: "入出金は来期だが、当期の収入として計上されるべきもの。",
     /** 選択可能な収支区分 */
-    allowedSides: ["income"] as const,
-  },
-  {
-    value: "仮払金",
-    label: "仮払金",
-    type: "asset" as const,
-    description: "あとで領収書やおつりが戻ってくる（大会の現地出費などで事前渡したお金）",
-    allowedSides: ["expense"] as const,
-  },
-  {
-    value: "預り金",
-    label: "預り金",
-    type: "liability" as const,
-    description: "あとで支払う / 返す（他から一時的に預かっているお金）",
     allowedSides: ["income"] as const,
   },
   {
     value: "未払金",
     label: "未払金",
     type: "liability" as const,
-    description: "あとで払わなければいけないお金（購入済みの備品代など後払い分）",
+    description: "入出金は来期だが、当期の支出として計上されるべきもの。",
+    allowedSides: ["expense"] as const,
+  },
+  {
+    value: "預り金",
+    label: "預り金",
+    type: "liability" as const,
+    description:
+      "入出金は当期にすでに登録しているが、来期の収入として計上されるべきもの。",
+    allowedSides: ["income"] as const,
+  },
+  {
+    value: "仮払金",
+    label: "仮払金",
+    type: "asset" as const,
+    description:
+      "入出金は当期にすでに登録しているが、来期の支出として計上されるべきもの。",
     allowedSides: ["expense"] as const,
   },
 ] as const
@@ -378,6 +381,19 @@ function isDeferredAccountAllowedForSide(
   const def = DEFERRED_ACCOUNTS.find((a) => a.value === accountValue)
   if (!def) return false
   return (def.allowedSides as readonly string[]).includes(side)
+}
+
+/** 精算時の現金増減。未収入金・仮払金＝入金、未払金・預り金＝出金 */
+function isDeferredSettlementCashIn(deferredAccount: string): boolean {
+  const name = deferredAccount === "仮受金" ? "預り金" : deferredAccount
+  return name === "未収入金" || name === "仮払金"
+}
+
+function formatDeferredConfirmDate(dateStr: string): string {
+  // YY/MM/DD
+  const parts = dateStr.split("-")
+  if (parts.length !== 3) return dateStr.replace(/-/g, "/")
+  return `${parts[0].slice(-2)}/${parts[1]}/${parts[2]}`
 }
 
 function getTodayString(): string {
@@ -414,6 +430,10 @@ export default function NewRegisterPage() {
     deferredSettlementId: "",
     deferredSettlementAccount: "",
   })
+  /** 精算一覧のチェック／精算額（key = 計上仕訳 id） */
+  const [settlementSelections, setSettlementSelections] = useState<
+    Record<string, { selected: boolean; amount: string }>
+  >({})
 
   /** ヘッダー選択年度があればそれを期首年に、なければ本日基準 */
   const deferredFiscalStartYear = useMemo(() => {
@@ -1724,45 +1744,104 @@ export default function NewRegisterPage() {
   }
 
   const deferredSettlementList = useMemo(() => {
-    return transactions.filter((t) => {
-      if (t.type !== "deferred" || t.counterparty !== "record") return false
-      if (formData.deferredAccount) {
+    return transactions
+      .filter((t) => {
+        if (t.type !== "deferred" || t.counterparty !== "record") return false
+        if (!formData.deferredAccount) return false
         const matchesDeferred =
           t.accountTitle === formData.deferredAccount ||
           (formData.deferredAccount === "預り金" && t.accountTitle === "仮受金")
         if (!matchesDeferred) return false
-      }
-      if (formData.deferredSide) {
-        const memo = t.memo || ""
-        const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
-        const sideMarker = `区分: ${sideLabel}`
-        if (memo.includes("区分:") && !memo.includes(sideMarker)) return false
-      }
-      if (formData.category) {
-        const memo = t.memo || ""
-        const categoryMarker = `カテゴリー: ${formData.category}`
-        if (memo.includes("カテゴリー:") && !memo.includes(categoryMarker)) return false
-      }
-      if (formData.accountTitle) {
-        const memo = t.memo || ""
-        const subjectMarker = `科目: ${formData.accountTitle}`
-        // 新データは科目で絞り込み。旧データ（科目マーカーなし）も候補に残す
-        if (memo.includes("科目:") && !memo.includes(subjectMarker)) return false
-      }
-      return true
-    })
+        if (formData.deferredSide) {
+          const memo = t.memo || ""
+          const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
+          const sideMarker = `区分: ${sideLabel}`
+          // 構造化フィールド優先
+          if (t.deferredPlSide && t.deferredPlSide !== formData.deferredSide) return false
+          if (!t.deferredPlSide && memo.includes("区分:") && !memo.includes(sideMarker)) {
+            return false
+          }
+        }
+        return true
+      })
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date)
+        return (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+      })
+  }, [transactions, formData.deferredAccount, formData.deferredSide])
+
+  const settlementSelectedRows = useMemo(() => {
+    return deferredSettlementList
+      .map((t) => {
+        const sel = settlementSelections[t.id]
+        if (!sel?.selected) return null
+        const amount = parseSubmitAmount(sel.amount)
+        if (Number.isNaN(amount) || amount <= 0) return null
+        return { transaction: t, amount }
+      })
+      .filter((x): x is { transaction: Transaction; amount: number } => x != null)
+  }, [deferredSettlementList, settlementSelections])
+
+  const settlementTotalAmount = useMemo(
+    () => settlementSelectedRows.reduce((s, r) => s + r.amount, 0),
+    [settlementSelectedRows]
+  )
+
+  const settlementConfirmReady =
+    formData.deferredType === "settlement" &&
+    !!formData.date &&
+    !!formData.deferredSettlementAccount &&
+    !!formData.deferredAccount &&
+    settlementSelectedRows.length > 0
+
+  const settlementConfirmText = useMemo(() => {
+    if (!settlementConfirmReady) return ""
+    const dateLabel = formatDeferredConfirmDate(formData.date)
+    const cash = formData.deferredSettlementAccount
+    const yen = settlementTotalAmount.toLocaleString("ja-JP")
+    const cashIn = isDeferredSettlementCashIn(formData.deferredAccount)
+    return cashIn
+      ? `${dateLabel}に${cash}から${yen}円が入金されました。`
+      : `${dateLabel}に${cash}から${yen}円を出金しました。`
   }, [
-    transactions,
+    settlementConfirmReady,
+    formData.date,
+    formData.deferredSettlementAccount,
     formData.deferredAccount,
-    formData.deferredSide,
-    formData.category,
-    formData.accountTitle,
+    settlementTotalAmount,
   ])
+
+  const clearSettlementSelections = useCallback(() => {
+    setSettlementSelections({})
+  }, [])
+
+  const toggleSettlementRow = useCallback((t: Transaction, checked: boolean) => {
+    setSettlementSelections((prev) => ({
+      ...prev,
+      [t.id]: {
+        selected: checked,
+        amount: checked
+          ? String(Math.trunc(Math.abs(t.amount)))
+          : prev[t.id]?.amount ?? "",
+      },
+    }))
+  }, [])
+
+  const setSettlementRowAmount = useCallback((id: string, amount: string) => {
+    setSettlementSelections((prev) => ({
+      ...prev,
+      [id]: {
+        selected: prev[id]?.selected ?? false,
+        amount,
+      },
+    }))
+  }, [])
 
   const handleTabChange = (tab: TabType) => {
     // 振替タブから別タブへ離脱した場合は振替編集モードを解除する
     if (tab !== "transfer") setTransferEditState(null)
     setActiveTab(tab)
+    clearSettlementSelections()
     setFormData((prev) => ({
       ...prev,
       accountTitle: "",
@@ -1931,6 +2010,70 @@ export default function NewRegisterPage() {
     }
 
     if (activeTab === "deferred") {
+      if (formData.deferredType === "settlement") {
+        if (!formData.date) {
+          alert("日付を入力してください")
+          return
+        }
+        if (!formData.deferredSettlementAccount) {
+          alert("現金・預金科目を選択してください")
+          return
+        }
+        if (!formData.deferredSide) {
+          alert("収入または支出を選択してください")
+          return
+        }
+        if (!formData.deferredAccount) {
+          alert("繰延科目を選択してください")
+          return
+        }
+        if (!isDeferredAccountAllowedForSide(formData.deferredAccount, formData.deferredSide)) {
+          alert(
+            formData.deferredSide === "income"
+              ? "収入では仮払金・未払金は選択できません"
+              : "支出では未収入金・預り金は選択できません"
+          )
+          return
+        }
+        if (settlementSelectedRows.length === 0) {
+          alert("精算する項目にチェックを入れ、精算額を入力してください")
+          return
+        }
+
+        const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
+        for (const row of settlementSelectedRows) {
+          const source = row.transaction
+          const parsed = parseDeferredMemo(source.memo || "")
+          const categoryName = source.deferredPlCategory || parsed.category || ""
+          const subjectName = source.deferredPlSubject || parsed.subject || ""
+          const memoParts = [
+            `精算`,
+            `区分: ${sideLabel}`,
+            categoryName ? `カテゴリー: ${categoryName}` : "",
+            subjectName ? `科目: ${subjectName}` : "",
+            formData.memo.trim(),
+          ].filter(Boolean)
+          addTransaction({
+            date: formData.date,
+            type: "deferred",
+            amount: row.amount,
+            counterparty: formData.deferredSettlementAccount,
+            category: source.category,
+            accountTitle: source.accountTitle,
+            memo: memoParts.join(" / "),
+            receiptUrl: null,
+            createdBy: currentOperatorName,
+            deferredPlSide: source.deferredPlSide ?? formData.deferredSide,
+            deferredPlCategory: categoryName || null,
+            deferredPlSubject: subjectName || null,
+          })
+        }
+        alert(`繰延（精算）を ${settlementSelectedRows.length} 件登録しました`)
+        resetForm()
+        clearSettlementSelections()
+        return
+      }
+
       if (!formData.date || !formData.amount) {
         alert("日付と金額を入力してください")
         return
@@ -1965,62 +2108,31 @@ export default function NewRegisterPage() {
         return
       }
       const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
-      if (formData.deferredType === "record") {
-        const memoParts = [
-          `区分: ${sideLabel}`,
-          `カテゴリー: ${formData.category}`,
-          `科目: ${formData.accountTitle}`,
-          formData.memo.trim(),
-        ].filter(Boolean)
-        addTransaction({
-          date: formData.date,
-          type: "deferred",
-          amount,
-          counterparty: "record",
-          category:
-            DEFERRED_ACCOUNTS.find((a) => a.value === formData.deferredAccount)?.type ??
-            "asset",
-          accountTitle: formData.deferredAccount,
-          memo: memoParts.join(" / ") || "計上",
-          receiptUrl: null,
-          createdBy: currentOperatorName,
-        })
-        alert("繰延（計上）を登録しました")
-      } else {
-        if (!formData.deferredSettlementId) {
-          alert("精算する繰延項目を選択してください")
-          return
-        }
-        if (!formData.deferredSettlementAccount) {
-          alert("決済口座を選択してください")
-          return
-        }
-        const source = transactions.find((t) => t.id === formData.deferredSettlementId)
-        if (!source) {
-          alert("選択した繰延項目が見つかりません")
-          return
-        }
-        const memoParts = [
-          `精算`,
-          `区分: ${sideLabel}`,
-          `カテゴリー: ${formData.category}`,
-          `科目: ${formData.accountTitle}`,
-          formData.memo.trim(),
-        ].filter(Boolean)
-        addTransaction({
-          date: formData.date,
-          type: "deferred",
-          amount,
-          counterparty: formData.deferredSettlementAccount,
-          category: source.category,
-          accountTitle: source.accountTitle,
-          memo: memoParts.join(" / "),
-          receiptUrl: null,
-          createdBy: currentOperatorName,
-        })
-        alert("繰延（精算）を登録しました")
-      }
+      const memoParts = [
+        `区分: ${sideLabel}`,
+        `カテゴリー: ${formData.category}`,
+        `科目: ${formData.accountTitle}`,
+        formData.memo.trim(),
+      ].filter(Boolean)
+      addTransaction({
+        date: formData.date,
+        type: "deferred",
+        amount,
+        counterparty: "record",
+        category:
+          DEFERRED_ACCOUNTS.find((a) => a.value === formData.deferredAccount)?.type ??
+          "asset",
+        accountTitle: formData.deferredAccount,
+        memo: memoParts.join(" / ") || "計上",
+        receiptUrl: null,
+        createdBy: currentOperatorName,
+        deferredPlSide: formData.deferredSide,
+        deferredPlCategory: formData.category,
+        deferredPlSubject: formData.accountTitle,
+      })
+      alert("繰延（計上）を登録しました")
       resetForm()
+      clearSettlementSelections()
       return
     }
 
@@ -2074,6 +2186,7 @@ export default function NewRegisterPage() {
       deferredSettlementId: "",
       deferredSettlementAccount: "",
     })
+    setSettlementSelections({})
     setReceiptPreview(null)
   }
 
@@ -2666,7 +2779,15 @@ export default function NewRegisterPage() {
             showReceiptArea ? "border-r border-gray-200" : ""
           }`}
         >
-          <div className={`p-6 ${showReceiptArea ? "max-w-lg" : "w-full max-w-lg"}`}>
+          <div
+            className={`p-6 ${
+              showReceiptArea
+                ? "max-w-lg"
+                : showDeferredFields
+                  ? "w-full"
+                  : "w-full max-w-lg"
+            }`}
+          >
             <form onSubmit={handleSubmit} className="space-y-5">
               {!showDeferredFields && (
               <div>
@@ -2832,6 +2953,7 @@ export default function NewRegisterPage() {
 
               {showDeferredFields && (
                 <>
+                  <div className="max-w-lg space-y-5 w-full">
                   <div>
                     <label className={labelClass}>処理区分</label>
                     <div className="flex gap-4">
@@ -2841,7 +2963,8 @@ export default function NewRegisterPage() {
                           name="deferredType"
                           value="record"
                           checked={formData.deferredType === "record"}
-                          onChange={() =>
+                          onChange={() => {
+                            clearSettlementSelections()
                             setFormData((prev) => ({
                               ...prev,
                               deferredType: "record",
@@ -2849,7 +2972,7 @@ export default function NewRegisterPage() {
                               deferredSettlementId: "",
                               deferredSettlementAccount: "",
                             }))
-                          }
+                          }}
                           className="text-[#A3BC68] focus:ring-[#A3BC68]"
                         />
                         <span className="text-sm text-[#374151]">計上</span>
@@ -2860,13 +2983,14 @@ export default function NewRegisterPage() {
                           name="deferredType"
                           value="settlement"
                           checked={formData.deferredType === "settlement"}
-                          onChange={() =>
+                          onChange={() => {
+                            clearSettlementSelections()
                             setFormData((prev) => ({
                               ...prev,
                               deferredType: "settlement",
                               date: getTodayString(),
                             }))
-                          }
+                          }}
                           className="text-[#A3BC68] focus:ring-[#A3BC68]"
                         />
                         <span className="text-sm text-[#374151]">精算</span>
@@ -2874,240 +2998,286 @@ export default function NewRegisterPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label htmlFor="deferredDate" className={labelClass}>
-                      日付
-                    </label>
-                    <DatePickerField
-                      id="deferredDate"
-                      value={formData.date}
-                      onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
-                      themeColor={THEME_COLOR}
-                      className={inputClass}
-                      aria-label="日付"
-                      disabled={formData.deferredType === "record"}
-                    />
-                    {formData.deferredType === "record" && (
-                      <p className="text-xs text-[#6B7280] mt-1">
-                        計上の日付は期末日（{deferredFiscalEndDate.replace(/-/g, "/")}）です
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>収入 / 支出</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="deferredSide"
-                          value="income"
-                          checked={formData.deferredSide === "income"}
-                          onChange={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              deferredSide: "income",
-                              category: "",
-                              accountTitle: "",
-                              deferredSettlementId: "",
-                              deferredAccount: isDeferredAccountAllowedForSide(
-                                prev.deferredAccount,
-                                "income"
-                              )
-                                ? prev.deferredAccount
-                                : "",
-                            }))
-                          }
-                          className="text-[#A3BC68] focus:ring-[#A3BC68]"
-                          required
+                  {formData.deferredType === "record" ? (
+                    <>
+                      <div>
+                        <label htmlFor="deferredDate" className={labelClass}>
+                          日付
+                        </label>
+                        <DatePickerField
+                          id="deferredDate"
+                          value={formData.date}
+                          onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
+                          themeColor={THEME_COLOR}
+                          className={inputClass}
+                          aria-label="日付"
+                          disabled
                         />
-                        <span className="text-sm text-[#374151]">収入</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="deferredSide"
-                          value="expense"
-                          checked={formData.deferredSide === "expense"}
-                          onChange={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              deferredSide: "expense",
-                              category: "",
-                              accountTitle: "",
-                              deferredSettlementId: "",
-                              deferredAccount: isDeferredAccountAllowedForSide(
-                                prev.deferredAccount,
-                                "expense"
-                              )
-                                ? prev.deferredAccount
-                                : "",
-                            }))
-                          }
-                          className="text-[#A3BC68] focus:ring-[#A3BC68]"
-                          required
-                        />
-                        <span className="text-sm text-[#374151]">支出</span>
-                      </label>
-                    </div>
-                  </div>
+                        <p className="text-xs text-[#6B7280] mt-1">
+                          計上の日付は期末日（{deferredFiscalEndDate.replace(/-/g, "/")}）です
+                        </p>
+                      </div>
 
-                  <div>
-                    <label htmlFor="deferredCategory" className={labelClass}>
-                      カテゴリー
-                    </label>
-                    <select
-                      id="deferredCategory"
-                      value={formData.category}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          category: e.target.value,
-                          accountTitle: "",
-                          deferredSettlementId: "",
-                        }))
-                      }
-                      className={inputClass}
-                      required
-                      disabled={!formData.deferredSide}
-                    >
-                      <option value="">
-                        {formData.deferredSide
-                          ? "選択してください"
-                          : "先に収入または支出を選択"}
-                      </option>
-                      {sortedCategories.map((cat) => (
-                        <option key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="deferredSubject" className={labelClass}>
-                      科目
-                    </label>
-                    <select
-                      id="deferredSubject"
-                      value={formData.accountTitle}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          accountTitle: e.target.value,
-                          deferredSettlementId: "",
-                        }))
-                      }
-                      className={inputClass}
-                      required
-                      disabled={!formData.deferredSide || !formData.category}
-                    >
-                      <option value="">
-                        {!formData.deferredSide
-                          ? "先に収入または支出を選択"
-                          : !formData.category
-                            ? "先にカテゴリーを選択"
-                            : "選択してください"}
-                      </option>
-                      {deferredSubjectTitles.map((title) => (
-                        <option key={title.id} value={title.name}>
-                          {title.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>繰延科目</label>
-                    <div className="space-y-2">
-                      {DEFERRED_ACCOUNTS.map((a) => {
-                        const selected = formData.deferredAccount === a.value
-                        const locked =
-                          !!formData.deferredSide &&
-                          !isDeferredAccountAllowedForSide(a.value, formData.deferredSide)
-                        return (
-                          <label
-                            key={a.value}
-                            className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border transition-colors ${
-                              locked
-                                ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-70"
-                                : selected
-                                  ? "border-[#A3BC68] bg-[#A3BC68]/10 cursor-pointer"
-                                  : "border-gray-200 bg-white hover:bg-gray-50 cursor-pointer"
-                            }`}
-                          >
+                      <div>
+                        <label className={labelClass}>収入 / 支出</label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="radio"
-                              name="deferredAccount"
-                              value={a.value}
-                              checked={selected}
-                              disabled={locked}
+                              name="deferredSide"
+                              value="income"
+                              checked={formData.deferredSide === "income"}
                               onChange={() =>
                                 setFormData((prev) => ({
                                   ...prev,
-                                  deferredAccount: a.value,
+                                  deferredSide: "income",
+                                  category: "",
+                                  accountTitle: "",
                                   deferredSettlementId: "",
+                                  deferredAccount: isDeferredAccountAllowedForSide(
+                                    prev.deferredAccount,
+                                    "income"
+                                  )
+                                    ? prev.deferredAccount
+                                    : "",
                                 }))
                               }
-                              className="mt-0.5 text-[#A3BC68] focus:ring-[#A3BC68] disabled:opacity-40 disabled:cursor-not-allowed"
-                              required={!locked}
+                              className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                              required
                             />
-                            <span className="min-w-0">
-                              <span
-                                className={`text-sm font-medium ${
-                                  locked ? "text-gray-400" : "text-[#374151]"
-                                }`}
-                              >
-                                {a.label}
-                              </span>
-                              <span
-                                className={`block text-xs mt-0.5 ${
-                                  locked ? "text-gray-300" : "text-[#6B7280]"
-                                }`}
-                              >
-                                {a.description}
-                              </span>
-                            </span>
+                            <span className="text-sm text-[#374151]">収入</span>
                           </label>
-                        )
-                      })}
-                    </div>
-                  </div>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="deferredSide"
+                              value="expense"
+                              checked={formData.deferredSide === "expense"}
+                              onChange={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  deferredSide: "expense",
+                                  category: "",
+                                  accountTitle: "",
+                                  deferredSettlementId: "",
+                                  deferredAccount: isDeferredAccountAllowedForSide(
+                                    prev.deferredAccount,
+                                    "expense"
+                                  )
+                                    ? prev.deferredAccount
+                                    : "",
+                                }))
+                              }
+                              className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                              required
+                            />
+                            <span className="text-sm text-[#374151]">支出</span>
+                          </label>
+                        </div>
+                      </div>
 
-                  {formData.deferredType === "settlement" && (
-                    <>
                       <div>
-                        <label htmlFor="deferredSettlement" className={labelClass}>
-                          精算する繰延項目
+                        <label className={labelClass}>繰延科目</label>
+                        <div className="space-y-2">
+                          {DEFERRED_ACCOUNTS.map((a) => {
+                            const selected = formData.deferredAccount === a.value
+                            const locked =
+                              !!formData.deferredSide &&
+                              !isDeferredAccountAllowedForSide(a.value, formData.deferredSide)
+                            return (
+                              <label
+                                key={a.value}
+                                className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border transition-colors ${
+                                  locked
+                                    ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-70"
+                                    : selected
+                                      ? "border-[#A3BC68] bg-[#A3BC68]/10 cursor-pointer"
+                                      : "border-gray-200 bg-white hover:bg-gray-50 cursor-pointer"
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="deferredAccount"
+                                  value={a.value}
+                                  checked={selected}
+                                  disabled={locked || !formData.deferredSide}
+                                  onChange={() =>
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      deferredAccount: a.value,
+                                      deferredSettlementId: "",
+                                    }))
+                                  }
+                                  className="mt-0.5 text-[#A3BC68] focus:ring-[#A3BC68] disabled:opacity-40 disabled:cursor-not-allowed"
+                                  required={!locked && !!formData.deferredSide}
+                                />
+                                <span className="min-w-0">
+                                  <span
+                                    className={`text-sm font-medium ${
+                                      locked || !formData.deferredSide
+                                        ? "text-gray-400"
+                                        : "text-[#374151]"
+                                    }`}
+                                  >
+                                    {a.label}
+                                  </span>
+                                  <span
+                                    className={`block text-xs mt-0.5 ${
+                                      locked || !formData.deferredSide
+                                        ? "text-gray-300"
+                                        : "text-[#6B7280]"
+                                    }`}
+                                  >
+                                    {a.description}
+                                  </span>
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        {!formData.deferredSide && (
+                          <p className="text-xs text-[#6B7280] mt-1">
+                            先に収入または支出を選択してください
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label htmlFor="deferredCategory" className={labelClass}>
+                          カテゴリー
                         </label>
                         <select
-                          id="deferredSettlement"
-                          value={formData.deferredSettlementId}
+                          id="deferredCategory"
+                          value={formData.category}
                           onChange={(e) =>
                             setFormData((prev) => ({
                               ...prev,
-                              deferredSettlementId: e.target.value,
+                              category: e.target.value,
+                              accountTitle: "",
+                              deferredSettlementId: "",
                             }))
                           }
                           className={inputClass}
                           required
+                          disabled={!formData.deferredSide || !formData.deferredAccount}
                         >
-                          <option value="">選択してください</option>
-                          {deferredSettlementList.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.accountTitle} {Number(t.amount).toLocaleString()}円（{t.date}）
+                          <option value="">
+                            {!formData.deferredSide
+                              ? "先に収入または支出を選択"
+                              : !formData.deferredAccount
+                                ? "先に繰延科目を選択"
+                                : "選択してください"}
+                          </option>
+                          {sortedCategories.map((cat) => (
+                            <option key={cat.id} value={cat.name}>
+                              {cat.name}
                             </option>
                           ))}
                         </select>
-                        {deferredSettlementList.length === 0 && (
-                          <p className="text-xs text-[#6B7280] mt-1">
-                            条件に合う精算待ちの繰延項目がありません
-                          </p>
-                        )}
                       </div>
+
+                      <div>
+                        <label htmlFor="deferredSubject" className={labelClass}>
+                          科目
+                        </label>
+                        <select
+                          id="deferredSubject"
+                          value={formData.accountTitle}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              accountTitle: e.target.value,
+                              deferredSettlementId: "",
+                            }))
+                          }
+                          className={inputClass}
+                          required
+                          disabled={
+                            !formData.deferredSide ||
+                            !formData.deferredAccount ||
+                            !formData.category
+                          }
+                        >
+                          <option value="">
+                            {!formData.deferredSide
+                              ? "先に収入または支出を選択"
+                              : !formData.deferredAccount
+                                ? "先に繰延科目を選択"
+                                : !formData.category
+                                  ? "先にカテゴリーを選択"
+                                  : "選択してください"}
+                          </option>
+                          {deferredSubjectTitles.map((title) => (
+                            <option key={title.id} value={title.name}>
+                              {title.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="deferredAmount" className={labelClass}>
+                          金額（円）
+                        </label>
+                        <input
+                          type="text"
+                          id="deferredAmount"
+                          value={formatAmountInputDisplay(formData.amount)}
+                          onChange={(e) => {
+                            const rawValue = e.target.value.replace(/,/g, "")
+                            if (isAllowedSignedIntegerTyping(rawValue)) {
+                              setFormData((prev) => ({ ...prev, amount: rawValue }))
+                            }
+                          }}
+                          className={`px-4 py-4 text-xl font-semibold text-right tabular-nums ${inputClass}`}
+                          placeholder="0"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          lang="en"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="deferredMemo" className={labelClass}>
+                          メモ
+                        </label>
+                        <textarea
+                          id="deferredMemo"
+                          value={formData.memo}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, memo: e.target.value }))
+                          }
+                          className={`${inputClass} resize-none`}
+                          rows={3}
+                          placeholder="任意"
+                          lang="ja"
+                          autoComplete="off"
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                  </div>
+                  {formData.deferredType === "record" ? null : (
+                    <>
+                      <div className="max-w-lg space-y-5 w-full">
+                      <div>
+                        <label htmlFor="deferredSettlementDate" className={labelClass}>
+                          日付
+                        </label>
+                        <DatePickerField
+                          id="deferredSettlementDate"
+                          value={formData.date}
+                          onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
+                          themeColor={THEME_COLOR}
+                          className={inputClass}
+                          aria-label="日付"
+                        />
+                      </div>
+
                       <div>
                         <label htmlFor="deferredSettlementAccount" className={labelClass}>
-                          決済口座（現金・預金科目）
+                          現金・預金科目
                         </label>
                         <select
                           id="deferredSettlementAccount"
@@ -3132,49 +3302,287 @@ export default function NewRegisterPage() {
                           実際の入出金があった口座を選択してください
                         </p>
                       </div>
+
+                      <div>
+                        <label className={labelClass}>収入 / 支出</label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="deferredSideSettlement"
+                              value="income"
+                              checked={formData.deferredSide === "income"}
+                              onChange={() => {
+                                clearSettlementSelections()
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  deferredSide: "income",
+                                  category: "",
+                                  accountTitle: "",
+                                  deferredSettlementId: "",
+                                  deferredAccount: isDeferredAccountAllowedForSide(
+                                    prev.deferredAccount,
+                                    "income"
+                                  )
+                                    ? prev.deferredAccount
+                                    : "",
+                                }))
+                              }}
+                              className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                              required
+                            />
+                            <span className="text-sm text-[#374151]">収入</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="deferredSideSettlement"
+                              value="expense"
+                              checked={formData.deferredSide === "expense"}
+                              onChange={() => {
+                                clearSettlementSelections()
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  deferredSide: "expense",
+                                  category: "",
+                                  accountTitle: "",
+                                  deferredSettlementId: "",
+                                  deferredAccount: isDeferredAccountAllowedForSide(
+                                    prev.deferredAccount,
+                                    "expense"
+                                  )
+                                    ? prev.deferredAccount
+                                    : "",
+                                }))
+                              }}
+                              className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                              required
+                            />
+                            <span className="text-sm text-[#374151]">支出</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={labelClass}>繰延科目</label>
+                        <div className="space-y-2">
+                          {DEFERRED_ACCOUNTS.map((a) => {
+                            const selected = formData.deferredAccount === a.value
+                            const locked =
+                              !!formData.deferredSide &&
+                              !isDeferredAccountAllowedForSide(a.value, formData.deferredSide)
+                            return (
+                              <label
+                                key={a.value}
+                                className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border transition-colors ${
+                                  locked
+                                    ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-70"
+                                    : selected
+                                      ? "border-[#A3BC68] bg-[#A3BC68]/10 cursor-pointer"
+                                      : "border-gray-200 bg-white hover:bg-gray-50 cursor-pointer"
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="deferredAccountSettlement"
+                                  value={a.value}
+                                  checked={selected}
+                                  disabled={locked || !formData.deferredSide}
+                                  onChange={() => {
+                                    clearSettlementSelections()
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      deferredAccount: a.value,
+                                      deferredSettlementId: "",
+                                    }))
+                                  }}
+                                  className="mt-0.5 text-[#A3BC68] focus:ring-[#A3BC68] disabled:opacity-40 disabled:cursor-not-allowed"
+                                  required={!locked && !!formData.deferredSide}
+                                />
+                                <span className="min-w-0">
+                                  <span
+                                    className={`text-sm font-medium ${
+                                      locked || !formData.deferredSide
+                                        ? "text-gray-400"
+                                        : "text-[#374151]"
+                                    }`}
+                                  >
+                                    {a.label}
+                                  </span>
+                                  <span
+                                    className={`block text-xs mt-0.5 ${
+                                      locked || !formData.deferredSide
+                                        ? "text-gray-300"
+                                        : "text-[#6B7280]"
+                                    }`}
+                                  >
+                                    {a.description}
+                                  </span>
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        {!formData.deferredSide && (
+                          <p className="text-xs text-[#6B7280] mt-1">
+                            先に収入または支出を選択してください
+                          </p>
+                        )}
+                      </div>
+                  </div>
+
+                      {formData.deferredAccount && (
+                        <div className="w-full">
+                          <label className={labelClass}>計上一覧</label>
+                          <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
+                            <table className="w-full table-fixed text-sm border-collapse">
+                              <colgroup>
+                                <col className="w-10" />
+                                <col className="w-[18%]" />
+                                <col className="w-[18%]" />
+                                <col className="w-[14%]" />
+                                <col className="w-[16%]" />
+                                <col />
+                              </colgroup>
+                              <thead>
+                                <tr className="bg-gray-50 text-[#374151]">
+                                  <th className="px-2 py-2.5 text-center font-semibold border-b border-r border-gray-200">
+                                    <span className="sr-only">選択</span>
+                                  </th>
+                                  <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200">
+                                    カテゴリー
+                                  </th>
+                                  <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200">
+                                    科目
+                                  </th>
+                                  <th className="px-3 py-2.5 text-right font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                                    計上額
+                                  </th>
+                                  <th className="px-3 py-2.5 text-right font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                                    精算額
+                                  </th>
+                                  <th className="px-3 py-2.5 text-left font-semibold border-b border-gray-200">
+                                    メモ
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {deferredSettlementList.length === 0 ? (
+                                  <tr>
+                                    <td
+                                      colSpan={6}
+                                      className="px-3 py-10 text-center text-[#6B7280] border-r border-gray-200"
+                                    >
+                                      この繰延科目の計上項目がありません
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  deferredSettlementList.map((t) => {
+                                    const parsed = parseDeferredMemo(t.memo || "")
+                                    const category =
+                                      t.deferredPlCategory || parsed.category || ""
+                                    const subject =
+                                      t.deferredPlSubject || parsed.subject || ""
+                                    const memo = parsed.userMemo || ""
+                                    const selected = !!settlementSelections[t.id]?.selected
+                                    return (
+                                      <tr key={t.id} className="border-t border-gray-100">
+                                        <td className="px-2 py-2 text-center border-r border-gray-200">
+                                          <input
+                                            type="checkbox"
+                                            checked={selected}
+                                            onChange={(e) =>
+                                              toggleSettlementRow(t, e.target.checked)
+                                            }
+                                            className="rounded text-[#A3BC68] focus:ring-[#A3BC68]"
+                                            aria-label="精算対象にする"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2 text-[#374151] border-r border-gray-200 break-words">
+                                          {category || "—"}
+                                        </td>
+                                        <td className="px-3 py-2 text-[#374151] border-r border-gray-200 break-words">
+                                          {subject || "—"}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 whitespace-nowrap">
+                                          {Number(t.amount).toLocaleString("ja-JP")}
+                                        </td>
+                                        <td className="px-2 py-1.5 border-r border-gray-200">
+                                          <input
+                                            type="text"
+                                            value={
+                                              selected
+                                                ? formatAmountInputDisplay(
+                                                    settlementSelections[t.id]?.amount ?? ""
+                                                  )
+                                                : ""
+                                            }
+                                            onChange={(e) => {
+                                              const rawValue = e.target.value.replace(/,/g, "")
+                                              if (isAllowedSignedIntegerTyping(rawValue)) {
+                                                setSettlementRowAmount(t.id, rawValue)
+                                              }
+                                            }}
+                                            disabled={!selected}
+                                            className="w-full min-w-[5.5rem] px-2 py-1.5 text-right tabular-nums rounded border border-gray-200 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#A3BC68] focus:border-[#A3BC68]"
+                                            placeholder={selected ? "0" : ""}
+                                            inputMode="numeric"
+                                            autoComplete="off"
+                                            lang="en"
+                                            aria-label="精算額"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2 text-[#374151] break-words">
+                                          {memo || "—"}
+                                        </td>
+                                      </tr>
+                                    )
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="max-w-lg space-y-5 w-full">
+                      {settlementConfirmReady && (
+                        <div className="rounded-lg border border-[#A3BC68] bg-[#A3BC68]/10 px-4 py-3 space-y-2">
+                          <p className="text-sm text-[#374151] font-medium">
+                            {settlementConfirmText}
+                          </p>
+                          <p className="text-sm text-[#374151]">
+                            精算額合計:{" "}
+                            <span className="font-semibold tabular-nums">
+                              {settlementTotalAmount.toLocaleString("ja-JP")}円
+                            </span>
+                            <span className="text-[#6B7280] ml-2">
+                              （{settlementSelectedRows.length}件）
+                            </span>
+                          </p>
+                        </div>
+                      )}
+
+                      <div>
+                        <label htmlFor="deferredSettlementMemo" className={labelClass}>
+                          メモ
+                        </label>
+                        <textarea
+                          id="deferredSettlementMemo"
+                          value={formData.memo}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, memo: e.target.value }))
+                          }
+                          className={`${inputClass} resize-none`}
+                          rows={3}
+                          placeholder="任意"
+                          lang="ja"
+                          autoComplete="off"
+                        />
+                      </div>
+                      </div>
                     </>
                   )}
-
-                  <div>
-                    <label htmlFor="deferredAmount" className={labelClass}>
-                      金額（円）
-                    </label>
-                    <input
-                      type="text"
-                      id="deferredAmount"
-                      value={formatAmountInputDisplay(formData.amount)}
-                      onChange={(e) => {
-                        const rawValue = e.target.value.replace(/,/g, "")
-                        if (isAllowedSignedIntegerTyping(rawValue)) {
-                          setFormData((prev) => ({ ...prev, amount: rawValue }))
-                        }
-                      }}
-                      className={`px-4 py-4 text-xl font-semibold text-right tabular-nums ${inputClass}`}
-                      placeholder="0"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      lang="en"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="deferredMemo" className={labelClass}>
-                      メモ
-                    </label>
-                    <textarea
-                      id="deferredMemo"
-                      value={formData.memo}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, memo: e.target.value }))
-                      }
-                      className={`${inputClass} resize-none`}
-                      rows={3}
-                      placeholder="任意"
-                      lang="ja"
-                      autoComplete="off"
-                    />
-                  </div>
                 </>
               )}
 
@@ -3252,14 +3660,16 @@ export default function NewRegisterPage() {
                   </Button>
                 </div>
               ) : (
-                <Button
-                  type="submit"
-                  disabled={isLocked}
-                  className="w-full py-6 text-base font-semibold text-white rounded-lg"
-                  style={{ backgroundColor: THEME_COLOR }}
-                >
-                  登録する
-                </Button>
+                <div className={showDeferredFields ? "max-w-lg w-full" : "w-full"}>
+                  <Button
+                    type="submit"
+                    disabled={isLocked}
+                    className="w-full py-6 text-base font-semibold text-white rounded-lg"
+                    style={{ backgroundColor: THEME_COLOR }}
+                  >
+                    登録する
+                  </Button>
+                </div>
               )}
             </form>
           </div>

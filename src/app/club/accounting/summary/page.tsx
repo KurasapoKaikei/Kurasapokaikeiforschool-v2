@@ -25,6 +25,7 @@ import {
   FISCAL_OPENING_MONTH,
   getSubjectOpeningForSummary,
 } from "@/lib/accountTitleBalances"
+import { getDeferredRecordPlAdjustment } from "@/lib/deferredAccounting"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -120,6 +121,8 @@ function MemoCell({
 }
 
 type ViewMode = "annual" | "monthly"
+/** 月次の選択: 会計月（4〜3）または決算（繰延計上） */
+type MonthlySelection = number | "closing"
 
 export default function SummaryPage() {
   const router = useRouter()
@@ -132,8 +135,9 @@ export default function SummaryPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all")
   const [openingCarryover, setOpeningCarryover] = useState(0)
   const fiscalYear = getCurrentFiscalYear()
-  const [selectedMonth, setSelectedMonth] = useState<number>(getCurrentMonth())
+  const [selectedMonth, setSelectedMonth] = useState<MonthlySelection>(getCurrentMonth())
   const isLocked = useClubSettlementLock()
+  const isClosingView = selectedMonth === "closing"
   const categoryOrderMap = useMemo(
     () => new Map(categories.map((c) => [c.id, c.order])),
     [categories]
@@ -407,6 +411,53 @@ export default function SummaryPage() {
     accountTitles,
   ])
 
+  /** 繰延計上のみ（年次「決算」列・月次「決算」用）。会計年度内の計上を対象 */
+  const { incomeClosingByTitle, expenseClosingByTitle } = useMemo(() => {
+    const incomeMap: Record<string, number> = {}
+    const expenseMap: Record<string, number> = {}
+    incomeTitles.forEach((t) => {
+      incomeMap[t.name] = 0
+    })
+    expenseTitles.forEach((t) => {
+      expenseMap[t.name] = 0
+    })
+
+    const fyStart = getFiscalMonthRange(fiscalYear, 4).start
+    const fyEnd = getFiscalMonthRange(fiscalYear, 3).end
+
+    transactions.forEach((t) => {
+      const adj = getDeferredRecordPlAdjustment(t)
+      if (!adj) return
+      if (!isDateInRange(adj.transaction.date, fyStart, fyEnd)) return
+      if (selectedCategoryName !== null && adj.categoryName !== selectedCategoryName) return
+
+      if (adj.side === "income") {
+        if (!incomeTitles.some((a) => a.name === adj.subjectName)) return
+        incomeMap[adj.subjectName] = (incomeMap[adj.subjectName] ?? 0) + adj.signedAmount
+      } else {
+        if (!expenseTitles.some((a) => a.name === adj.subjectName)) return
+        expenseMap[adj.subjectName] = (expenseMap[adj.subjectName] ?? 0) + adj.signedAmount
+      }
+    })
+
+    return { incomeClosingByTitle: incomeMap, expenseClosingByTitle: expenseMap }
+  }, [
+    transactions,
+    fiscalYear,
+    selectedCategoryName,
+    incomeTitles,
+    expenseTitles,
+  ])
+
+  const incomeClosingTotal = useMemo(
+    () => Object.values(incomeClosingByTitle).reduce((s, v) => s + v, 0),
+    [incomeClosingByTitle]
+  )
+  const expenseClosingTotal = useMemo(
+    () => Object.values(expenseClosingByTitle).reduce((s, v) => s + v, 0),
+    [expenseClosingByTitle]
+  )
+
   const incomeTotalByMonth = useMemo(() => {
     const totals: Record<number, number> = {}
     FISCAL_MONTHS.forEach((m) => {
@@ -424,49 +475,71 @@ export default function SummaryPage() {
   }, [expenseByMonthAndTitle])
 
   const yearTotalIncome = useMemo(
-    () => FISCAL_MONTHS.reduce((s, m) => s + (incomeTotalByMonth[m] ?? 0), 0),
-    [incomeTotalByMonth]
+    () =>
+      FISCAL_MONTHS.reduce((s, m) => s + (incomeTotalByMonth[m] ?? 0), 0) + incomeClosingTotal,
+    [incomeTotalByMonth, incomeClosingTotal]
   )
   const yearTotalExpense = useMemo(
-    () => FISCAL_MONTHS.reduce((s, m) => s + (expenseTotalByMonth[m] ?? 0), 0),
-    [expenseTotalByMonth]
+    () =>
+      FISCAL_MONTHS.reduce((s, m) => s + (expenseTotalByMonth[m] ?? 0), 0) + expenseClosingTotal,
+    [expenseTotalByMonth, expenseClosingTotal]
   )
   const yearBalanceTotal = yearTotalIncome - yearTotalExpense
   const isAllCategory = selectedCategoryId === "all"
   const nextCarryoverTotal = openingCarryover + yearTotalIncome - yearTotalExpense
 
   // ===== 月次集計用 =====
-  const { start: monthStart, end: monthEnd } = useMemo(
-    () => getFiscalMonthRange(fiscalYear, selectedMonth),
-    [fiscalYear, selectedMonth]
+  const fiscalYearEndDateStr = useMemo(
+    () => format(getFiscalMonthRange(fiscalYear, 3).end, "yyyy-MM-dd"),
+    [fiscalYear]
   )
 
+  const { start: monthStart, end: monthEnd } = useMemo(() => {
+    if (selectedMonth === "closing") {
+      const end = getFiscalMonthRange(fiscalYear, 3).end
+      // 決算表示のドリルダウン用に期末日を範囲とする
+      return { start: end, end }
+    }
+    return getFiscalMonthRange(fiscalYear, selectedMonth)
+  }, [fiscalYear, selectedMonth])
+
   const displayYear = useMemo(() => {
+    if (selectedMonth === "closing") return fiscalYear + 1
     return selectedMonth >= 4 ? fiscalYear : fiscalYear + 1
   }, [fiscalYear, selectedMonth])
 
   const filteredTransactionsMonthly = useMemo(() => {
+    if (selectedMonth === "closing") return []
     return transactions.filter((t) => {
       if (!t.date) return false
       if (!isDateInRange(t.date, monthStart, monthEnd)) return false
       if (selectedCategoryName !== null && t.category !== selectedCategoryName) return false
       return true
     })
-  }, [transactions, monthStart, monthEnd, selectedCategoryName])
+  }, [transactions, monthStart, monthEnd, selectedCategoryName, selectedMonth])
 
   const filteredCollectionIncomeEntries = useMemo(() => {
+    if (selectedMonth === "closing") return []
     return collectionIncomeEntries.filter((t) => {
       if (!t.date) return false
       if (!isDateInRange(t.date, monthStart, monthEnd)) return false
       if (selectedCategoryName !== null && t.category !== selectedCategoryName) return false
       return true
     })
-  }, [collectionIncomeEntries, monthStart, monthEnd, selectedCategoryName])
+  }, [collectionIncomeEntries, monthStart, monthEnd, selectedCategoryName, selectedMonth])
 
   const incomeRowsMonthly = useMemo((): SummaryRow[] => {
     const categoryTab = selectedCategoryId === "all" ? "all" : selectedCategoryId
     const includeOpening = selectedMonth === FISCAL_OPENING_MONTH
     return incomeTitles.map((title) => {
+      if (selectedMonth === "closing") {
+        return {
+          subjectId: title.id,
+          subjectName: title.name,
+          amount: incomeClosingByTitle[title.name] ?? 0,
+          type: "income",
+        }
+      }
       const txs = filteredTransactionsMonthly.filter(
         (t) => (t.type === "income" || t.type === "collection") && !isTransferLeg(t) && t.accountTitle === title.name
       )
@@ -492,6 +565,7 @@ export default function SummaryPage() {
     incomeTitles,
     filteredTransactionsMonthly,
     filteredCollectionIncomeEntries,
+    incomeClosingByTitle,
     selectedMonth,
     selectedCategoryId,
     accountTitles,
@@ -501,6 +575,14 @@ export default function SummaryPage() {
     const categoryTab = selectedCategoryId === "all" ? "all" : selectedCategoryId
     const includeOpening = selectedMonth === FISCAL_OPENING_MONTH
     return expenseTitles.map((title) => {
+      if (selectedMonth === "closing") {
+        return {
+          subjectId: title.id,
+          subjectName: title.name,
+          amount: expenseClosingByTitle[title.name] ?? 0,
+          type: "expense",
+        }
+      }
       const txs = filteredTransactionsMonthly.filter(
         (t) => t.type === "expense" && !isTransferLeg(t) && t.accountTitle === title.name
       )
@@ -519,6 +601,7 @@ export default function SummaryPage() {
   }, [
     expenseTitles,
     filteredTransactionsMonthly,
+    expenseClosingByTitle,
     selectedMonth,
     selectedCategoryId,
     accountTitles,
@@ -559,18 +642,41 @@ export default function SummaryPage() {
     router.push(`/club/accounting/ledger/subject?${params.toString()}`)
   }
 
-  /** 科目別台帳へ遷移（月次：該当月フィルター済み） */
+  /** 科目別台帳へ遷移（年間：決算列クリック＝期末日） */
+  const handleClosingAmountClick = (subjectId: string | undefined) => {
+    if (!subjectId) return
+    const params = new URLSearchParams()
+    params.set("category", selectedCategoryId)
+    params.set("subject", subjectId)
+    params.set("start", fiscalYearEndDateStr)
+    params.set("end", fiscalYearEndDateStr)
+    router.push(`/club/accounting/ledger/subject?${params.toString()}`)
+  }
+
+  /** 科目別台帳へ遷移（月次：該当月または決算フィルター済み） */
   const handleSubjectClickMonthly = (subjectId?: string) => {
     if (!subjectId) return
     const params = new URLSearchParams()
     params.set("category", selectedCategoryId)
     params.set("subject", subjectId)
-    params.set("start", format(monthStart, "yyyy-MM-dd"))
-    params.set("end", format(monthEnd, "yyyy-MM-dd"))
+    if (selectedMonth === "closing") {
+      params.set("start", fiscalYearEndDateStr)
+      params.set("end", fiscalYearEndDateStr)
+    } else {
+      params.set("start", format(monthStart, "yyyy-MM-dd"))
+      params.set("end", format(monthEnd, "yyyy-MM-dd"))
+    }
     router.push(`/club/accounting/ledger/subject?${params.toString()}`)
   }
 
-  const memoKey = `${displayYear}-${selectedMonth}`
+  const memoKey =
+    selectedMonth === "closing"
+      ? `${fiscalYear}-closing`
+      : `${displayYear}-${selectedMonth}`
+  const monthlyHeading =
+    selectedMonth === "closing"
+      ? `${fiscalYear}年度 決算の収支集計`
+      : `${displayYear}年${selectedMonth}月の収支集計`
 
   return (
     <div className="px-6 py-8 min-h-screen bg-[#F5F5F0] w-full">
@@ -645,6 +751,18 @@ export default function SummaryPage() {
                 </button>
               )
             })}
+            <button
+              onClick={() => setSelectedMonth("closing")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors min-w-[50px] ${
+                isClosingView
+                  ? "text-white shadow-sm"
+                  : "bg-gray-100 text-[#374151] hover:bg-gray-200"
+              }`}
+              style={isClosingView ? { backgroundColor: THEME_COLOR } : {}}
+              title={`${fiscalYear}年度 決算（繰延計上）`}
+            >
+              決算
+            </button>
           </div>
         </div>
       )}
@@ -702,6 +820,9 @@ export default function SummaryPage() {
                       {m}月度
                     </th>
                   ))}
+                  <th className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200 min-w-[90px] bg-[#EEF6F1]">
+                    決算
+                  </th>
                   <th
                     className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-gray-200 bg-gray-50 sticky right-0 z-20 min-w-[100px]"
                     style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.1)" }}
@@ -714,7 +835,7 @@ export default function SummaryPage() {
                 {/* セクション見出し: 収入 */}
                 <tr className="bg-gray-100 border-b border-r border-gray-200">
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="px-4 py-2 text-left font-semibold text-[#374151] border-r border-gray-200"
                   >
                     【収入】
@@ -751,13 +872,24 @@ export default function SummaryPage() {
                       )
                     })}
                     <td
+                      className={`px-3 py-2.5 text-right text-[#374151] tabular-nums border-r border-gray-200 cursor-pointer hover:underline hover:text-[#68A384] bg-[#EEF6F1]/70 ${
+                        idx % 2 === 0 ? "" : ""
+                      }`}
+                      onClick={() => handleClosingAmountClick(title.id)}
+                    >
+                      {formatAmount(incomeClosingByTitle[title.name] ?? 0)}
+                    </td>
+                    <td
                       className={`px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 sticky right-0 z-10 ${
                         idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                       }`}
                       style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
                     >
                       {formatAmount(
-                        FISCAL_MONTHS.reduce((s, m) => s + (incomeByMonthAndTitle[m]?.[title.name] ?? 0), 0)
+                        FISCAL_MONTHS.reduce(
+                          (s, m) => s + (incomeByMonthAndTitle[m]?.[title.name] ?? 0),
+                          0
+                        ) + (incomeClosingByTitle[title.name] ?? 0)
                       )}
                     </td>
                   </tr>
@@ -777,6 +909,9 @@ export default function SummaryPage() {
                       {formatAmount(incomeTotalByMonth[m] ?? 0)}
                     </td>
                   ))}
+                  <td className="px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 bg-green-200/80">
+                    {formatAmount(incomeClosingTotal)}
+                  </td>
                   <td
                     className="px-3 py-2.5 text-right font-bold text-[#374151] tabular-nums border-r border-gray-200 bg-green-300/90 sticky right-0 z-10"
                     style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
@@ -788,7 +923,7 @@ export default function SummaryPage() {
                 {/* セクション見出し: 支出 */}
                 <tr className="bg-gray-100 border-b border-gray-200">
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="px-4 py-2 text-left font-semibold text-[#374151] border-r border-gray-200"
                   >
                     【支出】
@@ -825,13 +960,22 @@ export default function SummaryPage() {
                       )
                     })}
                     <td
+                      className="px-3 py-2.5 text-right text-[#374151] tabular-nums border-r border-gray-200 cursor-pointer hover:underline hover:text-[#68A384] bg-[#EEF6F1]/70"
+                      onClick={() => handleClosingAmountClick(title.id)}
+                    >
+                      {formatAmount(expenseClosingByTitle[title.name] ?? 0)}
+                    </td>
+                    <td
                       className={`px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 sticky right-0 z-10 ${
                         idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                       }`}
                       style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
                     >
                       {formatAmount(
-                        FISCAL_MONTHS.reduce((s, m) => s + (expenseByMonthAndTitle[m]?.[title.name] ?? 0), 0)
+                        FISCAL_MONTHS.reduce(
+                          (s, m) => s + (expenseByMonthAndTitle[m]?.[title.name] ?? 0),
+                          0
+                        ) + (expenseClosingByTitle[title.name] ?? 0)
                       )}
                     </td>
                   </tr>
@@ -851,6 +995,9 @@ export default function SummaryPage() {
                       {formatAmount(expenseTotalByMonth[m] ?? 0)}
                     </td>
                   ))}
+                  <td className="px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 bg-amber-200/80">
+                    {formatAmount(expenseClosingTotal)}
+                  </td>
                   <td
                     className="px-3 py-2.5 text-right font-bold text-[#374151] tabular-nums border-r border-gray-200 bg-amber-300/90 sticky right-0 z-10"
                     style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
@@ -876,6 +1023,9 @@ export default function SummaryPage() {
                       {formatAmount((incomeTotalByMonth[m] ?? 0) - (expenseTotalByMonth[m] ?? 0))}
                     </td>
                   ))}
+                  <td className="px-3 py-3 text-right tabular-nums text-[#374151] bg-gray-50 border-r border-gray-200">
+                    {formatAmount(incomeClosingTotal - expenseClosingTotal)}
+                  </td>
                   <td
                     className="px-3 py-3 text-right tabular-nums font-bold text-white border-r border-gray-200 sticky right-0 z-10"
                     style={{ backgroundColor: THEME_COLOR, boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
@@ -887,7 +1037,7 @@ export default function SummaryPage() {
                   <>
                     <tr className="font-bold border-t-2 border-gray-300 bg-slate-100/80">
                       <td
-                        colSpan={13}
+                        colSpan={14}
                         className="px-4 py-3 text-left text-[#334155] font-extrabold border-r border-gray-200 bg-slate-100/80"
                       >
                         前期繰越金
@@ -901,7 +1051,7 @@ export default function SummaryPage() {
                     </tr>
                     <tr className="font-bold bg-slate-200/80">
                       <td
-                        colSpan={13}
+                        colSpan={14}
                         className="px-4 py-3 text-left text-[#374151] border-r border-gray-200 bg-slate-200/80"
                       >
                         次期繰越金
@@ -928,7 +1078,7 @@ export default function SummaryPage() {
             className="px-6 py-3 text-base font-semibold text-white text-center border-b border-gray-200"
             style={{ backgroundColor: THEME_COLOR }}
           >
-            {displayYear}年{selectedMonth}月の収支集計
+            {monthlyHeading}
           </div>
 
           <div className="p-4">
@@ -984,8 +1134,8 @@ export default function SummaryPage() {
                         <MemoCell
                           key={`${memoKey}-${row.subjectName}`}
                           subjectId={row.subjectId}
-                          year={displayYear}
-                          month={selectedMonth}
+                          year={selectedMonth === "closing" ? fiscalYear : displayYear}
+                          month={selectedMonth === "closing" ? 0 : selectedMonth}
                           isLocked={isLocked}
                         />
                       </td>
@@ -1047,8 +1197,8 @@ export default function SummaryPage() {
                         <MemoCell
                           key={`${memoKey}-${row.subjectName}`}
                           subjectId={row.subjectId}
-                          year={displayYear}
-                          month={selectedMonth}
+                          year={selectedMonth === "closing" ? fiscalYear : displayYear}
+                          month={selectedMonth === "closing" ? 0 : selectedMonth}
                           isLocked={isLocked}
                         />
                       </td>

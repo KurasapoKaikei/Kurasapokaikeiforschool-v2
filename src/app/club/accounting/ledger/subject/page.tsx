@@ -22,6 +22,8 @@ import {
   getSubjectLedgerOpeningLabel,
   isSystemInitialYear,
 } from "@/lib/openingBalanceLabel"
+import { getDeferredRecordPlAdjustment } from "@/lib/deferredAccounting"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -30,16 +32,37 @@ const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-
 const COL_RATIOS = [4, 5, 6, 10, 2, 1, 1] as const
 const COL_WIDTHS = COL_RATIOS.map((r) => `${(r / 29) * 100}%`)
 
-/** 今期の期首（4月1日）を YYYY-MM-DD で返す */
-function getFiscalYearStart(): string {
-  const d = new Date()
-  const year = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
-  return `${year}-04-01`
+/** 会計年度ラベル（例: 2026年度）から期首年を取得 */
+function fiscalStartYearFromLabel(label: string | null | undefined): number | null {
+  if (!label) return null
+  const y = Number(String(label).replace("年度", ""))
+  return Number.isFinite(y) && y > 2000 ? y : null
 }
 
-/** 本日を YYYY-MM-DD で返す */
-function getTodayString(): string {
-  return new Date().toISOString().slice(0, 10)
+/** 期首年 → 期首日 */
+function fiscalStartDate(fiscalStartYear: number): string {
+  return `${fiscalStartYear}-04-01`
+}
+
+/** 期首年 → 期末日（翌3/31）。繰延計上日を含む */
+function fiscalEndDate(fiscalStartYear: number): string {
+  return `${fiscalStartYear + 1}-03-31`
+}
+
+/** 今期の期首年（本日基準） */
+function getCurrentFiscalStartYear(): number {
+  const d = new Date()
+  return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
+}
+
+/** 今期の期首（4月1日）を YYYY-MM-DD で返す */
+function getFiscalYearStart(): string {
+  return fiscalStartDate(getCurrentFiscalStartYear())
+}
+
+/** 今期の期末（翌3月31日）を YYYY-MM-DD で返す（繰延計上の反映範囲に含める） */
+function getFiscalYearEnd(): string {
+  return fiscalEndDate(getCurrentFiscalStartYear())
 }
 
 type RowKind = "opening" | "data" | "subtotal" | "grandTotal"
@@ -85,8 +108,21 @@ export default function LedgerSubjectPage() {
   const [categoryId, setCategoryId] = useState<string>("all")
   const [subjectId, setSubjectId] = useState<string>("")
   const [startDate, setStartDate] = useState<string>(getFiscalYearStart())
-  const [endDate, setEndDate] = useState<string>(getTodayString())
+  const [endDate, setEndDate] = useState<string>(getFiscalYearEnd())
   const isLocked = useClubSettlementLock()
+  const portalFiscalYear = usePortalFiscalYearOptional()
+  const urlStart = searchParams.get("start")
+  const urlEnd = searchParams.get("end")
+
+  /** ヘッダー年度に合わせて検索期間を期首〜期末に同期（繰延の期末日を含める） */
+  useEffect(() => {
+    // 収支集計表からのドリルダウン等、URL で期間指定がある場合は上書きしない
+    if (urlStart || urlEnd) return
+    const y =
+      fiscalStartYearFromLabel(portalFiscalYear?.selectedYear) ?? getCurrentFiscalStartYear()
+    setStartDate(fiscalStartDate(y))
+    setEndDate(fiscalEndDate(y))
+  }, [portalFiscalYear?.selectedYear, urlStart, urlEnd])
 
   const refreshTransactions = () => setTransactions(getTransactions())
 
@@ -218,21 +254,53 @@ export default function LedgerSubjectPage() {
     )
   }, [subjectOpeningBalance, fiscalYearStartDate, startDate, endDate])
 
+  /**
+   * 通常仕訳 + 繰延計上（メモ内の科目に紐づく）。
+   * 繰延は符号付き金額を amount に載せ、相手先列には繰延科目名を表示する。
+   */
   const filteredTransactions = useMemo(() => {
     if (!selectedSubject) return []
     const subjectName = selectedSubject.name
-    const list = transactions.filter((t) => {
-      if (!t.date) return false
-      if (t.date < startDate || t.date > endDate) return false
-      if (t.accountTitle !== subjectName) return false
-      // 振替（出金元/入金先の対レコード）は科目別台帳の集計から除外
-      if (isTransferLeg(t)) return false
-      if (categoryId !== "all") {
-        const cat = categories.find((c) => c.id === categoryId)
-        if (cat && t.category !== cat.name) return false
+    const subjectGroup = selectedSubject.group
+    const categoryNameFilter =
+      categoryId === "all"
+        ? null
+        : categories.find((c) => c.id === categoryId)?.name ?? null
+
+    const list: Transaction[] = []
+
+    for (const t of transactions) {
+      if (!t.date) continue
+      if (t.date < startDate || t.date > endDate) continue
+      if (isTransferLeg(t)) continue
+
+      if (t.type === "deferred") {
+        const adj = getDeferredRecordPlAdjustment(t)
+        if (!adj) continue
+        if (adj.subjectName !== subjectName) continue
+        if (
+          (subjectGroup === "income" || subjectGroup === "expense") &&
+          adj.side !== subjectGroup
+        ) {
+          continue
+        }
+        if (categoryNameFilter && adj.categoryName !== categoryNameFilter) continue
+        list.push({
+          ...t,
+          amount: adj.signedAmount,
+          counterparty: adj.deferredAccount,
+          category: adj.categoryName || t.category,
+          accountTitle: subjectName,
+          memo: adj.userMemo,
+        })
+        continue
       }
-      return true
-    })
+
+      if (t.accountTitle !== subjectName) continue
+      if (categoryNameFilter && t.category !== categoryNameFilter) continue
+      list.push(t)
+    }
+
     return list.sort((a, b) => a.date.localeCompare(b.date))
   }, [transactions, startDate, endDate, selectedSubject, categoryId, categories])
 

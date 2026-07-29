@@ -15,6 +15,7 @@ import {
   type CollectionSchedule,
   type Transaction,
 } from "@/utils/localStorage"
+import { getDeferredRecordPlAdjustment } from "@/lib/deferredAccounting"
 
 const THEME_COLOR = "#68A384"
 const REPORT_REMARKS_STORAGE_KEY = "classapo_report_remarks"
@@ -136,6 +137,13 @@ export default function ReportPage() {
       totals.set(entry.category, (totals.get(entry.category) ?? 0) + entry.amount)
     })
 
+    // 繰延計上: 未収入金＝収入＋、預り金＝収入−（カテゴリーはメモ内）
+    transactions.forEach((t) => {
+      const adj = getDeferredRecordPlAdjustment(t)
+      if (!adj || adj.side !== "income" || !adj.categoryName) return
+      totals.set(adj.categoryName, (totals.get(adj.categoryName) ?? 0) + adj.signedAmount)
+    })
+
     return sortedCategories.map(
       (c): CategoryTotal => ({
         id: c.id,
@@ -153,6 +161,13 @@ export default function ReportPage() {
       .forEach((t) => {
         totals.set(t.category, (totals.get(t.category) ?? 0) + t.amount)
       })
+
+    // 繰延計上: 未払金＝支出＋、仮払金＝支出−（カテゴリーはメモ内）
+    transactions.forEach((t) => {
+      const adj = getDeferredRecordPlAdjustment(t)
+      if (!adj || adj.side !== "expense" || !adj.categoryName) return
+      totals.set(adj.categoryName, (totals.get(adj.categoryName) ?? 0) + adj.signedAmount)
+    })
 
     return sortedCategories.map(
       (c): CategoryTotal => ({
@@ -184,8 +199,9 @@ export default function ReportPage() {
       const txDelta = transactions
         .filter((t) => t.counterparty === account.name)
         .reduce((sum, t) => {
+          if (t.type === "deferred") return sum
           if (t.type === "income" || t.type === "collection") return sum + t.amount
-          if (t.type === "expense" || t.type === "transfer" || t.type === "deferred") return sum - t.amount
+          if (t.type === "expense" || t.type === "transfer") return sum - t.amount
           return sum
         }, 0)
       const fallbackCollectionDelta = collectionIncomeEntries

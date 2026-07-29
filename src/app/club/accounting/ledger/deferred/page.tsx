@@ -12,56 +12,24 @@ import { getEditUrl } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import { formatDateDisplay } from "@/utils/dateDisplay"
+import {
+  DEFERRED_ACCOUNT_ORDER,
+  isDeferredRecord,
+  isDeferredSettlement,
+  normalizeDeferredAccountName,
+  parseDeferredMemo,
+} from "@/lib/deferredAccounting"
 
 const THEME_COLOR = "#68A384"
 
-const DEFERRED_LEDGER_ACCOUNTS = ["未収入金", "仮払金", "預り金", "未払金"] as const
+const DEFERRED_LEDGER_ACCOUNTS = DEFERRED_ACCOUNT_ORDER
 type DeferredLedgerAccount = (typeof DEFERRED_LEDGER_ACCOUNTS)[number] | "all"
-
-function isDeferredRecord(t: Transaction): boolean {
-  return t.type === "deferred" && t.counterparty === "record"
-}
-
-function isDeferredSettlement(t: Transaction): boolean {
-  return t.type === "deferred" && t.counterparty !== "record"
-}
-
-function normalizeDeferredAccountName(name: string): string {
-  return name === "仮受金" ? "預り金" : name
-}
-
-function parseDeferredMemo(memo: string): {
-  category: string
-  subject: string
-  userMemo: string
-} {
-  const parts = (memo || "")
-    .split(" / ")
-    .map((p) => p.trim())
-    .filter(Boolean)
-  let category = ""
-  let subject = ""
-  const rest: string[] = []
-  for (const p of parts) {
-    if (p.startsWith("カテゴリー:")) {
-      category = p.replace(/^カテゴリー:\s*/, "").trim()
-    } else if (p.startsWith("科目:")) {
-      subject = p.replace(/^科目:\s*/, "").trim()
-    } else if (p.startsWith("区分:")) {
-      // 台帳表示では区分列なし（科目の絞り込み用に保持していた情報）
-    } else if (p === "精算" || p === "計上") {
-      // skip
-    } else {
-      rest.push(p)
-    }
-  }
-  return { category, subject, userMemo: rest.join(" / ") }
-}
 
 type DeferredRow = {
   key: string
   transaction: Transaction
   date: string
+  deferredAccount: string
   category: string
   subject: string
   recordedAmount: number | null
@@ -115,6 +83,7 @@ export default function LedgerDeferredPage() {
         key: t.id,
         transaction: t,
         date: t.date,
+        deferredAccount: normalizeDeferredAccountName(t.accountTitle),
         category: parsed.category || "—",
         subject: parsed.subject || "—",
         recordedAmount: isRecord ? t.amount : null,
@@ -136,6 +105,9 @@ export default function LedgerDeferredPage() {
     router.push(getEditUrl(t, editReturnTo))
   }
 
+  const showBalance = accountFilter !== "all"
+  const emptyColSpan = showBalance ? 10 : 9
+
   return (
     <div className="px-6 py-8 bg-[#F5F5F0] min-h-screen w-full">
       <div className="w-full">
@@ -147,7 +119,7 @@ export default function LedgerDeferredPage() {
             繰延（計上・精算）
           </h2>
           <p className="text-sm text-[#6B7280] mt-1">
-            未収入金・仮払金・預り金・未払金の計上・精算台帳
+            未収入金・未払金・預り金・仮払金の計上・精算台帳
           </p>
           <SettlementLockAlert isLocked={isLocked} className="mt-3" />
         </div>
@@ -159,7 +131,7 @@ export default function LedgerDeferredPage() {
           <span className="text-xs text-[#6B7280]">検索条件:</span>
           <div>
             <label htmlFor="filter-deferred-account" className="block text-xs font-medium text-[#6B7280] mb-1">
-              資産・負債科目
+              繰延科目
             </label>
             <select
               id="filter-deferred-account"
@@ -184,28 +156,33 @@ export default function LedgerDeferredPage() {
           <table className="w-full text-sm border-collapse min-w-[960px]">
             <thead>
               <tr className="bg-[#EEF6F1] text-[#374151]">
-                <th className="px-3 py-2.5 text-left font-semibold border-b border-gray-200 whitespace-nowrap">
+                <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200 whitespace-nowrap">
                   日付
                 </th>
-                <th className="px-3 py-2.5 text-left font-semibold border-b border-gray-200">
+                <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                  繰延科目
+                </th>
+                <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200">
                   カテゴリー
                 </th>
-                <th className="px-3 py-2.5 text-left font-semibold border-b border-gray-200">
+                <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200">
                   科目
                 </th>
-                <th className="px-3 py-2.5 text-right font-semibold border-b border-gray-200 whitespace-nowrap">
+                <th className="px-3 py-2.5 text-right font-semibold border-b border-r border-gray-200 whitespace-nowrap">
                   計上額
                 </th>
-                <th className="px-3 py-2.5 text-right font-semibold border-b border-gray-200 whitespace-nowrap">
+                <th className="px-3 py-2.5 text-right font-semibold border-b border-r border-gray-200 whitespace-nowrap">
                   精算額
                 </th>
-                <th className="px-3 py-2.5 text-right font-semibold border-b border-gray-200 whitespace-nowrap">
-                  残高
-                </th>
-                <th className="px-3 py-2.5 text-left font-semibold border-b border-gray-200">
+                {showBalance && (
+                  <th className="px-3 py-2.5 text-right font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                    残高
+                  </th>
+                )}
+                <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200">
                   メモ
                 </th>
-                <th className="px-2 py-2.5 text-center font-semibold border-b border-gray-200 w-12">
+                <th className="px-2 py-2.5 text-center font-semibold border-b border-r border-gray-200 w-12">
                   編集
                 </th>
                 <th className="px-2 py-2.5 text-center font-semibold border-b border-gray-200 w-12">
@@ -216,45 +193,47 @@ export default function LedgerDeferredPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center text-[#6B7280]">
+                  <td colSpan={emptyColSpan} className="px-3 py-10 text-center text-[#6B7280] border-r border-gray-200">
                     表示できる繰延取引がありません
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
                   <tr key={row.key} className="hover:bg-gray-50/80 border-b border-gray-100">
-                    <td className="px-3 py-2.5 whitespace-nowrap text-[#374151]">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-[#374151] border-r border-gray-200">
                       {formatDateDisplay(row.date)}
                     </td>
-                    <td className="px-3 py-2.5 text-[#374151] break-words">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-[#374151] border-r border-gray-200">
+                      {row.deferredAccount}
+                    </td>
+                    <td className="px-3 py-2.5 text-[#374151] break-words border-r border-gray-200">
                       {row.category}
                     </td>
-                    <td className="px-3 py-2.5 text-[#374151] break-words">
-                      <div>{row.subject}</div>
-                      <div className="text-[10px] text-[#9CA3AF] mt-0.5">
-                        {normalizeDeferredAccountName(row.transaction.accountTitle)}
-                      </div>
+                    <td className="px-3 py-2.5 text-[#374151] break-words border-r border-gray-200">
+                      {row.subject}
                     </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-[#374151]">
+                    <td className="px-3 py-2.5 text-right tabular-nums text-[#374151] border-r border-gray-200">
                       {row.recordedAmount != null
                         ? row.recordedAmount.toLocaleString()
                         : "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-[#374151]">
+                    <td className="px-3 py-2.5 text-right tabular-nums text-[#374151] border-r border-gray-200">
                       {row.settledAmount != null
                         ? row.settledAmount.toLocaleString()
                         : "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-[#374151]">
-                      {row.balance.toLocaleString()}
-                    </td>
+                    {showBalance && (
+                      <td className="px-3 py-2.5 text-right tabular-nums font-medium text-[#374151] border-r border-gray-200">
+                        {row.balance.toLocaleString()}
+                      </td>
+                    )}
                     <td
-                      className="px-3 py-2.5 text-[#374151] break-words max-w-[14rem]"
+                      className="px-3 py-2.5 text-[#374151] break-words max-w-[14rem] border-r border-gray-200"
                       title={row.memo !== "—" ? row.memo : undefined}
                     >
                       {row.memo}
                     </td>
-                    <td className="px-2 py-2.5 text-center">
+                    <td className="px-2 py-2.5 text-center border-r border-gray-200">
                       <button
                         type="button"
                         disabled={isLocked}

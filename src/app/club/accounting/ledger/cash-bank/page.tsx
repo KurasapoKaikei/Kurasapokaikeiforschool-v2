@@ -244,7 +244,7 @@ export default function LedgerCashBankPage() {
     
     priorTransactions.forEach((t) => {
       const isIncome = t.type === "income" || t.type === "collection"
-      const isExpense = t.type === "expense" || t.type === "transfer" || t.type === "deferred"
+      const isExpense = t.type === "expense" || t.type === "transfer"
       if (isIncome) balance += t.amount
       if (isExpense) balance -= t.amount
     })
@@ -295,15 +295,15 @@ export default function LedgerCashBankPage() {
 
       monthTx.forEach((t, i) => {
         const isIncome = t.type === "income" || t.type === "collection"
-        const isExpense = t.type === "expense" || t.type === "transfer" || t.type === "deferred"
-        
+        const isExpense = t.type === "expense" || t.type === "transfer"
+
         const incomeAmt = isIncome ? t.amount : 0
         const expenseAmt = isExpense ? t.amount : 0
-        
+
         if (isIncome) monthIncome += t.amount
         if (isExpense) monthExpense += t.amount
-        
-        // 残高計算: 前行の残高 + 入金 - 出金
+
+        // 残高計算: 前行の残高 + 入金 - 出金（繰延は transactionMatchesCashAccount で除外済み）
         runningBalance = runningBalance + incomeAmt - expenseAmt
         monthEndBalance = runningBalance
         

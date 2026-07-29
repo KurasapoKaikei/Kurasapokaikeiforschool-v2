@@ -68,6 +68,13 @@ export interface Transaction {
    * 同一IDを持つ2件で1つの振替を表す。履歴の集約表示・編集時の同期に使用。
    */
   transferGroupId?: string | null
+  /**
+   * 繰延計上の収支紐付け（科目別台帳・収支集計表用）。
+   * 無い場合は memo 内の「カテゴリー:」「科目:」から復元する。
+   */
+  deferredPlSide?: "income" | "expense" | null
+  deferredPlCategory?: string | null
+  deferredPlSubject?: string | null
   /** 登録した作業者名（担当者設定の氏名 or 未設定） */
   createdBy?: string | null
   /** 最終編集を行った作業者名（未編集なら null/undefined） */
