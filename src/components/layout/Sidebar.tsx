@@ -65,6 +65,7 @@ const menuItems: MenuItem[] = [
       { title: "収支集計表", href: clubPath("/accounting/summary") },
       { title: "現金・預金出納帳", href: clubPath("/accounting/ledger/cash-bank") },
       { title: "科目別台帳", href: clubPath("/accounting/ledger/subject") },
+      { title: "繰延（計上・精算）", href: clubPath("/accounting/ledger/deferred") },
       { title: "収支報告書", href: clubPath("/accounting/report") },
     ],
   },

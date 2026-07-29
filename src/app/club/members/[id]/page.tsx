@@ -19,10 +19,15 @@ import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 const THEME_COLOR = "#D99529"
 const FISCAL_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
 const FISCAL_START_MONTH = 4
-const CURRENT_FISCAL_YEAR = 2026
-const CURRENT_DISPLAY_MONTH = 5
 
 const fmt = (n: number): string => n.toLocaleString()
+
+/** 会計年度の期首年（4月始まり）。例: 2026-07 → 2026、2027-03 → 2026 */
+function getFiscalStartYear(date: Date = new Date()): number {
+  const month = date.getMonth() + 1
+  const year = date.getFullYear()
+  return month >= FISCAL_START_MONTH ? year : year - 1
+}
 
 function normalizeTargetMonth(schedule: CollectionSchedule): string {
   const ym = (schedule.targetMonth || "").trim()
@@ -240,13 +245,14 @@ export default function MemberDetailPage() {
     })
   }, [rows, transactionMap])
 
-  // 初年度運用方針: 2026年度（2026/04〜）に固定
-  const displayYear = CURRENT_FISCAL_YEAR
-  const currentMonth = CURRENT_DISPLAY_MONTH
+  // ラベル・集計終端は「今日の年月」（例: 2026-07-21 → 2026年7月時点）
+  const asOfDate = new Date()
+  const displayYear = asOfDate.getFullYear()
+  const currentMonth = asOfDate.getMonth() + 1
   const asOfLabel = `${displayYear}年${currentMonth}月時点の未収入金総額`
   const currentYm = `${displayYear}-${String(currentMonth).padStart(2, "0")}`
   const currentYmNum = ymToNumber(currentYm) ?? 0
-  const currentFiscalStartYear = CURRENT_FISCAL_YEAR
+  const currentFiscalStartYear = getFiscalStartYear(asOfDate)
   const fiscalStartYmNum = currentFiscalStartYear * 100 + FISCAL_START_MONTH
   const effectiveEndYmNum = currentYmNum
   const fiscalStartYm = `${currentFiscalStartYear}-${String(FISCAL_START_MONTH).padStart(2, "0")}`

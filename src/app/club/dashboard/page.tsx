@@ -115,11 +115,12 @@ export default function DashboardPage() {
     }
     const liabilityBalances: Record<string, number> = {
       未払金: 0,
-      仮受金: 0,
+      預り金: 0,
     }
 
     transactions.forEach((transaction) => {
-      const accountName = transaction.accountTitle
+      const accountName =
+        transaction.accountTitle === "仮受金" ? "預り金" : transaction.accountTitle
 
       // 繰延取引（資産・負債）の計算
       if (transaction.type === "deferred") {

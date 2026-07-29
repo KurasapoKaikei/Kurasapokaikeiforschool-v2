@@ -27,6 +27,8 @@ export interface DatePickerFieldProps {
   disabled?: boolean
   /** true のとき表示を `yyyy/MM/dd (曜)` 形式にする */
   showWeekday?: boolean
+  /** 表セル向けのコンパクト表示（アイコン・余白を縮小） */
+  compact?: boolean
   "aria-label"?: string
 }
 
@@ -64,6 +66,7 @@ export function DatePickerField({
   themeColor = "#68A384",
   disabled = false,
   showWeekday = false,
+  compact = false,
   "aria-label": ariaLabel,
 }: DatePickerFieldProps) {
   const [open, setOpen] = React.useState(false)
@@ -149,8 +152,8 @@ export function DatePickerField({
   }
 
   return (
-    <div ref={containerRef} className="relative inline-block w-full">
-      <div className="relative flex">
+    <div ref={containerRef} className="relative w-full min-w-0">
+      <div className="relative flex min-w-0">
         <input
           type="text"
           id={id}
@@ -165,9 +168,10 @@ export function DatePickerField({
           autoComplete="off"
           lang="en"
           className={cn(
-            "w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-[#374151] bg-white",
+            "w-full min-w-0 border border-gray-300 rounded-lg text-[#374151] bg-white",
             "focus:outline-none focus:ring-2 focus:border-transparent",
             "hover:border-gray-400 transition-colors",
+            compact ? "px-1.5 py-1 pr-7 text-[11px]" : "px-3 py-2.5 pr-10",
             disabled && "opacity-50 cursor-not-allowed",
             className
           )}
@@ -177,10 +181,13 @@ export function DatePickerField({
           type="button"
           onClick={handleCalendarClick}
           disabled={disabled}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 rounded-md hover:bg-gray-100 text-gray-500",
+            compact ? "right-0.5 p-1" : "right-2 p-1.5"
+          )}
           aria-label="カレンダーを開く"
         >
-          <Calendar className="h-4 w-4" />
+          <Calendar className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>
       </div>
 

@@ -31,7 +31,12 @@ import {
 } from "@/utils/localStorage"
 import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 import { useUserInfo } from "@/contexts/UserInfoContext"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
 import { BankCsvImportSection } from "@/components/accounting/BankCsvImportSection"
+import {
+  CollectionIndividualEntry,
+  type CollectionIndividualLine,
+} from "@/components/accounting/CollectionIndividualEntry"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import {
@@ -58,6 +63,11 @@ function getCurrentFiscalMonth(): number {
 function getFiscalStartYear(): number {
   const now = new Date()
   return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1
+}
+
+/** 会計年度の期末日（3/31）。fiscalStartYear は期首年（4月が属する年） */
+function getFiscalYearEndDateString(fiscalStartYear: number): string {
+  return `${fiscalStartYear + 1}-03-31`
 }
 
 function monthToYYYYMM(fiscalStartYear: number, month: number): string {
@@ -229,7 +239,8 @@ function buildMemberPaymentLineState(
       continue
     }
     const fromRecord = getLatestPaymentFromRecord(rec)
-    const key = colPaymentKey(memberId, schedule.id)
+    // モジュールスコープのためコンポーネント内の colPaymentKey は使えない
+    const key = colPaymentLineKey(memberId, schedule.id, COL_BASE_LINE_ID)
     lineKeys.push(key)
     payments[key] = fromRecord
       ? { ...fromRecord }
@@ -324,15 +335,50 @@ const tabs: { id: TabType; label: string }[] = [
   { id: "transfer", label: "振替" },
   { id: "collection", label: "集金" },
   { id: "csv", label: "CSV" },
-  { id: "deferred", label: "繰延（計上・消込）" },
+  { id: "deferred", label: "繰延（決算時）" },
 ]
 
 const DEFERRED_ACCOUNTS = [
-  { value: "未収入金", type: "asset" as const },
-  { value: "仮払金", type: "asset" as const },
-  { value: "未払金", type: "liability" as const },
-  { value: "仮受金", type: "liability" as const },
+  {
+    value: "未収入金",
+    label: "未収入金",
+    type: "asset" as const,
+    description: "あとで入ってくるお金（集金予定の部費など）",
+    /** 選択可能な収支区分 */
+    allowedSides: ["income"] as const,
+  },
+  {
+    value: "仮払金",
+    label: "仮払金",
+    type: "asset" as const,
+    description: "あとで領収書やおつりが戻ってくる（大会の現地出費などで事前渡したお金）",
+    allowedSides: ["expense"] as const,
+  },
+  {
+    value: "預り金",
+    label: "預り金",
+    type: "liability" as const,
+    description: "あとで支払う / 返す（他から一時的に預かっているお金）",
+    allowedSides: ["income"] as const,
+  },
+  {
+    value: "未払金",
+    label: "未払金",
+    type: "liability" as const,
+    description: "あとで払わなければいけないお金（購入済みの備品代など後払い分）",
+    allowedSides: ["expense"] as const,
+  },
 ] as const
+
+function isDeferredAccountAllowedForSide(
+  accountValue: string,
+  side: "" | "income" | "expense"
+): boolean {
+  if (!side) return true
+  const def = DEFERRED_ACCOUNTS.find((a) => a.value === accountValue)
+  if (!def) return false
+  return (def.allowedSides as readonly string[]).includes(side)
+}
 
 function getTodayString(): string {
   return new Date().toISOString().slice(0, 10)
@@ -342,6 +388,7 @@ export default function NewRegisterPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { currentOperatorName } = useUserInfo()
+  const portalFiscalYear = usePortalFiscalYearOptional()
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -361,11 +408,27 @@ export default function NewRegisterPage() {
     memberId: "",
     memo: "",
     deferredType: "record" as "record" | "settlement",
+    /** 繰延タブ: 収入/支出の選択（科目候補の絞り込み） */
+    deferredSide: "" as "" | "income" | "expense",
     deferredAccount: "",
     deferredSettlementId: "",
-    deferredCounterparty: "",
     deferredSettlementAccount: "",
   })
+
+  /** ヘッダー選択年度があればそれを期首年に、なければ本日基準 */
+  const deferredFiscalStartYear = useMemo(() => {
+    const label = portalFiscalYear?.selectedYear
+    if (label) {
+      const y = Number(String(label).replace("年度", ""))
+      if (Number.isFinite(y) && y > 2000) return y
+    }
+    return getFiscalStartYear()
+  }, [portalFiscalYear?.selectedYear])
+
+  const deferredFiscalEndDate = useMemo(
+    () => getFiscalYearEndDateString(deferredFiscalStartYear),
+    [deferredFiscalStartYear]
+  )
 
   useEffect(() => {
     setCategories(getCategories())
@@ -382,6 +445,15 @@ export default function NewRegisterPage() {
     }, 500)
     return () => clearInterval(interval)
   }, [])
+
+  /** 繰延・計上中は日付を期末日に合わせる（年度切替時も含む） */
+  useEffect(() => {
+    if (activeTab !== "deferred") return
+    if (formData.deferredType !== "record") return
+    setFormData((prev) =>
+      prev.date === deferredFiscalEndDate ? prev : { ...prev, date: deferredFiscalEndDate }
+    )
+  }, [activeTab, formData.deferredType, deferredFiscalEndDate])
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -401,6 +473,21 @@ export default function NewRegisterPage() {
     () => accountTitles.filter((t) => t.group === "cash").sort((a, b) => a.order - b.order),
     [accountTitles]
   )
+
+  /** 繰延タブの「科目」候補（収入/支出選択＋カテゴリーで絞り込み） */
+  const deferredSubjectTitles = useMemo(() => {
+    if (formData.deferredSide !== "income" && formData.deferredSide !== "expense") {
+      return [] as AccountTitle[]
+    }
+    let list = accountTitles.filter((t) => t.group === formData.deferredSide)
+    if (formData.category) {
+      const cat = categories.find((c) => c.name === formData.category)
+      if (cat) list = list.filter((t) => t.categoryIds.includes(cat.id))
+    }
+    return list.sort(
+      (a, b) => a.order - b.order || a.name.localeCompare(b.name, "ja")
+    )
+  }, [accountTitles, formData.deferredSide, formData.category, categories])
 
   const availableAccountTitles = useMemo(() => {
     if (activeTab === "income") {
@@ -423,6 +510,8 @@ export default function NewRegisterPage() {
   }, [accountTitles, activeTab, formData.category, categories])
 
   // ===== 集金タブ用 state =====
+  const [colViewMode, setColViewMode] = useState<"list" | "individual">("list")
+  const [colIndividualKey, setColIndividualKey] = useState(0)
   const [colMembers, setColMembers] = useState<Member[]>([])
   const [colSchedules, setColSchedules] = useState<CollectionSchedule[]>([])
   const [colRecords, setColRecords] = useState<CollectionRecord[]>([])
@@ -430,6 +519,7 @@ export default function NewRegisterPage() {
   const [colGrade, setColGrade] = useState<number | "all">("all")
   const [colSearch, setColSearch] = useState("")
   const [colBulkDate, setColBulkDate] = useState(getTodayString())
+
   // 科目（スケジュール）行ごとの入金入力。キー: `${memberId}__${scheduleId}`
   const [colPayments, setColPayments] = useState<Record<string, { amount: string; date: string; memo: string }>>({})
   const [colSuccess, setColSuccess] = useState<string | null>(null)
@@ -855,7 +945,13 @@ export default function NewRegisterPage() {
             date: "",
             memo: "",
           }
-        return { ...prev, [paymentKey]: { ...current, ...updates } }
+        const next = { ...current, ...updates }
+        // 入金額を空にしたら入金日・メモも同時にクリア
+        if ("amount" in updates && String(updates.amount ?? "").trim() === "") {
+          next.date = ""
+          next.memo = ""
+        }
+        return { ...prev, [paymentKey]: next }
       })
     },
     []
@@ -1132,6 +1228,137 @@ export default function NewRegisterPage() {
     setTimeout(() => setColSuccess(null), 3000)
   }
 
+  /** 集金タブ「個別」: CSVポップと同じフローで即時本登録 */
+  const handleColIndividualRegister = useCallback(
+    (lines: CollectionIndividualLine[]) => {
+      if (isLocked) return
+      if (lines.length === 0) return
+
+      const defaultCashName =
+        cashAccountTitles[0]?.name || "現金"
+      const schedules = getCollectionSchedules()
+      const records = getCollectionRecords()
+      const scheduleById = new Map(schedules.map((s) => [s.id, s]))
+      const recordByKey = new Map<string, CollectionRecord>(
+        records.map((r) => [`${r.memberId}__${r.scheduleId}`, r])
+      )
+
+      type Pending = {
+        schedule: CollectionSchedule
+        memberId: string
+        memberName: string
+        alloc: number
+        date: string
+        memo: string
+        category: string
+        accountTitle: string
+      }
+      const pending: Pending[] = []
+
+      for (const line of lines) {
+        const schedule = scheduleById.get(line.scheduleId)
+        if (!schedule) {
+          alert(`集金設定が見つかりません（${line.accountTitle}）`)
+          return
+        }
+        const recKey = `${line.memberId}__${line.scheduleId}`
+        const rec = recordByKey.get(recKey)
+        if (!rec) {
+          alert(`集金実績が見つかりません（${line.memberName} / ${line.accountTitle}）`)
+          return
+        }
+        let alloc = line.amount
+        if (line.amount < 0) {
+          const paid = sumCollectionRecordNetPaid(rec)
+          alloc = -Math.min(Math.abs(line.amount), paid)
+          if (alloc === 0) continue
+        }
+        pending.push({
+          schedule,
+          memberId: line.memberId,
+          memberName: line.memberName,
+          alloc,
+          date: line.date,
+          memo: line.memo,
+          category: line.category,
+          accountTitle: line.accountTitle,
+        })
+      }
+
+      if (pending.length === 0) {
+        alert("登録できる入金がありません（返金は入金済み額を超えられません）")
+        return
+      }
+
+      const txs = addCollectionRegisterTransactions(
+        pending.map((p) => ({
+          date: p.date,
+          type: "collection" as const,
+          amount: p.alloc,
+          counterparty: (p.schedule.counterpartyName ?? "").trim() || defaultCashName,
+          category: p.category || p.schedule.categoryName || "集金",
+          accountTitle:
+            p.accountTitle || p.schedule.accountTitleName || p.schedule.name || "会費収入",
+          memo: p.memo,
+          receiptUrl: null,
+          collectionMemberId: p.memberId,
+          collectionScheduleId: p.schedule.id,
+          createdBy: currentOperatorName,
+        }))
+      )
+
+      let saved = 0
+      pending.forEach((item, i) => {
+        const tx = txs[i]
+        if (!tx) return
+        const recKey = `${item.memberId}__${item.schedule.id}`
+        const rec = recordByKey.get(recKey)
+        if (!rec) return
+        const newHistory = [
+          ...(rec.paymentHistory ?? []),
+          { amount: item.alloc, date: item.date, memo: item.memo, transactionId: tx.id },
+        ]
+        const newPaid = sumCollectionRecordNetPaid({ ...rec, paymentHistory: newHistory })
+        const status = toCollectionStatus(newPaid, item.schedule.amount)
+        updateCollectionRecord(rec.id, {
+          paidAmount: newPaid,
+          paidAt: item.date,
+          linkedTransactionId: tx.id,
+          paymentHistory: newHistory,
+          status,
+        })
+        recordByKey.set(recKey, {
+          ...rec,
+          paidAmount: newPaid,
+          paidAt: item.date,
+          linkedTransactionId: tx.id,
+          paymentHistory: newHistory,
+          status,
+        })
+        saved++
+      })
+
+      if (saved === 0) {
+        alert("登録に失敗しました")
+        return
+      }
+
+      setTransactions(getTransactions())
+      reloadCollectionData()
+      setColIndividualKey((k) => k + 1)
+      const name = pending[0]?.memberName ?? "部員"
+      setColSuccess(`${name} の集金を ${saved} 件登録しました`)
+      setTimeout(() => setColSuccess(null), 3000)
+    },
+    [
+      isLocked,
+      cashAccountTitles,
+      currentOperatorName,
+      toCollectionStatus,
+      reloadCollectionData,
+    ]
+  )
+
   const exitColEditMode = useCallback((memberId: string) => {
     setColEditingMemberIds((prev) => {
       const next = new Set(prev)
@@ -1239,17 +1466,21 @@ export default function NewRegisterPage() {
     [colEditSnapshots, exitColEditMode]
   )
 
-  /** 入金完了部員: 全段を Transaction / CollectionRecord に反映（0 以外の段は各 1 仕訳） */
+  /** 入金完了部員: 全段を Transaction / CollectionRecord に反映。金額 0 は当該段の取消（仕訳削除） */
   const handleColSaveEdit = (member: Member) => {
     if (isLocked) return
     const schedules = getMemberMonthSchedules(member.id)
     const defaultCashName = accountTitles.find((t) => t.group === "cash")?.name ?? "現金"
     const allTxs = getTransactions()
     const lineKeys = colMemberLineKeys[member.id] ?? []
+    const freshRecords = getCollectionRecords()
     let saved = 0
+    let cancelled = 0
 
     for (const schedule of schedules) {
-      const rec = getCollectionRecordForSchedule(member.id, schedule.id)
+      const rec =
+        freshRecords.find((r) => r.memberId === member.id && r.scheduleId === schedule.id) ??
+        getCollectionRecordForSchedule(member.id, schedule.id)
       if (!rec) continue
 
       const scheduleKeys = lineKeys.filter((k) => {
@@ -1270,9 +1501,13 @@ export default function NewRegisterPage() {
         const row = colPayments[paymentKey]
         if (!row) continue
         const raw = (row.amount || "").replace(/,/g, "").trim()
-        if (raw === "") continue
-        const amount = Number(raw)
-        if (Number.isNaN(amount) || amount === 0) continue
+        const metaTxId = colPaymentLineMeta[paymentKey]?.transactionId
+        // 空欄かつ既存仕訳なし → 未入力の追加行として無視
+        if (raw === "" && !metaTxId) continue
+        const amount = raw === "" ? 0 : Number(raw)
+        if (Number.isNaN(amount)) continue
+        // 0（または既存行の空欄）→ 取消。rowsToSave に入れず、後段で仕訳削除
+        if (amount === 0) continue
         const date = (row.date || "").trim()
         if (!date) {
           alert("入金日を入力してください")
@@ -1283,11 +1518,22 @@ export default function NewRegisterPage() {
           amount,
           date,
           memo: row.memo?.trim() ?? "",
-          txId: colPaymentLineMeta[paymentKey]?.transactionId,
+          txId: metaTxId,
         })
       }
 
-      if (rowsToSave.length === 0 && (rec.paidAmount ?? 0) === 0) continue
+      const hadPaidBefore =
+        (rec.paymentHistory?.length ?? 0) > 0 ||
+        (rec.paidAmount ?? 0) !== 0 ||
+        Boolean(rec.linkedTransactionId) ||
+        allTxs.some(
+          (t) =>
+            t.type === "collection" &&
+            t.collectionMemberId === member.id &&
+            t.collectionScheduleId === schedule.id
+        )
+
+      if (rowsToSave.length === 0 && !hadPaidBefore) continue
 
       const newHistory: {
         amount: number
@@ -1425,42 +1671,93 @@ export default function NewRegisterPage() {
         })
       }
 
-      const oldTxIds = (rec.paymentHistory ?? [])
-        .map((h) => h.transactionId)
-        .filter((id): id is string => Boolean(id))
+      // 残さない仕訳を削除（金額0にした段・旧 linkedTransactionId・同科目の余剰 collection）
+      const oldTxIds = new Set<string>()
+      for (const h of rec.paymentHistory ?? []) {
+        if (h.transactionId) oldTxIds.add(h.transactionId)
+      }
+      if (rec.linkedTransactionId) oldTxIds.add(rec.linkedTransactionId)
+      for (const t of allTxs) {
+        if (
+          t.type === "collection" &&
+          t.collectionMemberId === member.id &&
+          t.collectionScheduleId === schedule.id
+        ) {
+          oldTxIds.add(t.id)
+        }
+      }
+      let deletedAny = false
       for (const oldId of oldTxIds) {
-        if (!keptTxIds.has(oldId)) deleteTransaction(oldId)
+        if (keptTxIds.has(oldId)) continue
+        if (deleteTransaction(oldId)) deletedAny = true
       }
 
-      const newPaid = sumCollectionRecordNetPaid({ ...rec, paymentHistory: newHistory })
+      const newPaid = newHistory.reduce((sum, h) => sum + h.amount, 0)
       const lastEntry = newHistory[newHistory.length - 1]
+      const cleared = newHistory.length === 0
       updateCollectionRecord(rec.id, {
         paidAmount: newPaid,
-        paidAt: lastEntry?.date ?? rec.paidAt,
-        linkedTransactionId: lastEntry?.transactionId ?? rec.linkedTransactionId,
+        paidAt: cleared ? null : lastEntry?.date ?? rec.paidAt,
+        linkedTransactionId: cleared ? null : lastEntry?.transactionId ?? null,
         paymentHistory: newHistory,
         status: toCollectionStatus(newPaid, schedule.amount),
       })
+
+      if (cleared && (hadPaidBefore || deletedAny)) cancelled++
     }
 
-    if (saved === 0) {
+    if (saved === 0 && cancelled === 0) {
       alert("更新できる入金がありません")
       return
     }
 
     exitColEditMode(member.id)
     reloadCollectionData()
-    setColSuccess(`${member.name} の集金を ${saved} 件更新しました`)
+    const msg =
+      saved === 0 && cancelled > 0
+        ? `${member.name} の入金を取り消しました`
+        : cancelled > 0
+          ? `${member.name} の集金を更新しました（取消 ${cancelled} 件含む）`
+          : `${member.name} の集金を ${saved} 件更新しました`
+    setColSuccess(msg)
     setTimeout(() => setColSuccess(null), 3000)
   }
 
-  const deferredSettlementList = useMemo(
-    () =>
-      transactions.filter(
-        (t) => t.type === "deferred" && t.counterparty === "record"
-      ),
-    [transactions]
-  )
+  const deferredSettlementList = useMemo(() => {
+    return transactions.filter((t) => {
+      if (t.type !== "deferred" || t.counterparty !== "record") return false
+      if (formData.deferredAccount) {
+        const matchesDeferred =
+          t.accountTitle === formData.deferredAccount ||
+          (formData.deferredAccount === "預り金" && t.accountTitle === "仮受金")
+        if (!matchesDeferred) return false
+      }
+      if (formData.deferredSide) {
+        const memo = t.memo || ""
+        const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
+        const sideMarker = `区分: ${sideLabel}`
+        if (memo.includes("区分:") && !memo.includes(sideMarker)) return false
+      }
+      if (formData.category) {
+        const memo = t.memo || ""
+        const categoryMarker = `カテゴリー: ${formData.category}`
+        if (memo.includes("カテゴリー:") && !memo.includes(categoryMarker)) return false
+      }
+      if (formData.accountTitle) {
+        const memo = t.memo || ""
+        const subjectMarker = `科目: ${formData.accountTitle}`
+        // 新データは科目で絞り込み。旧データ（科目マーカーなし）も候補に残す
+        if (memo.includes("科目:") && !memo.includes(subjectMarker)) return false
+      }
+      return true
+    })
+  }, [
+    transactions,
+    formData.deferredAccount,
+    formData.deferredSide,
+    formData.category,
+    formData.accountTitle,
+  ])
 
   const handleTabChange = (tab: TabType) => {
     // 振替タブから別タブへ離脱した場合は振替編集モードを解除する
@@ -1475,8 +1772,11 @@ export default function NewRegisterPage() {
       memberId: "",
       deferredAccount: "",
       deferredSettlementId: "",
-      deferredCounterparty: "",
       deferredSettlementAccount: "",
+      deferredSide: tab === "deferred" ? "" : prev.deferredSide,
+      // 繰延タブは既定が計上のため期末日。他タブは本日
+      date: tab === "deferred" ? deferredFiscalEndDate : getTodayString(),
+      deferredType: tab === "deferred" ? "record" : prev.deferredType,
     }))
   }
 
@@ -1640,22 +1940,48 @@ export default function NewRegisterPage() {
         alert("金額を0より大きい数値で入力してください")
         return
       }
+      if (!formData.deferredSide) {
+        alert("収入または支出を選択してください")
+        return
+      }
+      if (!formData.category) {
+        alert("カテゴリーを選択してください")
+        return
+      }
+      if (!formData.accountTitle) {
+        alert("科目を選択してください")
+        return
+      }
+      if (!formData.deferredAccount) {
+        alert("繰延科目を選択してください")
+        return
+      }
+      if (!isDeferredAccountAllowedForSide(formData.deferredAccount, formData.deferredSide)) {
+        alert(
+          formData.deferredSide === "income"
+            ? "収入科目では仮払金・未払金は選択できません"
+            : "支出科目では未収入金・預り金は選択できません"
+        )
+        return
+      }
+      const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
       if (formData.deferredType === "record") {
-        if (!formData.deferredAccount) {
-          alert("科目を選択してください")
-          return
-        }
-        const counterpartyLabel = formData.deferredCounterparty
-          ? `相手先: ${formData.deferredCounterparty}`
-          : ""
+        const memoParts = [
+          `区分: ${sideLabel}`,
+          `カテゴリー: ${formData.category}`,
+          `科目: ${formData.accountTitle}`,
+          formData.memo.trim(),
+        ].filter(Boolean)
         addTransaction({
           date: formData.date,
           type: "deferred",
           amount,
           counterparty: "record",
-          category: DEFERRED_ACCOUNTS.find((a) => a.value === formData.deferredAccount)?.type ?? "asset",
+          category:
+            DEFERRED_ACCOUNTS.find((a) => a.value === formData.deferredAccount)?.type ??
+            "asset",
           accountTitle: formData.deferredAccount,
-          memo: [counterpartyLabel, formData.memo].filter(Boolean).join(" / ") || "計上",
+          memo: memoParts.join(" / ") || "計上",
           receiptUrl: null,
           createdBy: currentOperatorName,
         })
@@ -1674,6 +2000,13 @@ export default function NewRegisterPage() {
           alert("選択した繰延項目が見つかりません")
           return
         }
+        const memoParts = [
+          `精算`,
+          `区分: ${sideLabel}`,
+          `カテゴリー: ${formData.category}`,
+          `科目: ${formData.accountTitle}`,
+          formData.memo.trim(),
+        ].filter(Boolean)
         addTransaction({
           date: formData.date,
           type: "deferred",
@@ -1681,11 +2014,11 @@ export default function NewRegisterPage() {
           counterparty: formData.deferredSettlementAccount,
           category: source.category,
           accountTitle: source.accountTitle,
-          memo: `消込: ${formData.memo || ""}`,
+          memo: memoParts.join(" / "),
           receiptUrl: null,
           createdBy: currentOperatorName,
         })
-        alert("繰延（消込）を登録しました")
+        alert("繰延（精算）を登録しました")
       }
       resetForm()
       return
@@ -1725,7 +2058,8 @@ export default function NewRegisterPage() {
 
   function resetForm() {
     setFormData({
-      date: getTodayString(),
+      date:
+        activeTab === "deferred" ? deferredFiscalEndDate : getTodayString(),
       category: "",
       accountTitle: "",
       amount: "",
@@ -1735,9 +2069,9 @@ export default function NewRegisterPage() {
       memberId: "",
       memo: "",
       deferredType: "record",
+      deferredSide: "",
       deferredAccount: "",
       deferredSettlementId: "",
-      deferredCounterparty: "",
       deferredSettlementAccount: "",
     })
     setReceiptPreview(null)
@@ -1791,7 +2125,7 @@ export default function NewRegisterPage() {
         <SettlementLockAlert isLocked={isLocked} />
       </div>
 
-      {/* ===== 集金タブ: 実績入力一覧 ===== */}
+      {/* ===== 集金タブ: 一覧 / 個別 ===== */}
       {showCollectionFields ? (
         <div className="flex-1 bg-white overflow-y-auto">
           <div className="px-6 py-5">
@@ -1803,6 +2137,49 @@ export default function NewRegisterPage() {
               </div>
             )}
 
+            {/* 一覧 / 個別 切替（収支集計の年次・月次と同型） */}
+            <div className="mb-5">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setColViewMode("list")}
+                  className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                    colViewMode === "list"
+                      ? "text-white shadow-sm"
+                      : "bg-gray-100 text-[#374151] hover:bg-gray-200"
+                  }`}
+                  style={colViewMode === "list" ? { backgroundColor: THEME_COLOR } : {}}
+                >
+                  一覧
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setColViewMode("individual")}
+                  className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                    colViewMode === "individual"
+                      ? "text-white shadow-sm"
+                      : "bg-gray-100 text-[#374151] hover:bg-gray-200"
+                  }`}
+                  style={colViewMode === "individual" ? { backgroundColor: THEME_COLOR } : {}}
+                >
+                  個別
+                </button>
+              </div>
+            </div>
+
+            {colViewMode === "individual" ? (
+              <CollectionIndividualEntry
+                key={colIndividualKey}
+                variant="direct"
+                showHeader
+                title="集金の個別登録"
+                initialDate={colBulkDate || getTodayString()}
+                disabled={isLocked}
+                submitLabel="登録する"
+                onSubmit={handleColIndividualRegister}
+              />
+            ) : (
+              <>
             {/* 集金月ボタン */}
             <div className="mb-5">
               <div className="flex items-center gap-3">
@@ -1885,8 +2262,8 @@ export default function NewRegisterPage() {
                     <col className="w-[2.25rem]" />
                     <col style={{ width: "11%" }} />
                     <col style={{ width: "12%" }} />
-                    <col style={{ width: "11%" }} />
-                    <col style={{ width: "14%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "15%" }} />
                     <col />
                     <col style={{ width: "8%" }} />
                   </colgroup>
@@ -2130,10 +2507,10 @@ export default function NewRegisterPage() {
                                           />
                                         )}
                                       </td>
-                                      <td className={`px-2 py-2 border-r border-gray-300 align-middle min-w-[10.5rem] ${rowBgClass}`}>
+                                      <td className={`px-1.5 py-2 border-r border-gray-300 align-middle ${rowBgClass}`}>
                                         {scheduleRowLocked ? (
                                           <div
-                                            className={`${COL_INPUT_LOCKED_CLASS} whitespace-nowrap min-w-[10rem]`}
+                                            className={`${COL_INPUT_LOCKED_CLASS} text-[11px] px-1.5 py-1 whitespace-nowrap overflow-hidden text-ellipsis`}
                                             aria-label={`${member.name}・${subjectName}の入金日（入金済）`}
                                           >
                                             {formatColDateDisplay(scheduleRow.date) || "-"}
@@ -2143,7 +2520,8 @@ export default function NewRegisterPage() {
                                             value={scheduleRow.date}
                                             onChange={(v) => setPaymentRowByKey(dr.paymentKey, { date: v })}
                                             themeColor="#67a384"
-                                            className="w-full min-w-[10rem] px-2 py-1.5 text-left text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#67a384] bg-white text-[#374151] whitespace-nowrap"
+                                            compact
+                                            className="text-left border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#67a384] whitespace-nowrap overflow-hidden"
                                             aria-label={`${member.name}・${subjectName}の入金日`}
                                           />
                                         )}
@@ -2263,6 +2641,8 @@ export default function NewRegisterPage() {
                 　/　表示 {colFilteredMembers.length}名
               </p>
             )}
+              </>
+            )}
           </div>
         </div>
       ) : showCsvFields ? (
@@ -2288,11 +2668,10 @@ export default function NewRegisterPage() {
         >
           <div className={`p-6 ${showReceiptArea ? "max-w-lg" : "w-full max-w-lg"}`}>
             <form onSubmit={handleSubmit} className="space-y-5">
+              {!showDeferredFields && (
               <div>
                 <label htmlFor="date" className={labelClass}>
-                  {activeTab === "deferred" && formData.deferredType === "settlement"
-                    ? "入出金日付"
-                    : "日付"}
+                  日付
                 </label>
                 <DatePickerField
                   id="date"
@@ -2300,9 +2679,10 @@ export default function NewRegisterPage() {
                   onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
                   themeColor={THEME_COLOR}
                   className={inputClass}
-                  aria-label={activeTab === "deferred" && formData.deferredType === "settlement" ? "入出金日付" : "日付"}
+                  aria-label="日付"
                 />
               </div>
+              )}
 
               {(activeTab === "income" || activeTab === "expense") && (
                 <div>
@@ -2465,6 +2845,7 @@ export default function NewRegisterPage() {
                             setFormData((prev) => ({
                               ...prev,
                               deferredType: "record",
+                              date: deferredFiscalEndDate,
                               deferredSettlementId: "",
                               deferredSettlementAccount: "",
                             }))
@@ -2483,61 +2864,217 @@ export default function NewRegisterPage() {
                             setFormData((prev) => ({
                               ...prev,
                               deferredType: "settlement",
-                              deferredAccount: "",
-                              deferredCounterparty: "",
+                              date: getTodayString(),
                             }))
                           }
                           className="text-[#A3BC68] focus:ring-[#A3BC68]"
                         />
-                        <span className="text-sm text-[#374151]">消込</span>
+                        <span className="text-sm text-[#374151]">精算</span>
                       </label>
                     </div>
                   </div>
-                  {formData.deferredType === "record" ? (
-                    <>
-                      <div>
-                        <label htmlFor="deferredAccount" className={labelClass}>
-                          科目
-                        </label>
-                        <select
-                          id="deferredAccount"
-                          value={formData.deferredAccount}
-                          onChange={(e) =>
-                            setFormData((prev) => ({ ...prev, deferredAccount: e.target.value }))
-                          }
-                          className={inputClass}
-                          required={formData.deferredType === "record"}
-                        >
-                          <option value="">選択してください</option>
-                          {DEFERRED_ACCOUNTS.map((a) => (
-                            <option key={a.value} value={a.value}>
-                              {a.value}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="deferredCounterparty" className={labelClass}>
-                          相手先
-                        </label>
+
+                  <div>
+                    <label htmlFor="deferredDate" className={labelClass}>
+                      日付
+                    </label>
+                    <DatePickerField
+                      id="deferredDate"
+                      value={formData.date}
+                      onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
+                      themeColor={THEME_COLOR}
+                      className={inputClass}
+                      aria-label="日付"
+                      disabled={formData.deferredType === "record"}
+                    />
+                    {formData.deferredType === "record" && (
+                      <p className="text-xs text-[#6B7280] mt-1">
+                        計上の日付は期末日（{deferredFiscalEndDate.replace(/-/g, "/")}）です
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>収入 / 支出</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
                         <input
-                          type="text"
-                          id="deferredCounterparty"
-                          value={formData.deferredCounterparty}
-                          onChange={(e) =>
+                          type="radio"
+                          name="deferredSide"
+                          value="income"
+                          checked={formData.deferredSide === "income"}
+                          onChange={() =>
                             setFormData((prev) => ({
                               ...prev,
-                              deferredCounterparty: e.target.value,
+                              deferredSide: "income",
+                              category: "",
+                              accountTitle: "",
+                              deferredSettlementId: "",
+                              deferredAccount: isDeferredAccountAllowedForSide(
+                                prev.deferredAccount,
+                                "income"
+                              )
+                                ? prev.deferredAccount
+                                : "",
                             }))
                           }
-                          className={inputClass}
-                          placeholder="任意"
-                          lang="ja"
-                          autoComplete="off"
+                          className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                          required
                         />
-                      </div>
-                    </>
-                  ) : (
+                        <span className="text-sm text-[#374151]">収入</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="deferredSide"
+                          value="expense"
+                          checked={formData.deferredSide === "expense"}
+                          onChange={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              deferredSide: "expense",
+                              category: "",
+                              accountTitle: "",
+                              deferredSettlementId: "",
+                              deferredAccount: isDeferredAccountAllowedForSide(
+                                prev.deferredAccount,
+                                "expense"
+                              )
+                                ? prev.deferredAccount
+                                : "",
+                            }))
+                          }
+                          className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                          required
+                        />
+                        <span className="text-sm text-[#374151]">支出</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="deferredCategory" className={labelClass}>
+                      カテゴリー
+                    </label>
+                    <select
+                      id="deferredCategory"
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          category: e.target.value,
+                          accountTitle: "",
+                          deferredSettlementId: "",
+                        }))
+                      }
+                      className={inputClass}
+                      required
+                      disabled={!formData.deferredSide}
+                    >
+                      <option value="">
+                        {formData.deferredSide
+                          ? "選択してください"
+                          : "先に収入または支出を選択"}
+                      </option>
+                      {sortedCategories.map((cat) => (
+                        <option key={cat.id} value={cat.name}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="deferredSubject" className={labelClass}>
+                      科目
+                    </label>
+                    <select
+                      id="deferredSubject"
+                      value={formData.accountTitle}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          accountTitle: e.target.value,
+                          deferredSettlementId: "",
+                        }))
+                      }
+                      className={inputClass}
+                      required
+                      disabled={!formData.deferredSide || !formData.category}
+                    >
+                      <option value="">
+                        {!formData.deferredSide
+                          ? "先に収入または支出を選択"
+                          : !formData.category
+                            ? "先にカテゴリーを選択"
+                            : "選択してください"}
+                      </option>
+                      {deferredSubjectTitles.map((title) => (
+                        <option key={title.id} value={title.name}>
+                          {title.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>繰延科目</label>
+                    <div className="space-y-2">
+                      {DEFERRED_ACCOUNTS.map((a) => {
+                        const selected = formData.deferredAccount === a.value
+                        const locked =
+                          !!formData.deferredSide &&
+                          !isDeferredAccountAllowedForSide(a.value, formData.deferredSide)
+                        return (
+                          <label
+                            key={a.value}
+                            className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border transition-colors ${
+                              locked
+                                ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-70"
+                                : selected
+                                  ? "border-[#A3BC68] bg-[#A3BC68]/10 cursor-pointer"
+                                  : "border-gray-200 bg-white hover:bg-gray-50 cursor-pointer"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="deferredAccount"
+                              value={a.value}
+                              checked={selected}
+                              disabled={locked}
+                              onChange={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  deferredAccount: a.value,
+                                  deferredSettlementId: "",
+                                }))
+                              }
+                              className="mt-0.5 text-[#A3BC68] focus:ring-[#A3BC68] disabled:opacity-40 disabled:cursor-not-allowed"
+                              required={!locked}
+                            />
+                            <span className="min-w-0">
+                              <span
+                                className={`text-sm font-medium ${
+                                  locked ? "text-gray-400" : "text-[#374151]"
+                                }`}
+                              >
+                                {a.label}
+                              </span>
+                              <span
+                                className={`block text-xs mt-0.5 ${
+                                  locked ? "text-gray-300" : "text-[#6B7280]"
+                                }`}
+                              >
+                                {a.description}
+                              </span>
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {formData.deferredType === "settlement" && (
                     <>
                       <div>
                         <label htmlFor="deferredSettlement" className={labelClass}>
@@ -2553,7 +3090,7 @@ export default function NewRegisterPage() {
                             }))
                           }
                           className={inputClass}
-                          required={formData.deferredType === "settlement"}
+                          required
                         >
                           <option value="">選択してください</option>
                           {deferredSettlementList.map((t) => (
@@ -2564,7 +3101,7 @@ export default function NewRegisterPage() {
                         </select>
                         {deferredSettlementList.length === 0 && (
                           <p className="text-xs text-[#6B7280] mt-1">
-                            精算待ちの繰延項目がありません
+                            条件に合う精算待ちの繰延項目がありません
                           </p>
                         )}
                       </div>
@@ -2582,7 +3119,7 @@ export default function NewRegisterPage() {
                             }))
                           }
                           className={inputClass}
-                          required={formData.deferredType === "settlement"}
+                          required
                         >
                           <option value="">選択してください</option>
                           {cashAccountTitles.map((title) => (
@@ -2597,9 +3134,51 @@ export default function NewRegisterPage() {
                       </div>
                     </>
                   )}
+
+                  <div>
+                    <label htmlFor="deferredAmount" className={labelClass}>
+                      金額（円）
+                    </label>
+                    <input
+                      type="text"
+                      id="deferredAmount"
+                      value={formatAmountInputDisplay(formData.amount)}
+                      onChange={(e) => {
+                        const rawValue = e.target.value.replace(/,/g, "")
+                        if (isAllowedSignedIntegerTyping(rawValue)) {
+                          setFormData((prev) => ({ ...prev, amount: rawValue }))
+                        }
+                      }}
+                      className={`px-4 py-4 text-xl font-semibold text-right tabular-nums ${inputClass}`}
+                      placeholder="0"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      lang="en"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="deferredMemo" className={labelClass}>
+                      メモ
+                    </label>
+                    <textarea
+                      id="deferredMemo"
+                      value={formData.memo}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, memo: e.target.value }))
+                      }
+                      className={`${inputClass} resize-none`}
+                      rows={3}
+                      placeholder="任意"
+                      lang="ja"
+                      autoComplete="off"
+                    />
+                  </div>
                 </>
               )}
 
+              {!showDeferredFields && (
               <div>
                 <label htmlFor="amount" className={labelClass}>
                   金額（円）
@@ -2624,12 +3203,13 @@ export default function NewRegisterPage() {
                   required={
                     showCategory ||
                     showTransferFields ||
-                    showCollectionFields ||
-                    showDeferredFields
+                    showCollectionFields
                   }
                 />
               </div>
+              )}
 
+              {!showDeferredFields && (
               <div>
                 <label htmlFor="memo" className={labelClass}>
                   メモ
@@ -2645,6 +3225,7 @@ export default function NewRegisterPage() {
                   autoComplete="off"
                 />
               </div>
+              )}
 
               {showTransferFields && transferEditState ? (
                 // 振替の編集中のみ：左＝キャンセル（控えめ）、右＝更新（メイン）。ボタン群はフォーム右寄せ

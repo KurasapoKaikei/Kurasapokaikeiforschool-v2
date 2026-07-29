@@ -6,6 +6,10 @@ import {
   getTransactions,
   createCsvImportBatchAndTransactions,
   findCsvImportConflict,
+  getCollectionRecords,
+  getCollectionSchedules,
+  sumCollectionRecordNetPaid,
+  updateCollectionRecord,
   type AccountTitle,
   type Category,
   type Transaction,
@@ -18,6 +22,10 @@ import {
   bankImportHeaderRowMatch,
   buildBankImportTemplateCsvBody,
 } from "@/utils/bankImportTemplate"
+import {
+  CsvCollectionLinkModal,
+  type CsvCollectionLinkResult,
+} from "@/components/accounting/CsvCollectionLinkModal"
 
 export { BANK_IMPORT_HEADER_ROW as BANK_CSV_HEADERS, BANK_IMPORT_HEADERS } from "@/utils/bankImportTemplate"
 
@@ -81,6 +89,10 @@ type CsvRowState = {
   accountTitle: string
   txType: CsvRowTxType | "invalid"
   error: string | null
+  /** 集金ポップアップで割当を保存済み（まだ帳簿・実績には未反映。一括登録で確定） */
+  collectionDraft?: boolean
+  collectionMemberId?: string
+  collectionScheduleId?: string
 }
 
 const CSV_TX_LABEL: Record<CsvRowTxType, string> = {
@@ -225,6 +237,11 @@ export function BankCsvImportSection({
   const [rows, setRows] = useState<CsvRowState[]>([])
   const [parseError, setParseError] = useState<string | null>(null)
   const [importSource, setImportSource] = useState<{ fileName: string; contentHash: string } | null>(null)
+  /** テンプレートダウンロード前に選択する現金・預金科目（A1 に書く） */
+  const [templateCashAccount, setTemplateCashAccount] = useState("")
+  /** 区分「集金」選択時の連携ポップアップ */
+  const [collectionLinkRowId, setCollectionLinkRowId] = useState<string | null>(null)
+  const [collectionLinkPrevType, setCollectionLinkPrevType] = useState<CsvRowTxType | null>(null)
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -233,13 +250,18 @@ export function BankCsvImportSection({
 
   const cashNamesSorted = useMemo(
     () =>
-      [...cashAccountTitles.map((t) => t.name)].sort((a, b) =>
-        a.localeCompare(b, "ja")
-      ),
+      [...cashAccountTitles]
+        .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "ja"))
+        .map((t) => t.name),
     [cashAccountTitles]
   )
 
   const cashNameSet = useMemo(() => new Set(cashNamesSorted), [cashNamesSorted])
+
+  useEffect(() => {
+    if (templateCashAccount && cashNameSet.has(templateCashAccount)) return
+    setTemplateCashAccount(cashNamesSorted[0] ?? "")
+  }, [cashNamesSorted, cashNameSet, templateCashAccount])
 
   const titlesForCategory = useCallback(
     (categoryName: string, kind: TxKind) => {
@@ -253,8 +275,16 @@ export function BankCsvImportSection({
   )
 
   const downloadTemplate = () => {
-    const defaultName = cashNamesSorted[0] ?? ""
-    const blob = createUtf8CsvBlob(buildBankImportTemplateCsvBody(defaultName))
+    const accountName = templateCashAccount.trim()
+    if (!accountName) {
+      alert("テンプレートに書き込む現金・預金科目を選択してください。")
+      return
+    }
+    if (!cashNameSet.has(accountName)) {
+      alert(`「${accountName}」は登録済みの現金・預金科目にありません。`)
+      return
+    }
+    const blob = createUtf8CsvBlob(buildBankImportTemplateCsvBody(accountName))
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -265,7 +295,11 @@ export function BankCsvImportSection({
 
   const applySuggestionToRow = useCallback(
     (r: CsvRowState): CsvRowState => {
-      if (r.txType === "invalid") return r
+      if (r.txType === "invalid" || r.collectionDraft) return r
+      if (r.txType === "collection") {
+        // 集金はポップアップ登録後にカテゴリー・科目・メモを確定する
+        return { ...r, category: r.category || "", accountTitle: r.accountTitle || "" }
+      }
       if (r.txType === "transfer") {
         const others = cashAccountTitles.filter((t) => t.name !== r.accountName)
         const pick = others[0] ?? cashAccountTitles[0]
@@ -376,7 +410,7 @@ export function BankCsvImportSection({
     const allLines = stripLeadingCsvBom(text).split(/\r?\n/)
     if (allLines.length < 2) {
       setParseError(
-        "行が不足しています。1行目のA列に現金・預金口座名、2行目に見出し（日付・入金額・出金額・メモ）が必要です。"
+        "行が不足しています。1行目のA列に現金・預金口座名、2行目に見出し（日付・入金額・出金額・摘要）が必要です。"
       )
       setRows([])
       return false
@@ -478,14 +512,86 @@ export function BankCsvImportSection({
   }
 
   const setRowTxType = (id: string, txType: CsvRowTxType) => {
+    const target = rows.find((r) => r.id === id)
+    if (!target || target.error || target.txType === "invalid" || target.collectionDraft) return
+    const allowed = allowedTxTypesForRow(target)
+    if (!allowed.includes(txType)) return
+
+    if (txType === "collection") {
+      setCollectionLinkPrevType(target.txType === "invalid" ? "income" : target.txType)
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                txType: "collection",
+                category: "",
+                accountTitle: "",
+                collectionDraft: false,
+                collectionMemberId: undefined,
+                collectionScheduleId: undefined,
+              }
+            : r
+        )
+      )
+      setCollectionLinkRowId(id)
+      return
+    }
+
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== id || r.error || r.txType === "invalid") return r
-        const allowed = allowedTxTypesForRow(r)
-        if (!allowed.includes(txType)) return r
-        return applySuggestionToRow({ ...r, txType })
+        return applySuggestionToRow({
+          ...r,
+          txType,
+          collectionDraft: false,
+          collectionMemberId: undefined,
+          collectionScheduleId: undefined,
+        })
       })
     )
+  }
+
+  const closeCollectionLinkModal = () => {
+    const id = collectionLinkRowId
+    const prev = collectionLinkPrevType
+    setCollectionLinkRowId(null)
+    setCollectionLinkPrevType(null)
+    if (!id) return
+    setRows((current) =>
+      current.map((r) => {
+        if (r.id !== id || r.collectionDraft) return r
+        if (r.txType !== "collection") return r
+        const revertTo = prev && prev !== "collection" ? prev : "income"
+        return applySuggestionToRow({ ...r, txType: revertTo })
+      })
+    )
+  }
+
+  const applyCollectionLinkResults = (sourceId: string, lines: CsvCollectionLinkResult[]) => {
+    setCollectionLinkRowId(null)
+    setCollectionLinkPrevType(null)
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.id === sourceId)
+      if (idx < 0) return prev
+      const source = prev[idx]
+      const expanded: CsvRowState[] = lines.map((line, i) => ({
+        id: `${sourceId}_col_${i}_${Math.random().toString(36).slice(2, 8)}`,
+        accountName: source.accountName,
+        date: line.date,
+        withdrawal: 0,
+        deposit: line.amount,
+        memo: line.memo,
+        category: line.category,
+        accountTitle: line.accountTitle,
+        txType: "collection",
+        error: null,
+        collectionDraft: true,
+        collectionMemberId: line.memberId,
+        collectionScheduleId: line.scheduleId,
+      }))
+      return [...prev.slice(0, idx), ...expanded, ...prev.slice(idx + 1)]
+    })
   }
 
   const setRowAccountTitle = (id: string, accountTitle: string) => {
@@ -498,12 +604,31 @@ export function BankCsvImportSection({
   }
 
   const registerableRows = useMemo(
-    () => rows.filter((r) => !r.error && r.txType !== "invalid"),
+    () =>
+      rows.filter((r) => {
+        if (r.error || r.txType === "invalid") return false
+        if (r.txType === "collection") {
+          return Boolean(
+            r.collectionDraft && r.collectionMemberId && r.collectionScheduleId
+          )
+        }
+        return true
+      }),
     [rows]
   )
 
   const rowIsRegisterReady = (r: CsvRowState): boolean => {
-    if (r.error || r.txType === "invalid" || !r.accountTitle) return false
+    if (r.error || r.txType === "invalid") return false
+    if (r.txType === "collection") {
+      return Boolean(
+        r.collectionDraft &&
+          r.collectionMemberId &&
+          r.collectionScheduleId &&
+          r.accountTitle &&
+          r.date
+      )
+    }
+    if (!r.accountTitle) return false
     if (r.txType === "transfer") {
       return Boolean(r.accountTitle && r.accountTitle !== r.accountName)
     }
@@ -512,6 +637,14 @@ export function BankCsvImportSection({
 
   const canRegister =
     registerableRows.length > 0 && registerableRows.every(rowIsRegisterReady)
+
+  const hasPendingCollection = rows.some(
+    (r) => r.txType === "collection" && !r.collectionDraft && !r.error
+  )
+
+  const collectionLinkRow = collectionLinkRowId
+    ? rows.find((r) => r.id === collectionLinkRowId) ?? null
+    : null
 
   const handleBulkRegister = () => {
     if (!canRegister) return
@@ -524,11 +657,44 @@ export function BankCsvImportSection({
       alert(conflict)
       return
     }
-    const partials: Omit<Transaction, "id" | "createdAt" | "csvImportId" | "originalFileName">[] = []
-    for (const r of rows) {
-      if (r.error || r.txType === "invalid" || !rowIsRegisterReady(r)) continue
+
+    const partials: Omit<Transaction, "id" | "createdAt" | "csvImportId" | "originalFileName">[] =
+      []
+    const collectionMeta: {
+      memberId: string
+      scheduleId: string
+      amount: number
+      date: string
+      memo: string
+    }[] = []
+
+    for (const r of registerableRows) {
+      if (!rowIsRegisterReady(r)) continue
       const amount = rowRegisterAmount(r)
-      const subject = accountTitles.find((t) => t.name === r.accountTitle)
+
+      if (r.txType === "collection") {
+        partials.push({
+          date: r.date,
+          type: "collection",
+          amount,
+          counterparty: r.accountName,
+          category: r.category || "集金",
+          accountTitle: r.accountTitle,
+          memo: r.memo || "",
+          receiptUrl: null,
+          collectionMemberId: r.collectionMemberId,
+          collectionScheduleId: r.collectionScheduleId,
+          createdBy: currentOperatorName,
+        })
+        collectionMeta.push({
+          memberId: r.collectionMemberId!,
+          scheduleId: r.collectionScheduleId!,
+          amount,
+          date: r.date,
+          memo: r.memo || "",
+        })
+        continue
+      }
 
       if (r.txType === "transfer") {
         partials.push({
@@ -540,25 +706,12 @@ export function BankCsvImportSection({
           accountTitle: r.accountTitle,
           memo: r.memo || "",
           receiptUrl: null,
+          createdBy: currentOperatorName,
         })
         continue
       }
 
-      if (r.txType === "collection") {
-        const categoryToSave = subject?.group === "cash" ? "共通" : r.category
-        partials.push({
-          date: r.date,
-          type: "collection",
-          amount,
-          counterparty: r.accountName,
-          category: categoryToSave,
-          accountTitle: r.accountTitle,
-          memo: r.memo || "",
-          receiptUrl: null,
-        })
-        continue
-      }
-
+      const subject = accountTitles.find((t) => t.name === r.accountTitle)
       const categoryToSave = subject?.group === "cash" ? "共通" : r.category
       partials.push({
         date: r.date,
@@ -569,36 +722,111 @@ export function BankCsvImportSection({
         accountTitle: r.accountTitle,
         memo: r.memo || "",
         receiptUrl: null,
+        createdBy: currentOperatorName,
       })
     }
-    createCsvImportBatchAndTransactions(
-      importSource,
-      partials.map((p) => ({ ...p, createdBy: currentOperatorName }))
+
+    if (partials.length === 0) {
+      alert("一括登録できる行がありません。")
+      return
+    }
+
+    const batch = createCsvImportBatchAndTransactions(importSource, partials)
+    const allTxs = getTransactions()
+    const createdById = new Map(
+      batch.transactionIds
+        .map((id) => allTxs.find((t) => t.id === id))
+        .filter((t): t is Transaction => Boolean(t))
+        .map((t) => [t.id, t])
     )
+    const createdOrdered = batch.transactionIds
+      .map((id) => createdById.get(id))
+      .filter((t): t is Transaction => Boolean(t))
+
+    // 集金ドラフト行: 一括登録時にはじめて実績・paymentHistory を更新
+    let collectionPartialIndex = 0
+    for (let i = 0; i < partials.length; i++) {
+      if (partials[i].type !== "collection") continue
+      const meta = collectionMeta[collectionPartialIndex++]
+      const tx = createdOrdered[i]
+      if (!meta || !tx) continue
+      const schedules = getCollectionSchedules()
+      const schedule = schedules.find((s) => s.id === meta.scheduleId)
+      const rec = getCollectionRecords().find(
+        (r) => r.memberId === meta.memberId && r.scheduleId === meta.scheduleId
+      )
+      if (!schedule || !rec) continue
+      const newHistory = [
+        ...(rec.paymentHistory ?? []),
+        {
+          amount: meta.amount,
+          date: meta.date,
+          memo: meta.memo || tx.memo,
+          transactionId: tx.id,
+        },
+      ]
+      const newPaid = sumCollectionRecordNetPaid({ ...rec, paymentHistory: newHistory })
+      let status: "UNPAID" | "PARTIALLY_PAID" | "OVERPAID" | "COMPLETED" = "UNPAID"
+      if (schedule.amount <= 0) status = newPaid > 0 ? "OVERPAID" : "UNPAID"
+      else if (newPaid <= 0) status = "UNPAID"
+      else if (newPaid < schedule.amount) status = "PARTIALLY_PAID"
+      else if (newPaid > schedule.amount) status = "OVERPAID"
+      else status = "COMPLETED"
+      updateCollectionRecord(rec.id, {
+        paidAmount: newPaid,
+        paidAt: meta.date,
+        linkedTransactionId: tx.id,
+        paymentHistory: newHistory,
+        status,
+      })
+    }
+
     getTransactions()
     setRows([])
     setParseError(null)
     setImportSource(null)
     onImported()
-    const count = registerableRows.length
-    alert(`${count} 件を登録しました`)
+    alert(`${partials.length} 件を登録しました`)
   }
 
   return (
     <div className="flex-1 bg-white overflow-y-auto">
       <div className="px-6 py-5 max-w-[min(1600px,100%)] mx-auto space-y-5 w-full">
         <p className="text-xs text-[#6B7280]">
-          <strong>レイアウト固定:</strong> 1行目のA列に現金・預金口座名（テンプレでは先頭口座を既定）、2行目に「日付・入金額・出金額・メモ」、
-          <strong>3行目から明細</strong>
-          を入力します。UTF-8（BOM付き）CSVで保存してアップロードしてください。
+          <strong>手順:</strong> ①現金・預金科目を選択してテンプレートをダウンロード（A1に科目名が入ります）→
+          ②「日付・入金額・出金額・摘要」を入力してアップロード → ③区分などを確認して登録。
+          区分「集金」はポップアップで割当を「保存」し、最後に「登録する（一括反映）」ではじめて帳簿・集金実績に反映します。UTF-8（BOM付き）CSVで保存してください。
         </p>
 
-        <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="min-w-[12rem]">
+            <label className="block text-xs font-medium text-[#374151] mb-1">
+              テンプレート用・現金預金科目 <span className="text-[#EF4444]">*</span>
+            </label>
+            <select
+              value={templateCashAccount}
+              onChange={(e) => setTemplateCashAccount(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-[#374151] bg-white"
+              disabled={cashNamesSorted.length === 0 || registerDisabled}
+              aria-label="テンプレート用の現金・預金科目"
+            >
+              {cashNamesSorted.length === 0 ? (
+                <option value="">科目がありません</option>
+              ) : (
+                cashNamesSorted.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
           <Button
             type="button"
             variant="outline"
             className="border-[#A3BC68] text-[#374151]"
             onClick={downloadTemplate}
+            disabled={!templateCashAccount || registerDisabled}
           >
             テンプレートをダウンロード (CSV)
           </Button>
@@ -678,8 +906,10 @@ export function BankCsvImportSection({
                     const allowedTypes = allowedTxTypesForRow(r)
                     const titles = r.txType === "invalid" ? [] : titlesForCsvRow(r)
                     const isTransfer = r.txType === "transfer"
+                    const isCollectionDone = Boolean(r.collectionDraft)
+                    const isCollectionPending = r.txType === "collection" && !isCollectionDone
                     return (
-                      <tr key={r.id} className={r.error ? "bg-red-50" : ""}>
+                      <tr key={r.id} className={r.error ? "bg-red-50" : isCollectionDone ? "bg-[#ECF8F2]/60" : ""}>
                         <td className="border border-gray-200 px-2 py-2 text-center">{idx + 1}</td>
                         <td className="border border-gray-200 px-2 py-2 truncate max-w-0" title={r.accountName}>
                           {r.accountName}
@@ -693,25 +923,44 @@ export function BankCsvImportSection({
                         <td className="border border-gray-200 px-2 py-2 text-right tabular-nums">
                           {r.withdrawal !== 0 ? r.withdrawal.toLocaleString() : "—"}
                         </td>
-                        <td className="border border-gray-200 px-2 py-2 truncate max-w-0" title={r.memo}>
-                          {r.memo}
+                        <td
+                          className="border border-gray-200 px-2 py-2 text-[11px] leading-snug break-words whitespace-normal"
+                          title={r.memo}
+                        >
+                          {r.memo || "—"}
                         </td>
                         <td className="border border-gray-200 px-2 py-2 text-center">
                           {r.txType === "invalid" ? (
                             "—"
+                          ) : isCollectionDone ? (
+                            <div className="text-xs font-medium text-[#3d6b54]">集金（保存済）</div>
                           ) : (
-                            <select
-                              className="w-full min-w-0 border border-gray-300 rounded px-1 py-1.5 text-[#374151] text-xs"
-                              value={r.txType}
-                              onChange={(e) => setRowTxType(r.id, e.target.value as CsvRowTxType)}
-                              aria-label="区分"
-                            >
-                              {allowedTypes.map((k) => (
-                                <option key={k} value={k}>
-                                  {CSV_TX_LABEL[k]}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="space-y-1">
+                              <select
+                                className="w-full min-w-0 border border-gray-300 rounded px-1 py-1.5 text-[#374151] text-xs"
+                                value={r.txType}
+                                onChange={(e) => setRowTxType(r.id, e.target.value as CsvRowTxType)}
+                                aria-label="区分"
+                              >
+                                {allowedTypes.map((k) => (
+                                  <option key={k} value={k}>
+                                    {CSV_TX_LABEL[k]}
+                                  </option>
+                                ))}
+                              </select>
+                              {isCollectionPending && (
+                                <button
+                                  type="button"
+                                  className="w-full text-[10px] text-[#3d6b54] underline"
+                                  onClick={() => {
+                                    setCollectionLinkPrevType("income")
+                                    setCollectionLinkRowId(r.id)
+                                  }}
+                                >
+                                  集金画面を開く
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="border border-gray-200 px-2 py-2">
@@ -720,6 +969,10 @@ export function BankCsvImportSection({
                           ) : isTransfer ? (
                             <div className="w-full border border-gray-200 rounded px-2 py-1.5 text-center text-xs text-[#6B7280] bg-gray-50">
                               選択なし
+                            </div>
+                          ) : isCollectionDone || isCollectionPending ? (
+                            <div className="px-1 py-1 text-xs text-[#374151] break-words">
+                              {r.category || (isCollectionPending ? "（集金登録後に確定）" : "—")}
                             </div>
                           ) : (
                             <select
@@ -740,6 +993,10 @@ export function BankCsvImportSection({
                         <td className="border border-gray-200 px-2 py-2">
                           {r.txType === "invalid" ? (
                             "—"
+                          ) : isCollectionDone || isCollectionPending ? (
+                            <div className="px-1 py-1 text-xs text-[#374151] break-words">
+                              {r.accountTitle || (isCollectionPending ? "（集金登録後に確定）" : "—")}
+                            </div>
                           ) : (
                             <select
                               className="w-full min-w-0 border border-gray-300 rounded px-2 py-1.5 text-[#374151]"
@@ -770,21 +1027,40 @@ export function BankCsvImportSection({
             )}
 
             <p className="text-xs text-[#6B7280]">
-              メモの内容からカテゴリー・収支科目を推測した初期値を入れています。誤りがあればプルダウンで修正してください。
+              摘要・メモからカテゴリー・収支科目を推測した初期値を入れています（集金はポップアップで割当を保存）。誤りがあればプルダウンで修正してください。
+              現金・預金口座はCSVの1行目A列の科目名が反映されます。集金の保存済行も、下の「登録する（一括反映）」ではじめて確定します。
             </p>
 
-            <Button
-              type="button"
-              disabled={!canRegister || registerDisabled}
-              className="w-full max-w-md py-6 text-base font-semibold text-white rounded-lg disabled:opacity-40"
-              style={{ backgroundColor: "#A3BC68" }}
-              onClick={handleBulkRegister}
-            >
-              登録する（一括反映）
-            </Button>
+            {registerableRows.length > 0 ? (
+              <Button
+                type="button"
+                disabled={!canRegister || registerDisabled}
+                className="w-full max-w-md py-6 text-base font-semibold text-white rounded-lg disabled:opacity-40"
+                style={{ backgroundColor: "#A3BC68" }}
+                onClick={handleBulkRegister}
+              >
+                登録する（一括反映）
+              </Button>
+            ) : hasPendingCollection ? (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                区分「集金」の行があります。ポップアップで割当を「保存する」まで完了してください。
+              </p>
+            ) : null}
           </>
         )}
       </div>
+
+      <CsvCollectionLinkModal
+        open={Boolean(collectionLinkRow)}
+        onClose={closeCollectionLinkModal}
+        cashAccountName={collectionLinkRow?.accountName ?? ""}
+        initialDate={collectionLinkRow?.date ?? ""}
+        depositAmount={collectionLinkRow?.deposit ?? 0}
+        csvMemo={collectionLinkRow?.memo ?? ""}
+        onRegistered={(lines) => {
+          if (collectionLinkRowId) applyCollectionLinkResults(collectionLinkRowId, lines)
+        }}
+      />
     </div>
   )
 }

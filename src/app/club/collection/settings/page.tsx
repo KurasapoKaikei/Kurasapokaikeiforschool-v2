@@ -20,6 +20,7 @@ import {
 } from "@/utils/localStorage"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import { clubPath } from "@/lib/routes"
 
 const THEME_COLOR = "#D99529"
 const FISCAL_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
@@ -63,6 +64,9 @@ export default function CollectionSettingsPage() {
 
   // UI状態
   const [success, setSuccess] = useState<string | null>(null)
+  /** 新規登録直後の完了パネル（次の動線を提示） */
+  const [showRegisteredPanel, setShowRegisteredPanel] = useState(false)
+  const [registeredDetail, setRegisteredDetail] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
   const [memberModalOpen, setMemberModalOpen] = useState(false)
   const [memberGradeTab, setMemberGradeTab] = useState<number | "all">("all")
@@ -288,7 +292,7 @@ export default function CollectionSettingsPage() {
       })
 
       resetForm()
-      router.push("/club/collection/schedule")
+      router.push(clubPath("/collection/schedule"))
       return
     }
 
@@ -324,17 +328,22 @@ export default function CollectionSettingsPage() {
       createdCount++
     }
 
+    const detail = `${name.trim()}（${createdCount}ヶ月 × ${selectedMemberIds.length}名）`
     resetForm()
     setWarning(null)
-    setSuccess(
-      `${createdCount}ヶ月 × ${selectedMemberIds.length}名 の集金予定を作成しました。`
-    )
-    setTimeout(() => setSuccess(null), 4000)
+    setSuccess(null)
+    setRegisteredDetail(detail)
+    setShowRegisteredPanel(true)
+  }
+
+  const handleContinueSettings = () => {
+    setShowRegisteredPanel(false)
+    setRegisteredDetail(null)
   }
 
   const handleCancelEdit = () => {
     resetForm()
-    router.push("/club/collection/schedule")
+    router.push(clubPath("/collection/schedule"))
   }
 
   return (
@@ -362,6 +371,50 @@ export default function CollectionSettingsPage() {
       {/* コンテンツ */}
       <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden">
         <div className="p-6 space-y-8">
+          {showRegisteredPanel ? (
+            <div className="flex flex-col items-center text-center max-w-lg mx-auto py-6">
+              <div
+                className="mb-4 flex h-14 w-14 items-center justify-center rounded-full"
+                style={{ backgroundColor: `${THEME_COLOR}20` }}
+              >
+                <CheckCircle2 className="h-8 w-8" style={{ color: THEME_COLOR }} />
+              </div>
+              <h3 className="text-xl font-bold text-[#1F2937] mb-2">集金が登録されました</h3>
+              {registeredDetail && (
+                <p className="text-sm text-[#6B7280] mb-6">{registeredDetail}</p>
+              )}
+              {!registeredDetail && <div className="mb-6" />}
+              <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-3 w-full">
+                <Button
+                  type="button"
+                  className="text-white px-6 py-2.5 rounded-lg text-sm"
+                  style={{ backgroundColor: THEME_COLOR }}
+                  onClick={handleContinueSettings}
+                >
+                  集金設定を続ける
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="px-6 py-2.5 rounded-lg text-sm"
+                  style={{ borderColor: THEME_COLOR, color: THEME_COLOR }}
+                  onClick={() => router.push(clubPath("/collection/schedule"))}
+                >
+                  集金予定一覧へ
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="px-6 py-2.5 rounded-lg text-sm"
+                  style={{ borderColor: THEME_COLOR, color: THEME_COLOR }}
+                  onClick={() => router.push(clubPath("/collection/history"))}
+                >
+                  集金実績へ
+                </Button>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* 成功メッセージ */}
           {success && (
             <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
@@ -589,6 +642,8 @@ export default function CollectionSettingsPage() {
               </p>
             )}
           </form>
+          </>
+          )}
 
         </div>
       </div>

@@ -745,7 +745,8 @@ export const addTransaction = (transaction: Omit<Transaction, "id" | "createdAt"
 }
 
 export const deleteTransaction = (id: string): boolean => {
-  const transactions = getTransactions()
+  // sync なしで読む（COMPLETED 実績から仕訳が再生成されて削除が無効化するのを防ぐ）
+  const transactions = readTransactionsWithoutSync()
   const victim = transactions.find((t) => t.id === id)
   const filtered = transactions.filter((t) => t.id !== id)
   if (filtered.length === transactions.length) return false
@@ -1432,9 +1433,10 @@ export const saveCollectionRecords = (records: CollectionRecord[]): void => {
  * - 旧データは paidAmount、取引のみの場合は該当 collection 取引の合計にフォールバック
  */
 export const sumCollectionRecordNetPaid = (
-  record: CollectionRecord,
+  record: CollectionRecord | undefined | null,
   transactions?: Transaction[]
 ): number => {
+  if (!record) return 0
   const history = record.paymentHistory ?? []
   if (history.length > 0) {
     return history.reduce((sum, entry) => {
@@ -1446,8 +1448,10 @@ export const sumCollectionRecordNetPaid = (
       return sum + (Number.isFinite(n) ? n : 0)
     }, 0)
   }
+  // paymentHistory が空のときは帳簿上の collection 仕訳を正とする（0 件なら未入金）。
+  // 取消後に空履歴＋残存 paidAmount があっても、古い paidAmount へフォールバックしない。
   if (transactions) {
-    const fromTx = transactions
+    return transactions
       .filter(
         (t) =>
           t.type === "collection" &&
@@ -1458,7 +1462,6 @@ export const sumCollectionRecordNetPaid = (
         const n = Number(t.amount)
         return sum + (Number.isFinite(n) ? n : 0)
       }, 0)
-    if (fromTx !== 0) return fromTx
   }
   const paid = Number(record.paidAmount)
   return Number.isFinite(paid) ? paid : 0

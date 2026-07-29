@@ -24,17 +24,73 @@ function getFiscalYearStart(): string {
   return `${year}-04-01`
 }
 
-/** createdAt（ISO）→ 2024/03/05 14:30 形式（ローカル時刻） */
-function formatTransactionRegisteredAt(iso: string | undefined | null): string {
-  if (!iso) return "—"
+/** createdAt（ISO）→ 日付・時刻に分割（登録日列は2段表示） */
+function parseTransactionRegisteredAt(
+  iso: string | undefined | null
+): { date: string; time: string } | null {
+  if (!iso) return null
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return "—"
+  if (Number.isNaN(d.getTime())) return null
   const y = d.getFullYear()
   const mo = String(d.getMonth() + 1).padStart(2, "0")
   const day = String(d.getDate()).padStart(2, "0")
   const h = String(d.getHours()).padStart(2, "0")
   const min = String(d.getMinutes()).padStart(2, "0")
-  return `${y}/${mo}/${day} ${h}:${min}`
+  return { date: `${y}/${mo}/${day}`, time: `${h}:${min}` }
+}
+
+/** 現金・預金口座列に付ける種別バッジ（振替と同じ pill スタイル） */
+const HISTORY_TYPE_BADGE_BASE =
+  "inline-flex items-center rounded-full px-1.5 py-0 text-[10px] font-semibold flex-shrink-0 leading-relaxed"
+
+const HISTORY_TYPE_BADGE: Record<
+  "income" | "expense" | "collection" | "transfer",
+  { label: string; className: string }
+> = {
+  income: { label: "収入", className: "bg-[#3B82F6]/15 text-[#1D4ED8]" },
+  expense: { label: "支出", className: "bg-[#F59E0B]/20 text-[#B45309]" },
+  collection: { label: "集金", className: "bg-[#67a384]/20 text-[#3d6b54]" },
+  transfer: { label: "振替", className: "bg-[#A3BC68]/15 text-[#5C7A3A]" },
+}
+
+function historyTypeBadge(type: Transaction["type"] | "transfer") {
+  if (type === "income" || type === "expense" || type === "collection" || type === "transfer") {
+    return HISTORY_TYPE_BADGE[type]
+  }
+  return null
+}
+
+/** 一覧セル共通（小さめ・枠内折り返し前提） */
+const TH_CLASS =
+  "sticky top-0 z-20 bg-gray-50 border border-gray-200 px-1.5 py-1.5 text-center text-[11px] font-semibold leading-tight whitespace-normal shadow-[inset_0_-1px_0_0_#e5e7eb]"
+const TD_BASE = "border border-gray-200 px-1.5 py-1.5 align-top text-[11px] leading-snug text-[#374151]"
+const TD_WRAP = `${TD_BASE} text-left break-words whitespace-normal`
+const TD_NUM = `${TD_BASE} text-right tabular-nums whitespace-nowrap`
+const TD_CENTER = `${TD_BASE} text-center`
+
+function RegisteredAtBlock({
+  createdAt,
+  lastEditedAt,
+}: {
+  createdAt: string | undefined | null
+  lastEditedAt?: string | null
+}) {
+  const created = parseTransactionRegisteredAt(createdAt)
+  const edited = parseTransactionRegisteredAt(lastEditedAt)
+  if (!created) {
+    return <span className="text-[#9CA3AF]">—</span>
+  }
+  return (
+    <div className="flex flex-col items-center leading-tight gap-0.5">
+      <span className="whitespace-nowrap">{created.date}</span>
+      <span className="text-[10px] text-[#6B7280] whitespace-nowrap">{created.time}</span>
+      {edited && (
+        <span className="text-[10px] text-[#9CA3AF] whitespace-nowrap mt-0.5">
+          {edited.date} {edited.time} 編集
+        </span>
+      )}
+    </div>
+  )
 }
 
 /** 一覧上の入金額・出金額表示（支出系は出金、収入系は入金） */
@@ -241,14 +297,14 @@ export default function RegisterHistoryPage() {
   const batchSummaries = useMemo(() => {
     return batches.map((b) => {
       const txs = transactions.filter((t) => t.csvImportId === b.id)
-      let income = 0
-      let expense = 0
+      let depositTotal = 0
+      let withdrawalTotal = 0
       for (const t of txs) {
-        if (t.type === "income") income += t.amount
-        if (t.type === "expense") expense += t.amount
+        if (t.type === "income" || t.type === "collection") depositTotal += t.amount
+        else if (t.type === "expense") withdrawalTotal += t.amount
+        // 振替は口座間移動のため入金・出金合計には含めない
       }
-      const totalVolume = income + expense
-      return { batch: b, count: txs.length, income, expense, totalVolume }
+      return { batch: b, count: txs.length, depositTotal, withdrawalTotal }
     })
   }, [batches, transactions])
 
@@ -312,61 +368,41 @@ export default function RegisterHistoryPage() {
         <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
           {tab === "all" ? (
             <div className="overflow-x-auto max-h-[min(75vh,42rem)] overflow-y-auto">
-              <table className="w-full text-sm border-collapse min-w-[1180px] table-fixed">
+              <table className="w-full text-[11px] border-collapse min-w-[1020px] table-fixed">
                 {/*
-                 * カラム比率: 日付2 / 口座4.5 / 入金2 / 出金2 / カテゴリー2.5 / 科目2.5 / メモ4 / 登録日2 / 作業者1.5 / 編集1
+                 * カラム比率: 日付2 / 口座5 / 入金2 / 出金2 / カテゴリー2.5 / 科目2.5 / メモ3.5 / 登録日2 / 作業者1.5 / 編集1
                  * 指定比率の合計（=24）を分母にして横幅100%を埋める。
                  */}
                 <colgroup>
                   <col style={{ width: `${(2 / 24) * 100}%` }} />
-                  <col style={{ width: `${(4.5 / 24) * 100}%` }} />
+                  <col style={{ width: `${(5 / 24) * 100}%` }} />
                   <col style={{ width: `${(2 / 24) * 100}%` }} />
                   <col style={{ width: `${(2 / 24) * 100}%` }} />
                   <col style={{ width: `${(2.5 / 24) * 100}%` }} />
                   <col style={{ width: `${(2.5 / 24) * 100}%` }} />
-                  <col style={{ width: `${(4 / 24) * 100}%` }} />
+                  <col style={{ width: `${(3.5 / 24) * 100}%` }} />
                   <col style={{ width: `${(2 / 24) * 100}%` }} />
                   <col style={{ width: `${(1.5 / 24) * 100}%` }} />
                   <col style={{ width: `${(1 / 24) * 100}%` }} />
                 </colgroup>
                 <thead>
                   <tr className="bg-gray-50 text-[#374151]">
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      日付
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      現金・預金口座
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      入金額
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      出金額
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      カテゴリー
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      科目
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      メモ
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      登録日
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-3 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      作業者
-                    </th>
-                    <th className="sticky top-0 z-20 bg-gray-50 border border-gray-200 px-2 py-2 text-center whitespace-nowrap shadow-[inset_0_-1px_0_0_#e5e7eb]">
-                      編集
-                    </th>
+                    <th className={TH_CLASS}>日付</th>
+                    <th className={TH_CLASS}>現金・預金口座</th>
+                    <th className={TH_CLASS}>入金額</th>
+                    <th className={TH_CLASS}>出金額</th>
+                    <th className={TH_CLASS}>カテゴリー</th>
+                    <th className={TH_CLASS}>科目</th>
+                    <th className={TH_CLASS}>メモ</th>
+                    <th className={TH_CLASS}>登録日</th>
+                    <th className={TH_CLASS}>作業者</th>
+                    <th className={TH_CLASS}>編集</th>
                   </tr>
                 </thead>
                 <tbody>
                   {allRows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-3 py-10 text-center text-[#6B7280]">
+                      <td colSpan={10} className={`${TD_BASE} py-10 text-center text-[#6B7280]`}>
                         登録された取引はまだありません。
                       </td>
                     </tr>
@@ -378,83 +414,57 @@ export default function RegisterHistoryPage() {
                         const accountLabel = `振替 ${row.from} → ${row.to}`
                         return (
                           <tr key={row.key} className="hover:bg-gray-50/80">
-                            <td className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis">
+                            <td className={`${TD_BASE} text-left whitespace-nowrap`}>
                               {formatDateDisplay(row.date)}
                             </td>
-                            {/*
-                             * 振替の口座セル: 拡張された比率 4.5 を生かして基本は1行に収める。
-                             * 1行で収まらない時のみ自然に折り返す（whitespace-normal + break-words）。
-                             */}
-                            <td
-                              className="border border-gray-200 px-2.5 py-2 text-left align-top leading-tight"
-                              title={accountLabel}
-                            >
-                              <div className="flex items-center gap-1.5 text-[12.5px] whitespace-normal break-words">
-                                <span className="inline-flex items-center rounded-full bg-[#A3BC68]/15 text-[#5C7A3A] px-2 py-0.5 text-[11px] font-semibold flex-shrink-0">
-                                  振替
+                            <td className={TD_WRAP} title={accountLabel}>
+                              <div className="flex flex-col items-start gap-0.5 min-w-0">
+                                <span
+                                  className={`${HISTORY_TYPE_BADGE_BASE} ${HISTORY_TYPE_BADGE.transfer.className}`}
+                                >
+                                  {HISTORY_TYPE_BADGE.transfer.label}
                                 </span>
-                                <span className="text-[#374151] min-w-0">
+                                <span className="text-[#374151] break-words">
                                   {row.from} <span className="text-[#9CA3AF]">→</span> {row.to}
                                 </span>
                               </div>
                             </td>
-                            <td className="border border-gray-200 px-3 py-2 text-right tabular-nums align-top whitespace-nowrap overflow-hidden text-ellipsis">
-                              {amt}
+                            <td className={TD_NUM}>{amt}</td>
+                            <td className={TD_NUM}>{amt}</td>
+                            <td className={`${TD_BASE} text-left text-[#9CA3AF]`}>—</td>
+                            <td className={`${TD_BASE} text-left text-[#9CA3AF]`}>—</td>
+                            <td className={TD_WRAP} title={memoText || undefined}>
+                              {memoText ? memoText : <span className="text-[#9CA3AF]">—</span>}
                             </td>
-                            <td className="border border-gray-200 px-3 py-2 text-right tabular-nums align-top whitespace-nowrap overflow-hidden text-ellipsis">
-                              {amt}
-                            </td>
-                            <td className="border border-gray-200 px-3 py-2 text-left align-top text-[#9CA3AF] whitespace-nowrap overflow-hidden text-ellipsis">
-                              —
-                            </td>
-                            <td className="border border-gray-200 px-3 py-2 text-left align-top text-[#9CA3AF] whitespace-nowrap overflow-hidden text-ellipsis">
-                              —
-                            </td>
-                            <td
-                              className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis"
-                              title={memoText || undefined}
-                            >
-                              {memoText ? (
-                                <span className="text-[#374151]">{memoText}</span>
-                              ) : (
-                                <span className="text-[#9CA3AF]">—</span>
-                              )}
-                            </td>
-                            <td className="border border-gray-200 px-3 py-2 text-center align-top text-xs text-[#374151] tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
-                              <div className="flex flex-col items-center leading-tight">
-                                <span>{formatTransactionRegisteredAt(row.createdAt)}</span>
-                                {row.lastEditedAt && (
-                                  <span className="text-[#9CA3AF] text-[11px]">
-                                    {formatTransactionRegisteredAt(row.lastEditedAt)} 編集
-                                  </span>
-                                )}
-                              </div>
+                            <td className={TD_CENTER}>
+                              <RegisteredAtBlock
+                                createdAt={row.createdAt}
+                                lastEditedAt={row.lastEditedAt}
+                              />
                             </td>
                             <td
-                              className="border border-gray-200 px-2 py-2 text-left align-top text-[#374151]"
+                              className={TD_WRAP}
                               title={`登録: ${row.createdBy}${row.updatedBy ? ` / 編集: ${row.updatedBy}` : ""}`}
                             >
-                              <div className="flex flex-col leading-tight min-w-0">
-                                <span className="text-[11px] whitespace-nowrap overflow-hidden text-ellipsis">
-                                  {row.createdBy}
-                                </span>
+                              <div className="flex flex-col leading-tight min-w-0 gap-0.5">
+                                <span className="break-words">{row.createdBy}</span>
                                 {row.updatedBy && (
-                                  <span className="text-[#9CA3AF] text-[10.5px] whitespace-nowrap overflow-hidden text-ellipsis">
+                                  <span className="text-[#9CA3AF] text-[10px] break-words">
                                     {row.updatedBy}
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="border border-gray-200 px-2 py-2 text-center align-top">
+                            <td className={TD_CENTER}>
                               <button
                                 type="button"
                                 disabled={isLocked}
                                 onClick={() => handleRowEdit(row)}
-                                className="inline-flex p-1.5 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                className="inline-flex p-1 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                 title="振替を編集"
                                 aria-label="振替を編集"
                               >
-                                <Pencil className="h-4 w-4" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </button>
                             </td>
                           </tr>
@@ -464,76 +474,64 @@ export default function RegisterHistoryPage() {
                       const { withdrawal, deposit } = formatWithdrawalDeposit(t)
                       const createdByLabel = (t.createdBy ?? "").trim() || "—"
                       const updatedByLabel = (t.updatedBy ?? "").trim() || null
+                      const typeBadge = historyTypeBadge(t.type)
                       return (
                         <tr key={t.id} className="hover:bg-gray-50/80">
-                          <td className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis">
+                          <td className={`${TD_BASE} text-left whitespace-nowrap`}>
                             {formatDateDisplay(t.date)}
                           </td>
-                          <td
-                            className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis"
-                            title={t.counterparty}
-                          >
-                            {t.counterparty}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2 text-right tabular-nums align-top whitespace-nowrap overflow-hidden text-ellipsis">
-                            {deposit}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2 text-right tabular-nums align-top whitespace-nowrap overflow-hidden text-ellipsis">
-                            {withdrawal}
-                          </td>
-                          <td
-                            className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis"
-                            title={t.category}
-                          >
-                            {t.category}
-                          </td>
-                          <td
-                            className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis"
-                            title={t.accountTitle}
-                          >
-                            {t.accountTitle}
-                          </td>
-                          <td
-                            className="border border-gray-200 px-3 py-2 text-left align-top whitespace-nowrap overflow-hidden text-ellipsis"
-                            title={t.memo || undefined}
-                          >
-                            {t.memo || "—"}
-                          </td>
-                          <td className="border border-gray-200 px-3 py-2 text-center align-top text-xs text-[#374151] tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
-                            <div className="flex flex-col items-center leading-tight">
-                              <span>{formatTransactionRegisteredAt(t.createdAt)}</span>
-                              {t.lastEditedAt && (
-                                <span className="text-[#9CA3AF] text-[11px]">
-                                  {formatTransactionRegisteredAt(t.lastEditedAt)} 編集
+                          <td className={TD_WRAP} title={t.counterparty}>
+                            <div className="flex flex-col items-start gap-0.5 min-w-0">
+                              {typeBadge && (
+                                <span
+                                  className={`${HISTORY_TYPE_BADGE_BASE} ${typeBadge.className}`}
+                                >
+                                  {typeBadge.label}
                                 </span>
                               )}
+                              <span className="text-[#374151] break-words">{t.counterparty}</span>
                             </div>
                           </td>
+                          <td className={TD_NUM}>{deposit}</td>
+                          <td className={TD_NUM}>{withdrawal}</td>
+                          <td className={TD_WRAP} title={t.category}>
+                            {t.category}
+                          </td>
+                          <td className={TD_WRAP} title={t.accountTitle}>
+                            {t.accountTitle}
+                          </td>
+                          <td className={TD_WRAP} title={t.memo || undefined}>
+                            {t.memo || "—"}
+                          </td>
+                          <td className={TD_CENTER}>
+                            <RegisteredAtBlock
+                              createdAt={t.createdAt}
+                              lastEditedAt={t.lastEditedAt}
+                            />
+                          </td>
                           <td
-                            className="border border-gray-200 px-2 py-2 text-left align-top text-[#374151]"
+                            className={TD_WRAP}
                             title={`登録: ${createdByLabel}${updatedByLabel ? ` / 編集: ${updatedByLabel}` : ""}`}
                           >
-                            <div className="flex flex-col leading-tight min-w-0">
-                              <span className="text-[11px] whitespace-nowrap overflow-hidden text-ellipsis">
-                                {createdByLabel}
-                              </span>
+                            <div className="flex flex-col leading-tight min-w-0 gap-0.5">
+                              <span className="break-words">{createdByLabel}</span>
                               {updatedByLabel && (
-                                <span className="text-[#9CA3AF] text-[10.5px] whitespace-nowrap overflow-hidden text-ellipsis">
+                                <span className="text-[#9CA3AF] text-[10px] break-words">
                                   {updatedByLabel}
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="border border-gray-200 px-2 py-2 text-center align-top">
+                          <td className={TD_CENTER}>
                             <button
                               type="button"
                               disabled={isLocked}
                               onClick={() => handleRowEdit(row)}
-                              className="inline-flex p-1.5 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              className="inline-flex p-1 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title={isCsvLinkedTransaction(t) ? "CSV一括編集へ" : "明細を編集"}
                               aria-label="編集"
                             >
-                              <Pencil className="h-4 w-4" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </button>
                           </td>
                         </tr>
@@ -549,46 +547,64 @@ export default function RegisterHistoryPage() {
                 <thead>
                   <tr className="bg-gray-50 text-[#374151]">
                     <th className="border border-gray-200 px-3 py-2 text-left">ファイル名</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left">取り込み日時</th>
-                    <th className="border border-gray-200 px-3 py-2 text-right">合計金額</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left">操作</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right">入金額合計</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right">出金額合計</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left">取込日</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center">編集</th>
                   </tr>
                 </thead>
                 <tbody>
                   {batchSummaries.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-10 text-center text-[#6B7280]">
+                      <td colSpan={5} className="px-3 py-10 text-center text-[#6B7280]">
                         CSV取込の履歴はまだありません。
                       </td>
                     </tr>
                   ) : (
-                    batchSummaries.map(({ batch, totalVolume }) => (
-                      <tr key={batch.id} className="hover:bg-gray-50/80">
-                        <td className="border border-gray-200 px-3 py-2 font-medium text-[#374151]">
-                          {batch.fileName}
-                        </td>
-                        <td className="border border-gray-200 px-3 py-2 whitespace-nowrap text-xs">
-                          {new Date(batch.registeredAt).toLocaleString("ja-JP")}
-                        </td>
-                        <td className="border border-gray-200 px-3 py-2 text-right tabular-nums font-medium">
-                          {totalVolume.toLocaleString()}
-                        </td>
-                        <td className="border border-gray-200 px-3 py-2">
-                          {isLocked ? (
-                            <span className="inline-flex items-center justify-center rounded-md bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-500 cursor-not-allowed">
-                              内容確認・一括編集
-                            </span>
-                          ) : (
-                            <Link
-                              href={withReturnTo(`/club/accounting/register/csv/${batch.id}`, editReturnTo)}
-                              className="inline-flex items-center justify-center rounded-md bg-[#A3BC68] px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
-                            >
-                              内容確認・一括編集
-                            </Link>
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                    batchSummaries.map(({ batch, depositTotal, withdrawalTotal }) => {
+                      const imported = parseTransactionRegisteredAt(batch.registeredAt)
+                      const importDateLabel = imported?.date ?? "—"
+                      const editHref = withReturnTo(
+                        `/club/accounting/register/csv/${batch.id}`,
+                        editReturnTo
+                      )
+                      return (
+                        <tr key={batch.id} className="hover:bg-gray-50/80">
+                          <td className="border border-gray-200 px-3 py-2 font-medium text-[#374151]">
+                            {batch.fileName}
+                          </td>
+                          <td className="border border-gray-200 px-3 py-2 text-right tabular-nums font-medium">
+                            {depositTotal.toLocaleString()}
+                          </td>
+                          <td className="border border-gray-200 px-3 py-2 text-right tabular-nums font-medium">
+                            {withdrawalTotal.toLocaleString()}
+                          </td>
+                          <td className="border border-gray-200 px-3 py-2 whitespace-nowrap text-xs">
+                            {importDateLabel}
+                          </td>
+                          <td className="border border-gray-200 px-3 py-2 text-center">
+                            {isLocked ? (
+                              <span
+                                className="inline-flex p-1 rounded-md text-gray-400 opacity-40 cursor-not-allowed"
+                                title="決算ロック中のため編集できません"
+                                aria-label="編集（ロック中）"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <Link
+                                href={editHref}
+                                className="inline-flex p-1 rounded-md text-[#68A384] hover:bg-[#68A384]/15"
+                                title="内容確認・一括編集"
+                                aria-label="編集"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
