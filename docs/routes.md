@@ -22,7 +22,7 @@ npm run routes
 
 | URL | 説明 |
 |-----|------|
-| `/` | 統合ログインハブ（学校・クラブ・部員） |
+| `/` | 統合ログインハブ（学校・監査人・クラブ・部員） |
 | `/register/school` | 学校向け新規申込 |
 | `/register/verify?id=SCH-xxxxx` | メール認証・本登録 |
 | `/school/login` | 学校管理者ログイン |

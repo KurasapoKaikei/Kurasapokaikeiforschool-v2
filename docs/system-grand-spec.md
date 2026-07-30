@@ -615,11 +615,12 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 
 ### 10.1 統合ログインハブ（`/`）
 
-`LoginHubView` — 3 大型カード:
+`LoginHubView` — 4 大型カード:
 
 | ボタン | カラー | 遷移・挙動 |
 |--------|--------|------------|
 | 学校ログイン | ネイビー `#005088` | `/school/login` へ遷移 |
+| 監査人ログイン | オレンジ `#EA580C` | `/audit/login` へ遷移 |
 | クラブログイン | ピンク `#E66A84` | 同一画面内でクラブID・パスワードフォーム表示 |
 | 部員ログイン | グレー `#9CA3AF` | モーダル「部員ページは現在準備中です」 |
 
