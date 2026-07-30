@@ -4,6 +4,10 @@ import { useState } from "react"
 import Link from "next/link"
 import { ClubLoginForm } from "@/components/auth/ClubLoginForm"
 import {
+  AUDIT_MESSAGE_BOX_ACCENT,
+  AUDIT_ROUTES,
+} from "@/lib/auditorTheme"
+import {
   CLUB_BRAND_PINK,
   SCHOOL_BRAND_NAVY,
   SCHOOL_ROUTES,
@@ -53,6 +57,25 @@ export function LoginHubView() {
             </span>
             <span className="mt-1 block text-sm text-[#6B7280]">
               管理者ポータルへ
+            </span>
+          </Link>
+
+          <Link
+            href={AUDIT_ROUTES.login}
+            className="group block rounded-2xl border-2 border-transparent bg-white p-6 shadow-md transition hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EA580C]/50"
+            style={{ borderLeftWidth: 6, borderLeftColor: AUDIT_MESSAGE_BOX_ACCENT }}
+          >
+            <span
+              className="mb-2 inline-block rounded-full px-3 py-1 text-xs font-semibold text-white"
+              style={{ backgroundColor: AUDIT_MESSAGE_BOX_ACCENT }}
+            >
+              監査人
+            </span>
+            <span className="block text-xl font-bold text-[#374151] group-hover:text-[#C2410C]">
+              監査人ログイン
+            </span>
+            <span className="mt-1 block text-sm text-[#6B7280]">
+              監査人ポータルへ
             </span>
           </Link>
 
