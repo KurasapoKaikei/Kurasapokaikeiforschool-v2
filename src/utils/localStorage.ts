@@ -75,6 +75,17 @@ export interface Transaction {
   deferredPlSide?: "income" | "expense" | null
   deferredPlCategory?: string | null
   deferredPlSubject?: string | null
+  /**
+   * 繰延・精算が対象とする計上仕訳の ID。
+   * 繰延台帳で計上行の精算額・精算日表示に使用する。
+   */
+  deferredRecordId?: string | null
+  /**
+   * 仮受金の精算区分。
+   * - period: 当期に計上（現金影響なし）
+   * - refund: 返金（現金出金）
+   */
+  deferredSettlementMode?: "period" | "refund" | null
   /** 登録した作業者名（担当者設定の氏名 or 未設定） */
   createdBy?: string | null
   /** 最終編集を行った作業者名（未編集なら null/undefined） */

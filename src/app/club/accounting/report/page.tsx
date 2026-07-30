@@ -137,7 +137,7 @@ export default function ReportPage() {
       totals.set(entry.category, (totals.get(entry.category) ?? 0) + entry.amount)
     })
 
-    // 繰延計上: 未収入金＝収入＋、預り金＝収入−（カテゴリーはメモ内）
+    // 繰延計上: 未収入金＝収入＋、仮受金＝収入−、未払金＝支出＋、仮払金＝支出−（カテゴリーはメモ内）
     transactions.forEach((t) => {
       const adj = getDeferredRecordPlAdjustment(t)
       if (!adj || adj.side !== "income" || !adj.categoryName) return

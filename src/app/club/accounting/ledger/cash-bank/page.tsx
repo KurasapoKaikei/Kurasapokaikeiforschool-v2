@@ -19,8 +19,16 @@ import {
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
-import { transactionMatchesCashAccount } from "@/lib/cashAccountBalance"
+import {
+  getCashLedgerFlowAmounts,
+  transactionMatchesCashAccount,
+} from "@/lib/cashAccountBalance"
 import { getCashLedgerOpeningLabel } from "@/lib/openingBalanceLabel"
+import {
+  isDeferredSettlement,
+  normalizeDeferredAccountName,
+  parseDeferredMemo,
+} from "@/lib/deferredAccounting"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -243,12 +251,10 @@ export default function LedgerCashBankPage() {
     })
     
     priorTransactions.forEach((t) => {
-      const isIncome = t.type === "income" || t.type === "collection"
-      const isExpense = t.type === "expense" || t.type === "transfer"
-      if (isIncome) balance += t.amount
-      if (isExpense) balance -= t.amount
+      const { income, expense } = getCashLedgerFlowAmounts(t)
+      balance += income - expense
     })
-    
+
     return balance
   }, [selectedCashAccount, transactions, openingBalance, startDate, fiscalYearStartDate, collectionScheduleById])
 
@@ -294,28 +300,37 @@ export default function LedgerCashBankPage() {
       let monthEndBalance = runningBalance
 
       monthTx.forEach((t, i) => {
-        const isIncome = t.type === "income" || t.type === "collection"
-        const isExpense = t.type === "expense" || t.type === "transfer"
+        const { income: incomeAmt, expense: expenseAmt } = getCashLedgerFlowAmounts(t)
 
-        const incomeAmt = isIncome ? t.amount : 0
-        const expenseAmt = isExpense ? t.amount : 0
+        if (incomeAmt > 0) monthIncome += incomeAmt
+        if (expenseAmt > 0) monthExpense += expenseAmt
 
-        if (isIncome) monthIncome += t.amount
-        if (isExpense) monthExpense += t.amount
-
-        // 残高計算: 前行の残高 + 入金 - 出金（繰延は transactionMatchesCashAccount で除外済み）
+        // 残高計算: 前行の残高 + 入金 - 出金
+        // （繰延・計上は除外、繰延・精算は科目別に入金/出金として反映）
         runningBalance = runningBalance + incomeAmt - expenseAmt
         monthEndBalance = runningBalance
-        
+
+        let category = t.category
+        let accountTitle = t.accountTitle
+        let memo = t.memo
+        if (isDeferredSettlement(t)) {
+          const parsed = parseDeferredMemo(t.memo || "")
+          category =
+            (t.deferredPlCategory ?? parsed.category).trim() ||
+            normalizeDeferredAccountName(t.accountTitle)
+          accountTitle = normalizeDeferredAccountName(t.accountTitle)
+          memo = parsed.userMemo || "精算"
+        }
+
         rows.push({
           kind: "data",
           key: `data-${monthKey}-${i}-${t.id}`,
           date: t.date,
-          category: t.category,
-          accountTitle: t.accountTitle,
-          memo: t.memo,
-          incomeAmount: isIncome ? t.amount : undefined,
-          expenseAmount: isExpense ? t.amount : undefined,
+          category,
+          accountTitle,
+          memo,
+          incomeAmount: incomeAmt > 0 ? incomeAmt : undefined,
+          expenseAmount: expenseAmt > 0 ? expenseAmt : undefined,
           balance: runningBalance,
           transactionId: t.id,
           receiptUrl: t.receiptUrl,

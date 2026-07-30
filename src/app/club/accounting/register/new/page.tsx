@@ -45,7 +45,14 @@ import {
   parseSubmitAmount,
 } from "@/utils/amountInput"
 import { formatDateDisplay as formatColDateDisplay } from "@/utils/dateDisplay"
-import { parseDeferredMemo } from "@/lib/deferredAccounting"
+import {
+  DEFERRED_SETTLEMENT_NON_CASH,
+  getDeferredSettlementCashEffect,
+  isDeferredRecordFullySettled,
+  parseDeferredMemo,
+  settlementRequiresCashAccount,
+  type DeferredKaruukeSettlementMode,
+} from "@/lib/deferredAccounting"
 
 const THEME_COLOR = "#A3BC68"
 const FISCAL_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
@@ -344,7 +351,8 @@ const DEFERRED_ACCOUNTS = [
     value: "未収入金",
     label: "未収入金",
     type: "asset" as const,
-    description: "入出金は来期だが、当期の収入として計上されるべきもの。",
+    description:
+      "入出金のタイミングは来期。当期の収入として計上されるべきもの。",
     /** 選択可能な収支区分 */
     allowedSides: ["income"] as const,
   },
@@ -352,15 +360,16 @@ const DEFERRED_ACCOUNTS = [
     value: "未払金",
     label: "未払金",
     type: "liability" as const,
-    description: "入出金は来期だが、当期の支出として計上されるべきもの。",
+    description:
+      "入出金のタイミングは来期。当期の支出として計上されるべきもの。",
     allowedSides: ["expense"] as const,
   },
   {
-    value: "預り金",
-    label: "預り金",
+    value: "仮受金",
+    label: "仮受金",
     type: "liability" as const,
     description:
-      "入出金は当期にすでに登録しているが、来期の収入として計上されるべきもの。",
+      "入出金のタイミングは当期。来期の収入として計上されるべきもの。",
     allowedSides: ["income"] as const,
   },
   {
@@ -368,7 +377,7 @@ const DEFERRED_ACCOUNTS = [
     label: "仮払金",
     type: "asset" as const,
     description:
-      "入出金は当期にすでに登録しているが、来期の支出として計上されるべきもの。",
+      "入出金のタイミングは当期。来期の支出として計上されるべきもの。",
     allowedSides: ["expense"] as const,
   },
 ] as const
@@ -381,12 +390,6 @@ function isDeferredAccountAllowedForSide(
   const def = DEFERRED_ACCOUNTS.find((a) => a.value === accountValue)
   if (!def) return false
   return (def.allowedSides as readonly string[]).includes(side)
-}
-
-/** 精算時の現金増減。未収入金・仮払金＝入金、未払金・預り金＝出金 */
-function isDeferredSettlementCashIn(deferredAccount: string): boolean {
-  const name = deferredAccount === "仮受金" ? "預り金" : deferredAccount
-  return name === "未収入金" || name === "仮払金"
 }
 
 function formatDeferredConfirmDate(dateStr: string): string {
@@ -429,6 +432,8 @@ export default function NewRegisterPage() {
     deferredAccount: "",
     deferredSettlementId: "",
     deferredSettlementAccount: "",
+    /** 仮受金精算: 当期に計上 / 返金 */
+    deferredKaruukeMode: "" as "" | DeferredKaruukeSettlementMode,
   })
   /** 精算一覧のチェック／精算額（key = 計上仕訳 id） */
   const [settlementSelections, setSettlementSelections] = useState<
@@ -1750,8 +1755,10 @@ export default function NewRegisterPage() {
         if (!formData.deferredAccount) return false
         const matchesDeferred =
           t.accountTitle === formData.deferredAccount ||
-          (formData.deferredAccount === "預り金" && t.accountTitle === "仮受金")
+          (formData.deferredAccount === "仮受金" && t.accountTitle === "預り金")
         if (!matchesDeferred) return false
+        // 精算済み（精算合計 ≥ 計上額）の計上は一覧に出さない
+        if (isDeferredRecordFullySettled(t, transactions)) return false
         if (formData.deferredSide) {
           const memo = t.memo || ""
           const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
@@ -1787,27 +1794,50 @@ export default function NewRegisterPage() {
     [settlementSelectedRows]
   )
 
+  const settlementNeedsCash = settlementRequiresCashAccount(
+    formData.deferredAccount,
+    formData.deferredKaruukeMode
+  )
+
+  const settlementKaruukeReady =
+    formData.deferredAccount !== "仮受金" || !!formData.deferredKaruukeMode
+
   const settlementConfirmReady =
     formData.deferredType === "settlement" &&
     !!formData.date &&
-    !!formData.deferredSettlementAccount &&
+    !!formData.deferredSide &&
     !!formData.deferredAccount &&
+    settlementKaruukeReady &&
+    (!settlementNeedsCash || !!formData.deferredSettlementAccount) &&
     settlementSelectedRows.length > 0
 
   const settlementConfirmText = useMemo(() => {
     if (!settlementConfirmReady) return ""
     const dateLabel = formatDeferredConfirmDate(formData.date)
-    const cash = formData.deferredSettlementAccount
     const yen = settlementTotalAmount.toLocaleString("ja-JP")
-    const cashIn = isDeferredSettlementCashIn(formData.deferredAccount)
-    return cashIn
-      ? `${dateLabel}に${cash}から${yen}円が入金されました。`
-      : `${dateLabel}に${cash}から${yen}円を出金しました。`
+    const cashEffect = getDeferredSettlementCashEffect(
+      formData.deferredAccount,
+      formData.deferredKaruukeMode === "period" ||
+        formData.deferredKaruukeMode === "refund"
+        ? formData.deferredKaruukeMode
+        : null
+    )
+    if (cashEffect === "income") {
+      return `${dateLabel}に${formData.deferredSettlementAccount}から${yen}円が入金されました。`
+    }
+    if (cashEffect === "expense") {
+      return `${dateLabel}に${formData.deferredSettlementAccount}から${yen}円を出金しました。`
+    }
+    if (formData.deferredKaruukeMode === "period") {
+      return `${dateLabel}に仮受金 ${yen}円を当期に計上して精算しました。`
+    }
+    return `${dateLabel}に精算額 ${yen}円を登録しました。`
   }, [
     settlementConfirmReady,
     formData.date,
     formData.deferredSettlementAccount,
     formData.deferredAccount,
+    formData.deferredKaruukeMode,
     settlementTotalAmount,
   ])
 
@@ -1852,6 +1882,7 @@ export default function NewRegisterPage() {
       deferredAccount: "",
       deferredSettlementId: "",
       deferredSettlementAccount: "",
+      deferredKaruukeMode: "",
       deferredSide: tab === "deferred" ? "" : prev.deferredSide,
       // 繰延タブは既定が計上のため期末日。他タブは本日
       date: tab === "deferred" ? deferredFiscalEndDate : getTodayString(),
@@ -2015,10 +2046,6 @@ export default function NewRegisterPage() {
           alert("日付を入力してください")
           return
         }
-        if (!formData.deferredSettlementAccount) {
-          alert("現金・預金科目を選択してください")
-          return
-        }
         if (!formData.deferredSide) {
           alert("収入または支出を選択してください")
           return
@@ -2031,8 +2058,20 @@ export default function NewRegisterPage() {
           alert(
             formData.deferredSide === "income"
               ? "収入では仮払金・未払金は選択できません"
-              : "支出では未収入金・預り金は選択できません"
+              : "支出では未収入金・仮受金は選択できません"
           )
+          return
+        }
+        if (formData.deferredAccount === "仮受金" && !formData.deferredKaruukeMode) {
+          alert("精算区分（当期に計上／返金）を選択してください")
+          return
+        }
+        const needsCash = settlementRequiresCashAccount(
+          formData.deferredAccount,
+          formData.deferredKaruukeMode
+        )
+        if (needsCash && !formData.deferredSettlementAccount) {
+          alert("現金・預金科目を選択してください")
           return
         }
         if (settlementSelectedRows.length === 0) {
@@ -2041,6 +2080,16 @@ export default function NewRegisterPage() {
         }
 
         const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
+        const karuukeMode =
+          formData.deferredAccount === "仮受金" &&
+          (formData.deferredKaruukeMode === "period" ||
+            formData.deferredKaruukeMode === "refund")
+            ? formData.deferredKaruukeMode
+            : null
+        const counterparty = needsCash
+          ? formData.deferredSettlementAccount
+          : DEFERRED_SETTLEMENT_NON_CASH
+
         for (const row of settlementSelectedRows) {
           const source = row.transaction
           const parsed = parseDeferredMemo(source.memo || "")
@@ -2048,6 +2097,11 @@ export default function NewRegisterPage() {
           const subjectName = source.deferredPlSubject || parsed.subject || ""
           const memoParts = [
             `精算`,
+            karuukeMode === "period"
+              ? "当期に計上"
+              : karuukeMode === "refund"
+                ? "返金"
+                : "",
             `区分: ${sideLabel}`,
             categoryName ? `カテゴリー: ${categoryName}` : "",
             subjectName ? `科目: ${subjectName}` : "",
@@ -2057,7 +2111,7 @@ export default function NewRegisterPage() {
             date: formData.date,
             type: "deferred",
             amount: row.amount,
-            counterparty: formData.deferredSettlementAccount,
+            counterparty,
             category: source.category,
             accountTitle: source.accountTitle,
             memo: memoParts.join(" / "),
@@ -2066,6 +2120,8 @@ export default function NewRegisterPage() {
             deferredPlSide: source.deferredPlSide ?? formData.deferredSide,
             deferredPlCategory: categoryName || null,
             deferredPlSubject: subjectName || null,
+            deferredRecordId: source.id,
+            deferredSettlementMode: karuukeMode,
           })
         }
         alert(`繰延（精算）を ${settlementSelectedRows.length} 件登録しました`)
@@ -2103,7 +2159,7 @@ export default function NewRegisterPage() {
         alert(
           formData.deferredSide === "income"
             ? "収入科目では仮払金・未払金は選択できません"
-            : "支出科目では未収入金・預り金は選択できません"
+            : "支出科目では未収入金・仮受金は選択できません"
         )
         return
       }
@@ -2185,6 +2241,7 @@ export default function NewRegisterPage() {
       deferredAccount: "",
       deferredSettlementId: "",
       deferredSettlementAccount: "",
+      deferredKaruukeMode: "",
     })
     setSettlementSelections({})
     setReceiptPreview(null)
@@ -2971,6 +3028,7 @@ export default function NewRegisterPage() {
                               date: deferredFiscalEndDate,
                               deferredSettlementId: "",
                               deferredSettlementAccount: "",
+                              deferredKaruukeMode: "",
                             }))
                           }}
                           className="text-[#A3BC68] focus:ring-[#A3BC68]"
@@ -3276,34 +3334,6 @@ export default function NewRegisterPage() {
                       </div>
 
                       <div>
-                        <label htmlFor="deferredSettlementAccount" className={labelClass}>
-                          現金・預金科目
-                        </label>
-                        <select
-                          id="deferredSettlementAccount"
-                          value={formData.deferredSettlementAccount}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              deferredSettlementAccount: e.target.value,
-                            }))
-                          }
-                          className={inputClass}
-                          required
-                        >
-                          <option value="">選択してください</option>
-                          {cashAccountTitles.map((title) => (
-                            <option key={title.id} value={title.name}>
-                              {title.name}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-[#6B7280] mt-1">
-                          実際の入出金があった口座を選択してください
-                        </p>
-                      </div>
-
-                      <div>
                         <label className={labelClass}>収入 / 支出</label>
                         <div className="flex gap-4">
                           <label className="flex items-center gap-2 cursor-pointer">
@@ -3320,6 +3350,8 @@ export default function NewRegisterPage() {
                                   category: "",
                                   accountTitle: "",
                                   deferredSettlementId: "",
+                                  deferredSettlementAccount: "",
+                                  deferredKaruukeMode: "",
                                   deferredAccount: isDeferredAccountAllowedForSide(
                                     prev.deferredAccount,
                                     "income"
@@ -3347,6 +3379,8 @@ export default function NewRegisterPage() {
                                   category: "",
                                   accountTitle: "",
                                   deferredSettlementId: "",
+                                  deferredSettlementAccount: "",
+                                  deferredKaruukeMode: "",
                                   deferredAccount: isDeferredAccountAllowedForSide(
                                     prev.deferredAccount,
                                     "expense"
@@ -3394,6 +3428,8 @@ export default function NewRegisterPage() {
                                       ...prev,
                                       deferredAccount: a.value,
                                       deferredSettlementId: "",
+                                      deferredSettlementAccount: "",
+                                      deferredKaruukeMode: "",
                                     }))
                                   }}
                                   className="mt-0.5 text-[#A3BC68] focus:ring-[#A3BC68] disabled:opacity-40 disabled:cursor-not-allowed"
@@ -3429,11 +3465,89 @@ export default function NewRegisterPage() {
                           </p>
                         )}
                       </div>
+
+                      {formData.deferredAccount === "仮受金" && (
+                        <div>
+                          <label className={labelClass}>精算区分</label>
+                          <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="deferredKaruukeMode"
+                                value="period"
+                                checked={formData.deferredKaruukeMode === "period"}
+                                onChange={() => {
+                                  clearSettlementSelections()
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    deferredKaruukeMode: "period",
+                                    deferredSettlementAccount: "",
+                                  }))
+                                }}
+                                className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                              />
+                              <span className="text-sm text-[#374151]">当期に計上</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="deferredKaruukeMode"
+                                value="refund"
+                                checked={formData.deferredKaruukeMode === "refund"}
+                                onChange={() => {
+                                  clearSettlementSelections()
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    deferredKaruukeMode: "refund",
+                                  }))
+                                }}
+                                className="text-[#A3BC68] focus:ring-[#A3BC68]"
+                              />
+                              <span className="text-sm text-[#374151]">返金</span>
+                            </label>
+                          </div>
+                          <p className="text-xs text-[#6B7280] mt-1">
+                            当期に計上：現金移動なしで精算。返金：現金・預金から出金して精算。
+                          </p>
+                        </div>
+                      )}
+
+                      {settlementNeedsCash && (
+                        <div>
+                          <label htmlFor="deferredSettlementAccount" className={labelClass}>
+                            現金・預金科目
+                          </label>
+                          <select
+                            id="deferredSettlementAccount"
+                            value={formData.deferredSettlementAccount}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                deferredSettlementAccount: e.target.value,
+                              }))
+                            }
+                            className={inputClass}
+                            required
+                          >
+                            <option value="">選択してください</option>
+                            {cashAccountTitles.map((title) => (
+                              <option key={title.id} value={title.name}>
+                                {title.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-[#6B7280] mt-1">
+                            実際の入出金があった口座を選択してください
+                          </p>
+                        </div>
+                      )}
                   </div>
 
-                      {formData.deferredAccount && (
+                      {formData.deferredAccount &&
+                        (formData.deferredAccount !== "仮受金" ||
+                          !!formData.deferredKaruukeMode) && (
                         <div className="w-full">
-                          <label className={labelClass}>計上一覧</label>
+                          <label className={labelClass}>未精算一覧</label>
                           <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
                             <table className="w-full table-fixed text-sm border-collapse">
                               <colgroup>

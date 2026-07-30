@@ -22,13 +22,24 @@ import {
 
 const THEME_COLOR = "#68A384"
 
+/** 精算日表示: YY/MM/DD精算 */
+function formatSettlementDateLabel(dateStr: string): string {
+  const parts = (dateStr || "").trim().slice(0, 10).split(/[-/]/)
+  if (parts.length !== 3) return `${dateStr}精算`
+  const yy = parts[0].slice(-2)
+  return `${yy}/${parts[1]}/${parts[2]}精算`
+}
+
 const DEFERRED_LEDGER_ACCOUNTS = DEFERRED_ACCOUNT_ORDER
 type DeferredLedgerAccount = (typeof DEFERRED_LEDGER_ACCOUNTS)[number] | "all"
 
 type DeferredRow = {
   key: string
+  /** 主表示の仕訳（計上。未紐付け精算のみの行では精算仕訳） */
   transaction: Transaction
+  settlementTransactions: Transaction[]
   date: string
+  settlementDate: string | null
   deferredAccount: string
   category: string
   subject: string
@@ -57,47 +68,103 @@ export default function LedgerDeferredPage() {
   }, [refresh])
 
   const rows = useMemo((): DeferredRow[] => {
-    const list = transactions
-      .filter((t) => t.type === "deferred")
-      .filter((t) => {
-        const name = normalizeDeferredAccountName(t.accountTitle)
-        if (!DEFERRED_LEDGER_ACCOUNTS.includes(name as (typeof DEFERRED_LEDGER_ACCOUNTS)[number])) {
-          return false
-        }
-        if (accountFilter === "all") return true
-        return name === accountFilter
-      })
-      .sort((a, b) => {
+    const deferred = transactions.filter((t) => {
+      if (t.type !== "deferred") return false
+      const name = normalizeDeferredAccountName(t.accountTitle)
+      if (!DEFERRED_LEDGER_ACCOUNTS.includes(name as (typeof DEFERRED_LEDGER_ACCOUNTS)[number])) {
+        return false
+      }
+      if (accountFilter === "all") return true
+      return name === accountFilter
+    })
+
+    const recordIds = new Set(
+      deferred.filter(isDeferredRecord).map((t) => t.id)
+    )
+
+    const settlementsByRecordId = new Map<string, Transaction[]>()
+    const unlinkedSettlements: Transaction[] = []
+
+    for (const t of deferred) {
+      if (!isDeferredSettlement(t)) continue
+      const recordId = t.deferredRecordId?.trim() || ""
+      if (recordId && recordIds.has(recordId)) {
+        const list = settlementsByRecordId.get(recordId) ?? []
+        list.push(t)
+        settlementsByRecordId.set(recordId, list)
+      } else {
+        unlinkedSettlements.push(t)
+      }
+    }
+
+    const merged: DeferredRow[] = []
+
+    for (const t of deferred.filter(isDeferredRecord)) {
+      const parsed = parseDeferredMemo(t.memo || "")
+      const linked = (settlementsByRecordId.get(t.id) ?? []).slice().sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date)
         return a.createdAt.localeCompare(b.createdAt)
       })
-
-    let balance = 0
-    return list.map((t) => {
-      const parsed = parseDeferredMemo(t.memo || "")
-      const isRecord = isDeferredRecord(t)
-      const isSettlement = isDeferredSettlement(t)
-      if (isRecord) balance += t.amount
-      else if (isSettlement) balance -= t.amount
-      return {
+      const settledSum = linked.reduce((s, x) => s + x.amount, 0)
+      const lastSettlement = linked.length > 0 ? linked[linked.length - 1] : null
+      merged.push({
         key: t.id,
         transaction: t,
+        settlementTransactions: linked,
         date: t.date,
+        settlementDate: lastSettlement?.date ?? null,
         deferredAccount: normalizeDeferredAccountName(t.accountTitle),
         category: parsed.category || "—",
         subject: parsed.subject || "—",
-        recordedAmount: isRecord ? t.amount : null,
-        settledAmount: isSettlement ? t.amount : null,
-        balance,
+        recordedAmount: t.amount,
+        settledAmount: settledSum > 0 ? settledSum : null,
+        balance: 0,
         memo: parsed.userMemo || "—",
-      }
+      })
+    }
+
+    for (const t of unlinkedSettlements) {
+      const parsed = parseDeferredMemo(t.memo || "")
+      merged.push({
+        key: t.id,
+        transaction: t,
+        settlementTransactions: [],
+        date: t.date,
+        settlementDate: null,
+        deferredAccount: normalizeDeferredAccountName(t.accountTitle),
+        category: parsed.category || "—",
+        subject: parsed.subject || "—",
+        recordedAmount: null,
+        settledAmount: t.amount,
+        balance: 0,
+        memo: parsed.userMemo || "—",
+      })
+    }
+
+    merged.sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date)
+      return a.transaction.createdAt.localeCompare(b.transaction.createdAt)
+    })
+
+    let balance = 0
+    return merged.map((row) => {
+      if (row.recordedAmount != null) balance += row.recordedAmount
+      if (row.settledAmount != null) balance -= row.settledAmount
+      return { ...row, balance }
     })
   }, [transactions, accountFilter])
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (row: DeferredRow) => {
     if (isLocked) return
-    if (!confirm("この繰延取引を削除しますか？")) return
-    if (deleteTransaction(id)) refresh()
+    const hasSettlements = row.settlementTransactions.length > 0
+    const message = hasSettlements
+      ? "この繰延計上と、紐づく精算を削除しますか？"
+      : "この繰延取引を削除しますか？"
+    if (!confirm(message)) return
+    for (const s of row.settlementTransactions) {
+      deleteTransaction(s.id)
+    }
+    if (deleteTransaction(row.transaction.id)) refresh()
   }
 
   const handleEdit = (t: Transaction) => {
@@ -119,7 +186,7 @@ export default function LedgerDeferredPage() {
             繰延（計上・精算）
           </h2>
           <p className="text-sm text-[#6B7280] mt-1">
-            未収入金・未払金・預り金・仮払金の計上・精算台帳
+            未収入金・未払金・仮受金・仮払金の計上・精算台帳
           </p>
           <SettlementLockAlert isLocked={isLocked} className="mt-3" />
         </div>
@@ -201,7 +268,12 @@ export default function LedgerDeferredPage() {
                 rows.map((row) => (
                   <tr key={row.key} className="hover:bg-gray-50/80 border-b border-gray-100">
                     <td className="px-3 py-2.5 whitespace-nowrap text-[#374151] border-r border-gray-200">
-                      {formatDateDisplay(row.date)}
+                      <div>{formatDateDisplay(row.date)}</div>
+                      {row.settlementDate ? (
+                        <div className="text-xs text-[#6B7280] mt-0.5">
+                          {formatSettlementDateLabel(row.settlementDate)}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-[#374151] border-r border-gray-200">
                       {row.deferredAccount}
@@ -249,7 +321,7 @@ export default function LedgerDeferredPage() {
                       <button
                         type="button"
                         disabled={isLocked}
-                        onClick={() => handleDelete(row.transaction.id)}
+                        onClick={() => handleDelete(row)}
                         className="inline-flex p-1 rounded-md text-[#EF4444] hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="削除"
                         aria-label="削除"
