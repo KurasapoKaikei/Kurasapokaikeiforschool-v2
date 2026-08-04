@@ -21,6 +21,12 @@ import {
   REGISTER_EDIT_RETURN_QUERY,
 } from "@/utils/transactionEditPath"
 import { useUserInfo } from "@/contexts/UserInfoContext"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
+import {
+  formatFiscalBoundsMessage,
+  isDateWithinFiscalBounds,
+  resolveFiscalDateBounds,
+} from "@/lib/fiscalDateBounds"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
@@ -49,6 +55,11 @@ export default function CsvImportDetailPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { currentOperatorName } = useUserInfo()
+  const portalFiscalYear = usePortalFiscalYearOptional()
+  const fiscalBounds = useMemo(
+    () => resolveFiscalDateBounds(portalFiscalYear?.selectedYear),
+    [portalFiscalYear?.selectedYear]
+  )
   const returnToParam = searchParams.get(REGISTER_EDIT_RETURN_QUERY)
   const backHref = useMemo(
     () => resolveRegisterEditBackHref(returnToParam),
@@ -177,6 +188,11 @@ export default function CsvImportDetailPage() {
     if (isLocked) return
     if (!canSave) {
       alert("全行で日付・カテゴリー・科目・金額を確認してください。")
+      return
+    }
+    const outOfBounds = draftRows.find((d) => !isDateWithinFiscalBounds(d.date, fiscalBounds))
+    if (outOfBounds) {
+      alert(formatFiscalBoundsMessage(fiscalBounds))
       return
     }
     for (const d of draftRows) {
@@ -326,6 +342,8 @@ export default function CsvImportDetailPage() {
                         onChange={(v) => setDraft(r.id, { date: v })}
                         themeColor={THEME_COLOR}
                         className={inputClass}
+                        minDate={fiscalBounds.minDate}
+                        maxDate={fiscalBounds.maxDate}
                         aria-label="日付"
                       />
                     </td>

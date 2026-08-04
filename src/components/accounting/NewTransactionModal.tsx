@@ -17,6 +17,13 @@ import {
   normalizeAmountInputRaw,
   parseSubmitAmount,
 } from "@/utils/amountInput"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
+import {
+  clampDateToFiscalBounds,
+  formatFiscalBoundsMessage,
+  isDateWithinFiscalBounds,
+  resolveFiscalDateBounds,
+} from "@/lib/fiscalDateBounds"
 
 const THEME_COLOR = "#A3BC68"
 
@@ -38,11 +45,19 @@ interface NewTransactionModalProps {
 }
 
 export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransactionModalProps) {
+  const portalFiscalYear = usePortalFiscalYearOptional()
+  const fiscalBounds = useMemo(
+    () => resolveFiscalDateBounds(portalFiscalYear?.selectedYear),
+    [portalFiscalYear?.selectedYear]
+  )
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [activeTab, setActiveTab] = useState<TabType>("income")
   const [formData, setFormData] = useState({
-    date: getTodayString(),
+    date: clampDateToFiscalBounds(
+      getTodayString(),
+      resolveFiscalDateBounds(undefined)
+    ),
     category: "",
     accountTitle: "",
     amount: "",
@@ -54,8 +69,11 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
     if (!isOpen) return
     setCategories(getCategories())
     setAccountTitles(getAccountTitles())
-    setFormData((prev) => ({ ...prev, date: getTodayString() }))
-  }, [isOpen])
+    setFormData((prev) => ({
+      ...prev,
+      date: clampDateToFiscalBounds(getTodayString(), fiscalBounds),
+    }))
+  }, [isOpen, fiscalBounds])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -103,6 +121,10 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
       alert("日付・カテゴリー・科目・入金先/出金元・金額（0以外の数値）を入力してください。")
       return
     }
+    if (!isDateWithinFiscalBounds(formData.date, fiscalBounds)) {
+      alert(formatFiscalBoundsMessage(fiscalBounds))
+      return
+    }
 
     const selectedAccount = accountTitles.find((t) => t.name === formData.accountTitle)
     const categoryToSave = selectedAccount?.group === "cash" ? "共通" : formData.category
@@ -122,7 +144,7 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
     onSuccess?.()
     onClose()
     setFormData({
-      date: getTodayString(),
+      date: clampDateToFiscalBounds(getTodayString(), fiscalBounds),
       category: "",
       accountTitle: "",
       amount: "",
@@ -199,6 +221,8 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
                 onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
                 themeColor={THEME_COLOR}
                 className="w-full px-3 py-2 rounded-md"
+                minDate={fiscalBounds.minDate}
+                maxDate={fiscalBounds.maxDate}
                 aria-label="日付"
               />
             </div>

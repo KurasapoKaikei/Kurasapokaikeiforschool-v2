@@ -29,6 +29,10 @@ export interface DatePickerFieldProps {
   showWeekday?: boolean
   /** 表セル向けのコンパクト表示（アイコン・余白を縮小） */
   compact?: boolean
+  /** 選択可能な最小日（yyyy-MM-dd）。会計期間の期首など */
+  minDate?: string
+  /** 選択可能な最大日（yyyy-MM-dd）。会計期間の期末など */
+  maxDate?: string
   "aria-label"?: string
 }
 
@@ -58,6 +62,13 @@ function restrictDateInput(value: string): string {
   return value.replace(/[^\d\/]/g, "").replace(/／/g, "/")
 }
 
+function isYmdInRange(ymd: string, minDate?: string, maxDate?: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false
+  if (minDate && ymd < minDate) return false
+  if (maxDate && ymd > maxDate) return false
+  return true
+}
+
 export function DatePickerField({
   value,
   onChange,
@@ -67,6 +78,8 @@ export function DatePickerField({
   disabled = false,
   showWeekday = false,
   compact = false,
+  minDate,
+  maxDate,
   "aria-label": ariaLabel,
 }: DatePickerFieldProps) {
   const [open, setOpen] = React.useState(false)
@@ -81,6 +94,11 @@ export function DatePickerField({
   const displayStr = valueDate
     ? format(valueDate, showWeekday ? "yyyy/MM/dd (EEE)" : "yyyy/MM/dd", { locale: ja })
     : ""
+
+  const isDayAllowed = React.useCallback(
+    (date: Date) => isYmdInRange(format(date, "yyyy-MM-dd"), minDate, maxDate),
+    [minDate, maxDate]
+  )
 
   React.useEffect(() => {
     if (value) setViewDate(new Date(value + "T12:00:00"))
@@ -116,16 +134,25 @@ export function DatePickerField({
   const handlePrevMonth = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setViewDate((prev) => subMonths(prev, 1))
+    setViewDate((prev) => {
+      const next = subMonths(prev, 1)
+      if (minDate && format(endOfMonth(next), "yyyy-MM-dd") < minDate) return prev
+      return next
+    })
   }
 
   const handleNextMonth = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setViewDate((prev) => addMonths(prev, 1))
+    setViewDate((prev) => {
+      const next = addMonths(prev, 1)
+      if (maxDate && format(startOfMonth(next), "yyyy-MM-dd") > maxDate) return prev
+      return next
+    })
   }
 
   const handleSelectDay = (date: Date) => {
+    if (!isDayAllowed(date)) return
     onChange(format(date, "yyyy-MM-dd"))
     setOpen(false)
   }
@@ -138,7 +165,7 @@ export function DatePickerField({
   const handleInputBlur = () => {
     setIsEditing(false)
     const parsed = parseDateInput(inputStr)
-    if (parsed) {
+    if (parsed && isYmdInRange(parsed, minDate, maxDate)) {
       onChange(parsed)
     } else {
       setInputStr(displayStr)
@@ -248,22 +275,24 @@ export function DatePickerField({
           <div className="grid grid-cols-7 gap-0.5">
             {days.map((day) => {
               const inMonth = isWithinInterval(day, { start: monthStart, end: monthEnd })
+              const allowed = isDayAllowed(day)
+              const selectable = inMonth && allowed
               const isSelected = valueDate && isSameDay(day, valueDate)
               return (
                 <button
                   key={day.toISOString()}
                   type="button"
-                  onClick={() => inMonth && handleSelectDay(day)}
-                  disabled={!inMonth}
+                  onClick={() => selectable && handleSelectDay(day)}
+                  disabled={!selectable}
                   className={cn(
                     "w-8 h-8 rounded-md text-sm transition-colors",
-                    inMonth
+                    selectable
                       ? "hover:bg-gray-100 text-[#374151]"
                       : "text-gray-300 cursor-default",
-                    isSelected && "text-white font-semibold"
+                    isSelected && selectable && "text-white font-semibold"
                   )}
                   style={
-                    isSelected
+                    isSelected && selectable
                       ? { backgroundColor: themeColor }
                       : undefined
                   }

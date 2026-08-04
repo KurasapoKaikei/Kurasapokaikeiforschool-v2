@@ -14,6 +14,8 @@ type Props = {
   initialDate: string
   depositAmount: number
   csvMemo?: string
+  minDate?: string
+  maxDate?: string
   onRegistered: (lines: CsvCollectionLinkResult[]) => void
 }
 
@@ -24,6 +26,8 @@ export function CsvCollectionLinkModal({
   initialDate,
   depositAmount,
   csvMemo = "",
+  minDate,
+  maxDate,
   onRegistered,
 }: Props) {
   if (!open) return null
@@ -54,6 +58,8 @@ export function CsvCollectionLinkModal({
             initialDate={initialDate}
             depositAmount={depositAmount}
             csvMemo={csvMemo}
+            minDate={minDate}
+            maxDate={maxDate}
             submitLabel="保存する"
             onCancel={onClose}
             onSubmit={(lines) => {

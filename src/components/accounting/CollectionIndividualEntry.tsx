@@ -42,6 +42,10 @@ export type CollectionIndividualEntryProps = {
   cashAccountOptions?: { id: string; name: string }[]
   onCashAccountChange?: (name: string) => void
   initialDate?: string
+  /** 会計期間の選択下限（yyyy-MM-dd） */
+  minDate?: string
+  /** 会計期間の選択上限（yyyy-MM-dd） */
+  maxDate?: string
   /** csv-draft では CSV 入金額（必須一致） */
   depositAmount?: number
   csvMemo?: string
@@ -100,6 +104,8 @@ export function CollectionIndividualEntry({
   cashAccountOptions,
   onCashAccountChange,
   initialDate = "",
+  minDate,
+  maxDate,
   depositAmount,
   csvMemo = "",
   disabled = false,
@@ -370,6 +376,18 @@ export function CollectionIndividualEntry({
           setError(`${summary.month}月の入金日を入力してください`)
           return
         }
+        if (minDate && date < minDate) {
+          setError(
+            `日付は会計期間（${minDate.replace(/-/g, "/")}〜${(maxDate ?? "").replace(/-/g, "/")}）の範囲内で入力してください`
+          )
+          return
+        }
+        if (maxDate && date > maxDate) {
+          setError(
+            `日付は会計期間（${(minDate ?? "").replace(/-/g, "/")}〜${maxDate.replace(/-/g, "/")}）の範囲内で入力してください`
+          )
+          return
+        }
         const rec = records.find(
           (r) => r.memberId === selectedMember.id && r.scheduleId === schedule.id
         )
@@ -614,6 +632,8 @@ export function CollectionIndividualEntry({
                   onChange={applyBulkDate}
                   themeColor={THEME}
                   disabled={disabled}
+                  minDate={minDate}
+                  maxDate={maxDate}
                   aria-label="入金日（一括）"
                 />
               </div>
@@ -719,6 +739,8 @@ export function CollectionIndividualEntry({
                           themeColor={THEME}
                           compact
                           disabled={disabled}
+                          minDate={minDate}
+                          maxDate={maxDate}
                         />
                       </td>
                       {isDirect && (

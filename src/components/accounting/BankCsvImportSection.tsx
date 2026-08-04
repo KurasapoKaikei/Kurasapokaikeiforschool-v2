@@ -27,6 +27,12 @@ import {
   type CsvCollectionLinkResult,
 } from "@/components/accounting/CsvCollectionLinkModal"
 import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
+import {
+  formatFiscalBoundsMessage,
+  isDateWithinFiscalBounds,
+  resolveFiscalDateBounds,
+} from "@/lib/fiscalDateBounds"
 
 export { BANK_IMPORT_HEADER_ROW as BANK_CSV_HEADERS, BANK_IMPORT_HEADERS } from "@/utils/bankImportTemplate"
 
@@ -233,6 +239,11 @@ export function BankCsvImportSection({
   registerDisabled = false,
 }: Props) {
   const { currentOperatorName } = useUserInfo()
+  const portalFiscalYear = usePortalFiscalYearOptional()
+  const fiscalBounds = useMemo(
+    () => resolveFiscalDateBounds(portalFiscalYear?.selectedYear),
+    [portalFiscalYear?.selectedYear]
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadId = useId()
   const [rows, setRows] = useState<CsvRowState[]>([])
@@ -364,6 +375,8 @@ export function BankCsvImportSection({
         const d = normalizeDate(dateRaw)
         if (!d) {
           error = "日付形式が不正です（YYYY/MM/DD など）"
+        } else if (!isDateWithinFiscalBounds(d, fiscalBounds)) {
+          error = formatFiscalBoundsMessage(fiscalBounds)
         } else {
           txType = deposit !== 0 ? "income" : "expense"
           next.push({
@@ -656,6 +669,14 @@ export function BankCsvImportSection({
     const conflict = findCsvImportConflict(importSource.fileName, importSource.contentHash)
     if (conflict) {
       alert(conflict)
+      return
+    }
+
+    const outOfBounds = registerableRows.find(
+      (r) => rowIsRegisterReady(r) && !isDateWithinFiscalBounds(r.date, fiscalBounds)
+    )
+    if (outOfBounds) {
+      alert(formatFiscalBoundsMessage(fiscalBounds))
       return
     }
 
@@ -1058,6 +1079,8 @@ export function BankCsvImportSection({
         initialDate={collectionLinkRow?.date ?? ""}
         depositAmount={collectionLinkRow?.deposit ?? 0}
         csvMemo={collectionLinkRow?.memo ?? ""}
+        minDate={fiscalBounds.minDate}
+        maxDate={fiscalBounds.maxDate}
         onRegistered={(lines) => {
           if (collectionLinkRowId) applyCollectionLinkResults(collectionLinkRowId, lines)
         }}

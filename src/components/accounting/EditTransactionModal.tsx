@@ -20,6 +20,12 @@ import {
   parseSubmitAmount,
 } from "@/utils/amountInput"
 import { useUserInfo } from "@/contexts/UserInfoContext"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
+import {
+  formatFiscalBoundsMessage,
+  isDateWithinFiscalBounds,
+  resolveFiscalDateBounds,
+} from "@/lib/fiscalDateBounds"
 
 const THEME_COLOR = "#68A384"
 
@@ -41,6 +47,11 @@ export function EditTransactionModal({
   onSuccess,
 }: EditTransactionModalProps) {
   const { currentOperatorName } = useUserInfo()
+  const portalFiscalYear = usePortalFiscalYearOptional()
+  const fiscalBounds = useMemo(
+    () => resolveFiscalDateBounds(portalFiscalYear?.selectedYear),
+    [portalFiscalYear?.selectedYear]
+  )
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [formData, setFormData] = useState({
@@ -116,6 +127,10 @@ export function EditTransactionModal({
       amount === 0
     ) {
       alert("日付・カテゴリー・科目・入金先/出金元・金額を入力してください")
+      return
+    }
+    if (!isDateWithinFiscalBounds(formData.date, fiscalBounds)) {
+      alert(formatFiscalBoundsMessage(fiscalBounds))
       return
     }
 
@@ -222,6 +237,8 @@ export function EditTransactionModal({
                 onChange={(v) => setFormData((prev) => ({ ...prev, date: v }))}
                 themeColor={THEME_COLOR}
                 className="w-full px-3 py-2 rounded-md"
+                minDate={fiscalBounds.minDate}
+                maxDate={fiscalBounds.maxDate}
                 aria-label="日付"
               />
             </div>

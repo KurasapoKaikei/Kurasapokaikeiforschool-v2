@@ -32,6 +32,12 @@ import {
 import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
 import { useUserInfo } from "@/contexts/UserInfoContext"
 import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
+import {
+  clampDateToFiscalBounds,
+  formatFiscalBoundsMessage,
+  isDateWithinFiscalBounds,
+  resolveFiscalDateBounds,
+} from "@/lib/fiscalDateBounds"
 import { BankCsvImportSection } from "@/components/accounting/BankCsvImportSection"
 import {
   CollectionIndividualEntry,
@@ -410,6 +416,10 @@ export default function NewRegisterPage() {
   const searchParams = useSearchParams()
   const { currentOperatorName } = useUserInfo()
   const portalFiscalYear = usePortalFiscalYearOptional()
+  const fiscalBounds = useMemo(
+    () => resolveFiscalDateBounds(portalFiscalYear?.selectedYear),
+    [portalFiscalYear?.selectedYear]
+  )
   const [categories, setCategories] = useState<Category[]>([])
   const [accountTitles, setAccountTitles] = useState<AccountTitle[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -419,7 +429,10 @@ export default function NewRegisterPage() {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
-    date: getTodayString(),
+    date: clampDateToFiscalBounds(
+      getTodayString(),
+      resolveFiscalDateBounds(undefined)
+    ),
     category: "",
     accountTitle: "",
     amount: "",
@@ -545,7 +558,9 @@ export default function NewRegisterPage() {
   const [colMonth, setColMonth] = useState<number>(getCurrentFiscalMonth())
   const [colGrade, setColGrade] = useState<number | "all">("all")
   const [colSearch, setColSearch] = useState("")
-  const [colBulkDate, setColBulkDate] = useState(getTodayString())
+  const [colBulkDate, setColBulkDate] = useState(() =>
+    clampDateToFiscalBounds(getTodayString(), resolveFiscalDateBounds(undefined))
+  )
 
   // 科目（スケジュール）行ごとの入金入力。キー: `${memberId}__${scheduleId}`
   const [colPayments, setColPayments] = useState<Record<string, { amount: string; date: string; memo: string }>>({})
@@ -563,6 +578,26 @@ export default function NewRegisterPage() {
   const memberRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
   const deepLinkInitDoneRef = useRef(false)
   const deepLinkScrollDoneRef = useRef(false)
+
+  /** ヘッダーの会計年度切替時、登録日付を期間内へ丸める */
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      date: clampDateToFiscalBounds(prev.date || getTodayString(), fiscalBounds),
+    }))
+    setColBulkDate((prev) =>
+      clampDateToFiscalBounds(prev || getTodayString(), fiscalBounds)
+    )
+  }, [fiscalBounds])
+
+  const assertDateInFiscalPeriod = useCallback(
+    (dateStr: string): boolean => {
+      if (isDateWithinFiscalBounds(dateStr, fiscalBounds)) return true
+      alert(formatFiscalBoundsMessage(fiscalBounds))
+      return false
+    },
+    [fiscalBounds]
+  )
 
   const reloadCollectionData = useCallback(() => {
     syncAllCollectionRecords()
@@ -1110,6 +1145,9 @@ export default function NewRegisterPage() {
       if (!date) {
         return { saved: 0, error: "入金日を入力してください" }
       }
+      if (!isDateWithinFiscalBounds(date, fiscalBounds)) {
+        return { saved: 0, error: formatFiscalBoundsMessage(fiscalBounds) }
+      }
       lines.push({
         schedule,
         amount,
@@ -1621,6 +1659,7 @@ export default function NewRegisterPage() {
           alert("入金日を入力してください")
           return
         }
+        if (!assertDateInFiscalPeriod(date)) return
         rowsToSave.push({
           paymentKey,
           amount,
@@ -2032,6 +2071,8 @@ export default function NewRegisterPage() {
 
     if (activeTab === "csv") return
 
+    if (formData.date && !assertDateInFiscalPeriod(formData.date)) return
+
     if (activeTab === "transfer") {
       if (
         !formData.date ||
@@ -2428,6 +2469,8 @@ export default function NewRegisterPage() {
                 showHeader
                 title="集金の個別登録"
                 initialDate={colBulkDate || getTodayString()}
+                minDate={fiscalBounds.minDate}
+                maxDate={fiscalBounds.maxDate}
                 disabled={isLocked}
                 submitLabel="登録する"
                 onSubmit={handleColIndividualRegister}
@@ -2470,6 +2513,8 @@ export default function NewRegisterPage() {
                     themeColor={THEME_COLOR}
                     className={inputClass}
                     aria-label="入金日"
+                    minDate={fiscalBounds.minDate}
+                    maxDate={fiscalBounds.maxDate}
                   />
                 </div>
               </div>
@@ -2791,6 +2836,8 @@ export default function NewRegisterPage() {
                                             compact
                                             className="text-left border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#67a384] whitespace-nowrap overflow-hidden"
                                             aria-label={`${member.name}・${subjectName}の入金日`}
+                                            minDate={fiscalBounds.minDate}
+                                            maxDate={fiscalBounds.maxDate}
                                           />
                                         )}
                                       </td>
@@ -2956,6 +3003,8 @@ export default function NewRegisterPage() {
                   themeColor={THEME_COLOR}
                   className={inputClass}
                   aria-label="日付"
+                  minDate={fiscalBounds.minDate}
+                  maxDate={fiscalBounds.maxDate}
                 />
               </div>
               )}
@@ -3168,6 +3217,8 @@ export default function NewRegisterPage() {
                           className={inputClass}
                           aria-label="日付"
                           disabled
+                          minDate={fiscalBounds.minDate}
+                          maxDate={fiscalBounds.maxDate}
                         />
                         <p className="text-xs text-[#6B7280] mt-1">
                           計上の日付は期末日（{deferredFiscalEndDate.replace(/-/g, "/")}）です
@@ -3428,6 +3479,8 @@ export default function NewRegisterPage() {
                           themeColor={THEME_COLOR}
                           className={inputClass}
                           aria-label="日付"
+                          minDate={fiscalBounds.minDate}
+                          maxDate={fiscalBounds.maxDate}
                         />
                       </div>
 
