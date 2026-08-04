@@ -11,10 +11,16 @@ import {
   getActiveClubIdForStorage,
   readClubScopedJson,
   writeClubScopedJson,
+  readClubScopedJsonForClubId,
+  writeClubScopedJsonForClubId,
   readClubScopedRaw,
   writeClubScopedRaw,
   clubScopedStorageKey,
 } from "@/lib/clubScopedStorage"
+
+/** 学校共通マスタの正本キー（schoolCommon* と同一。循環 import 回避のためここでも参照） */
+const SCHOOL_COMMON_CATEGORIES_KEY = "kurasaokaikei-school-common-categories"
+const SCHOOL_COMMON_ACCOUNT_TITLES_KEY = "kurasaokaikei-school-common-account-titles"
 export type { CollectionPaymentStatus } from "@/types"
 
 export interface Category {
@@ -567,8 +573,115 @@ const syncCollectionTransactionsFromRecords = (): void => {
   if (recordChanged) writeStorageJson(STORAGE_KEYS.COLLECTION_RECORDS, nextRecords)
 }
 
+/**
+ * 学校共通カテゴリー・科目がクラブスコープに未反映なら書き込む。
+ * 設定画面は merge で学校共通を見えるが、入出金登録等は getCategories/getAccountTitles
+ * のみ参照するため、柔道部など未シードクラブで選択肢が空になるのを防ぐ。
+ */
+function ensureActiveClubMastersHydratedFromSchool(): void {
+  if (typeof window === "undefined") return
+  const clubId = getActiveClubIdForStorage()
+  if (!clubId) return
+
+  try {
+    const catRaw = localStorage.getItem(SCHOOL_COMMON_CATEGORIES_KEY)
+    if (catRaw) {
+      const schoolCats = JSON.parse(catRaw) as Category[]
+      if (Array.isArray(schoolCats) && schoolCats.length > 0) {
+        const existing = readClubScopedJsonForClubId<Category[]>(
+          STORAGE_KEYS.CATEGORIES,
+          clubId,
+          []
+        )
+        const hasSchool = existing.some(
+          (c) =>
+            c.fromSchool === true ||
+            schoolCats.some(
+              (s) => s.id === c.id || s.name.trim() === c.name.trim()
+            )
+        )
+        if (existing.length === 0 || !hasSchool) {
+          const clubOnly = existing.filter(
+            (c) =>
+              !c.fromSchool &&
+              !schoolCats.some(
+                (s) => s.id === c.id || s.name.trim() === c.name.trim()
+              )
+          )
+          const merged: Category[] = [
+            ...schoolCats.map((c, idx) => ({
+              ...c,
+              fromSchool: true as const,
+              order: idx + 1,
+            })),
+            ...clubOnly.map((c, idx) => ({
+              ...c,
+              order: schoolCats.length + idx + 1,
+            })),
+          ]
+          writeClubScopedJsonForClubId(STORAGE_KEYS.CATEGORIES, clubId, merged)
+        }
+      }
+    }
+
+    const titleRaw = localStorage.getItem(SCHOOL_COMMON_ACCOUNT_TITLES_KEY)
+    if (titleRaw) {
+      const schoolTitles = JSON.parse(titleRaw) as AccountTitle[]
+      if (Array.isArray(schoolTitles) && schoolTitles.length > 0) {
+        const existing = readClubScopedJsonForClubId<AccountTitle[]>(
+          STORAGE_KEYS.ACCOUNT_TITLES,
+          clubId,
+          []
+        )
+        const hasSchool = existing.some(
+          (t) =>
+            t.fromSchool === true ||
+            schoolTitles.some(
+              (s) => s.id === t.id || s.name.trim() === t.name.trim()
+            )
+        )
+        if (existing.length === 0 || !hasSchool) {
+          const clubOnly = existing.filter(
+            (t) =>
+              !t.fromSchool &&
+              !schoolTitles.some(
+                (s) => s.id === t.id || s.name.trim() === t.name.trim()
+              )
+          )
+          const mergedSchool = schoolTitles.map((s, idx) => {
+            const prev = existing.find(
+              (e) => e.id === s.id || e.name.trim() === s.name.trim()
+            )
+            return {
+              ...s,
+              fromSchool: true as const,
+              order: typeof s.order === "number" ? s.order : idx + 1,
+              balance:
+                prev?.group === "cash" && prev.balance != null
+                  ? prev.balance
+                  : s.group === "cash"
+                    ? null
+                    : prev?.balance ?? null,
+              ...(prev?.categoryBalances
+                ? { categoryBalances: { ...prev.categoryBalances } }
+                : {}),
+            }
+          })
+          writeClubScopedJsonForClubId(STORAGE_KEYS.ACCOUNT_TITLES, clubId, [
+            ...mergedSchool,
+            ...clubOnly,
+          ])
+        }
+      }
+    }
+  } catch {
+    /* ignore corrupt school masters */
+  }
+}
+
 // カテゴリー関連（クラブスコープ）
 export const getCategories = (): Category[] => {
+  ensureActiveClubMastersHydratedFromSchool()
   return readStorageJson<Category[]>(STORAGE_KEYS.CATEGORIES, [])
 }
 
@@ -578,6 +691,7 @@ export const saveCategories = (categories: Category[]): void => {
 
 // 科目関連（クラブスコープ）
 export const getAccountTitles = (): AccountTitle[] => {
+  ensureActiveClubMastersHydratedFromSchool()
   return readStorageJson<AccountTitle[]>(STORAGE_KEYS.ACCOUNT_TITLES, [])
 }
 

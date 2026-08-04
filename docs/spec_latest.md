@@ -93,6 +93,7 @@ PWA / Service Worker 設定は **未使用**（`next.config.js` に該当設定�
 | アクティブクラブ無し | 取得系は空既定値（`[]` 等）を返し、保存系は no-op（データを書き込まない） |
 | 一回限りの移行 | マーカー `classapo_club_scope_migration_v1` が未設定かつアクティブクラブが存在する場合のみ、上記ベースキーごとに「スコープ済みキーが空 かつ 裸のグローバルキーにデータがある」ときに **レガシーグローバル → そのときのアクティブクラブのスコープ済みキー** へ複製し、マーカーへ移行先クラブ ID を記録する。以後は移行を再実行しない（2クラブ目以降は素の空状態から開始し、他クラブのデータを引き継がない）。**更新直後は、これまで使っていたクラブ（例: サッカー部）で先にログインすること**（先に別クラブで入ると、そのクラブへ旧データが付く） |
 | 新規クラブ登録 | `seedClubPortalMastersFromSchool` — 学校共通カテゴリー・科目が設定済みなら、新クラブのスコープキーへ初期投入 |
+| 未反映クラブの補完 | `getCategories` / `getAccountTitles` 呼び出し時、クラブスコープに学校共通が無い場合は学校正本から自動 hydration（設定画面には見えるが入出金登録の選択肢が空になる問題を防ぐ） |
 | 学校側正本 | 学校マスタ・登録クラブ一覧（`kurasaokaikei-school-clubs` 等）・監査人・学校共通カテゴリー/科目の正本キーはクラブ非依存のままグローバルに保持する |
 | 学校共通マスタの反映 | `saveSchoolCommonCategories` / `saveSchoolCommonAccountTitles` は保存時に `loadSchoolClubs()` の**登録済み全クラブ**へクラブスコープ済みキーで直接反映する（アクティブクラブのみの更新では他クラブが古いマスタのまま残るため） |
 | 取引データの活動フラグ | `saveTransactions` は取引が1件以上のとき、当該クラブの `kurasaokaikei-club-has-portal-data-{clubId}` フラグを立てる（部員登録と同じパターン） |
@@ -673,7 +674,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 ### 2026-08-04
 
 1. **帳簿間の横連動** — 台帳での削除・編集を収支集計表・収支報告書へ反映。集金削除時は実績も整合し、集計への幽霊加算を停止（`collectionIncomeFallback.ts` / `deleteTransaction`）
-2. **クラブ業務データの分離（localStorage クラブスコープ化）** — カテゴリー・科目・取引・月次備考・集金設定/実績・システム設定・予算設定・CSV取込履歴・担当者名簿・現在の作業者・収支報告書備考・集金リセットマーカー・CSVカナ学習を `{key}__{clubId}` 単位で保存（`src/lib/clubScopedStorage.ts`）。既存グローバルキーは初回アクティブクラブへ一回だけ移行（`classapo_club_scope_migration_v1`）。学校共通マスタは全クラブへ同期し、新規クラブ登録時は `seedClubPortalMastersFromSchool` で初期投入。クラブポータルの取引取得（`getPortalTransactions`）はグローバル取引への共有フォールバックを廃止し、常にアクティブクラブのスコープ済みデータのみを参照
+2. **クラブ業務データの分離（localStorage クラブスコープ化）** — カテゴリー・科目・取引・月次備考・集金設定/実績・システム設定・予算設定・CSV取込履歴・担当者名簿・現在の作業者・収支報告書備考・集金リセットマーカー・CSVカナ学習を `{key}__{clubId}` 単位で保存（`src/lib/clubScopedStorage.ts`）。既存グローバルキーは初回アクティブクラブへ一回だけ移行（`classapo_club_scope_migration_v1`）。学校共通マスタは全クラブへ同期し、新規クラブ登録時は `seedClubPortalMastersFromSchool` で初期投入。未シードクラブは `getCategories`/`getAccountTitles` 時に学校正本から自動補完。クラブポータルの取引取得（`getPortalTransactions`）はグローバル取引への共有フォールバックを廃止し、常にアクティブクラブのスコープ済みデータのみを参照
 
 ### 2026-08-03
 
