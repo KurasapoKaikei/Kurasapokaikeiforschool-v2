@@ -1070,16 +1070,15 @@ export default function NewRegisterPage() {
   )
 
   /**
-   * 部員の「登録する」: 科目行ごとに入力された 0 以外の行を個別 Transaction として保存。
-   * `addTransaction({ type: "collection" })` は収入登録と同一の永続化経路（`transactions`）を通り、
-   * 現金預金出納帳・科目別台帳・収支集計表・ダッシュボード残高・収支報告書へ反映される。
+   * 部員1名分の集金登録（UI フィードバックなし）。
+   * 成功時は画面 state（入金額表示・編集状態）を更新する。reload / 成功メッセージは呼び出し側。
    */
-  const handleColRegister = (member: Member) => {
-    if (isLocked) return
+  const registerCollectionForMember = (
+    member: Member
+  ): { saved: number; error?: string } => {
     const schedules = getMemberMonthSchedules(member.id)
     if (schedules.length === 0) {
-      alert("対象月の集金設定がありません")
-      return
+      return { saved: 0, error: "対象月の集金設定がありません" }
     }
 
     const records = getCollectionRecords()
@@ -1109,8 +1108,7 @@ export default function NewRegisterPage() {
       if (Number.isNaN(amount) || amount === 0) continue
       const date = (row.date || "").trim()
       if (!date) {
-        alert("入金日を入力してください")
-        return
+        return { saved: 0, error: "入金日を入力してください" }
       }
       lines.push({
         schedule,
@@ -1121,8 +1119,7 @@ export default function NewRegisterPage() {
     }
 
     if (lines.length === 0) {
-      alert("入金額を入力してください")
-      return
+      return { saved: 0, error: "入金額を入力してください" }
     }
 
     type RegisterLine = {
@@ -1157,8 +1154,10 @@ export default function NewRegisterPage() {
     }
 
     if (pending.length === 0) {
-      alert("登録できる入金がありません（返金は入金済み額を超えられません）")
-      return
+      return {
+        saved: 0,
+        error: "登録できる入金がありません（返金は入金済み額を超えられません）",
+      }
     }
 
     const defaultCashName =
@@ -1216,8 +1215,10 @@ export default function NewRegisterPage() {
     })
 
     if (saved === 0) {
-      alert("登録できる入金がありません（返金は入金済み額を超えられません）")
-      return
+      return {
+        saved: 0,
+        error: "登録できる入金がありません（返金は入金済み額を超えられません）",
+      }
     }
 
     // 登録成功後も入金額・入金日・メモを画面上に維持（クリアしない）
@@ -1250,9 +1251,89 @@ export default function NewRegisterPage() {
       next.delete(member.id)
       return next
     })
+    return { saved }
+  }
+
+  /**
+   * 部員の「登録する」: 科目行ごとに入力された 0 以外の行を個別 Transaction として保存。
+   * `addTransaction({ type: "collection" })` は収入登録と同一の永続化経路（`transactions`）を通り、
+   * 現金預金出納帳・科目別台帳・収支集計表・ダッシュボード残高・収支報告書へ反映される。
+   */
+  const handleColRegister = (member: Member) => {
+    if (isLocked) return
+    const result = registerCollectionForMember(member)
+    if (result.error) {
+      alert(result.error)
+      return
+    }
     reloadCollectionData()
-    setColSuccess(`${member.name} の集金を ${saved} 件保存しました`)
+    setColSuccess(`${member.name} の集金を ${result.saved} 件保存しました`)
     setTimeout(() => setColSuccess(null), 3000)
+  }
+
+  /** チェックを入れた部員の集金を一括登録 */
+  const handleColBulkRegister = () => {
+    if (isLocked) return
+    const selectedMembers = colMembers.filter((m) => colSelectedMemberIds.has(m.id))
+    if (selectedMembers.length === 0) {
+      alert("一括登録する部員にチェックを入れてください")
+      return
+    }
+
+    let memberOk = 0
+    let totalSaved = 0
+    const errors: string[] = []
+    const failedIds = new Set<string>()
+
+    for (const member of selectedMembers) {
+      const result = registerCollectionForMember(member)
+      if (result.error) {
+        failedIds.add(member.id)
+        errors.push(`${member.name}：${result.error}`)
+        continue
+      }
+      if (result.saved > 0) {
+        memberOk++
+        totalSaved += result.saved
+      } else {
+        failedIds.add(member.id)
+      }
+    }
+
+    setColSelectedMemberIds((prev) => {
+      const next = new Set(prev)
+      for (const m of selectedMembers) {
+        if (!failedIds.has(m.id)) next.delete(m.id)
+      }
+      return next
+    })
+
+    reloadCollectionData()
+
+    if (memberOk === 0) {
+      alert(
+        errors.length > 0
+          ? `一括登録できませんでした。\n${errors.slice(0, 5).join("\n")}${
+              errors.length > 5 ? `\nほか ${errors.length - 5} 件` : ""
+            }`
+          : "登録できる入金がありません"
+      )
+      return
+    }
+
+    const errNote =
+      errors.length > 0 ? `（未登録 ${errors.length} 名あり）` : ""
+    setColSuccess(
+      `チェックした ${memberOk} 名の集金を一括登録しました（${totalSaved} 件）${errNote}`
+    )
+    setTimeout(() => setColSuccess(null), 4000)
+    if (errors.length > 0) {
+      alert(
+        `一部を登録できませんでした。\n${errors.slice(0, 8).join("\n")}${
+          errors.length > 8 ? `\nほか ${errors.length - 8} 件` : ""
+        }`
+      )
+    }
   }
 
   /** 集金タブ「個別」: CSVポップと同じフローで即時本登録 */
@@ -2411,7 +2492,7 @@ export default function NewRegisterPage() {
                 </div>
               </div>
               <div>
-                <label className={labelClass}>名前検索</label>
+                <label className={labelClass}>名前で検索</label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
@@ -2422,6 +2503,20 @@ export default function NewRegisterPage() {
                     placeholder="氏名で検索"
                   />
                 </div>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  disabled={isLocked || colSelectedMemberIds.size === 0}
+                  className="text-white text-sm px-4 h-11 whitespace-nowrap"
+                  style={{ backgroundColor: "#67a384" }}
+                  onClick={handleColBulkRegister}
+                >
+                  チェックを入れた集金を一括登録
+                  {colSelectedMemberIds.size > 0
+                    ? `（${colSelectedMemberIds.size}名）`
+                    : ""}
+                </Button>
               </div>
             </div>
 
