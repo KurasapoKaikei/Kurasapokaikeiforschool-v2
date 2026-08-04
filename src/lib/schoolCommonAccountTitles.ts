@@ -21,9 +21,17 @@ import {
   saveAccountTitles,
   type AccountTitle,
 } from "@/utils/localStorage"
+import {
+  listAllSchoolClubIds,
+  readClubScopedJsonForClubId,
+  writeClubScopedJsonForClubId,
+} from "@/lib/clubScopedStorage"
 
 export const SCHOOL_COMMON_ACCOUNT_TITLES_STORAGE_KEY =
   "kurasaokaikei-school-common-account-titles"
+
+/** クラブ側の科目保存ベースキー（`src/utils/localStorage.ts` の STORAGE_KEYS.ACCOUNT_TITLES と一致） */
+const CLUB_ACCOUNT_TITLES_BASE_KEY = "classapo_account_titles"
 
 export const SCHOOL_COMMON_ACCOUNT_TITLES_CHANGED_EVENT =
   "kurasaokaikei-school-common-account-titles-changed"
@@ -239,6 +247,37 @@ export function mergeSchoolAndClubAccountTitles(): AccountTitle[] {
   ])
 }
 
+function mergeSchoolCommonWithClubTitles(
+  normalizedSchool: AccountTitle[],
+  clubExisting: AccountTitle[]
+): AccountTitle[] {
+  const clubOnly = clubExisting.filter(
+    (t) => !t.fromSchool && !normalizedSchool.some((s) => isSameTitle(s, t))
+  )
+  return normalizeAccountTitles([
+    ...applyClubOverridesToSchoolTitles(normalizedSchool, clubExisting),
+    ...clubOnly.map((t) => ({
+      id: t.id,
+      group: t.group,
+      name: t.name,
+      categoryIds: t.categoryIds,
+      balance: t.balance,
+      ...(t.categoryBalances ? { categoryBalances: { ...t.categoryBalances } } : {}),
+      order: t.order,
+      isUsed: t.isUsed,
+      ...(t.createdAt ? { createdAt: t.createdAt } : {}),
+    })),
+  ])
+}
+
+/**
+ * 学校共通科目を保存し、**登録済み全クラブ**の参照用マスタへ反映する。
+ * 各クラブが個別に入力した初期残高（`balance` / `categoryBalances`）はクラブごとに保持したまま、
+ * 学校正本（名称・カテゴリー紐付け等）のみ上書きする。
+ *
+ * カテゴリー共通設定と同様、アクティブクラブのみでなく `loadSchoolClubs()` の全クラブへ
+ * クラブスコープ済みキー（`classapo_account_titles__{clubId}`）で直接書き込む。
+ */
 export function saveSchoolCommonAccountTitles(titles: AccountTitle[]): void {
   if (typeof window === "undefined") return
   // 学校正本には初期残高を持たない（各クラブが入力）
@@ -250,26 +289,24 @@ export function saveSchoolCommonAccountTitles(titles: AccountTitle[]): void {
     SCHOOL_COMMON_ACCOUNT_TITLES_STORAGE_KEY,
     JSON.stringify(normalized)
   )
-  const existing = getAccountTitles()
-  const clubOnly = existing.filter(
-    (t) => !t.fromSchool && !normalized.some((s) => isSameTitle(s, t))
-  )
-  saveAccountTitles(
-    normalizeAccountTitles([
-      ...applyClubOverridesToSchoolTitles(normalized, existing),
-      ...clubOnly.map((t) => ({
-        id: t.id,
-        group: t.group,
-        name: t.name,
-        categoryIds: t.categoryIds,
-        balance: t.balance,
-        ...(t.categoryBalances ? { categoryBalances: { ...t.categoryBalances } } : {}),
-        order: t.order,
-        isUsed: t.isUsed,
-        ...(t.createdAt ? { createdAt: t.createdAt } : {}),
-      })),
-    ])
-  )
+
+  const clubIds = listAllSchoolClubIds()
+  for (const clubId of clubIds) {
+    const existing = readClubScopedJsonForClubId<AccountTitle[]>(
+      CLUB_ACCOUNT_TITLES_BASE_KEY,
+      clubId,
+      []
+    )
+    writeClubScopedJsonForClubId(
+      CLUB_ACCOUNT_TITLES_BASE_KEY,
+      clubId,
+      mergeSchoolCommonWithClubTitles(normalized, existing)
+    )
+  }
+
+  // アクティブクラブが学校未登録（デモ・移行前など）でも即時反映されるよう保険で更新
+  const activeExisting = getAccountTitles()
+  saveAccountTitles(mergeSchoolCommonWithClubTitles(normalized, activeExisting))
   dispatchChanged()
 }
 

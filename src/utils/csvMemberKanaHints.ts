@@ -4,6 +4,10 @@
  */
 
 import type { Member } from "@/utils/localStorage"
+import {
+  readClubScopedJson,
+  writeClubScopedJson,
+} from "@/lib/clubScopedStorage"
 
 const STORAGE_KEY = "classapo_csv_member_kana_hints"
 
@@ -28,21 +32,13 @@ export function extractKanaTokens(raw: string): string[] {
 }
 
 function readStore(): HintStore {
-  if (typeof window === "undefined") return {}
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as HintStore
-    return parsed && typeof parsed === "object" ? parsed : {}
-  } catch {
-    return {}
-  }
+  const parsed = readClubScopedJson<HintStore>(STORAGE_KEY, {})
+  return parsed && typeof parsed === "object" ? parsed : {}
 }
 
 function writeStore(store: HintStore): void {
-  if (typeof window === "undefined") return
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
+    writeClubScopedJson(STORAGE_KEY, store)
   } catch {
     /* ignore quota */
   }

@@ -7,6 +7,14 @@ import {
   dispatchClubMembersChanged,
 } from "@/lib/clubMembers"
 import { resolveActiveClubSession } from "@/lib/activeClubSession"
+import {
+  getActiveClubIdForStorage,
+  readClubScopedJson,
+  writeClubScopedJson,
+  readClubScopedRaw,
+  writeClubScopedRaw,
+  clubScopedStorageKey,
+} from "@/lib/clubScopedStorage"
 export type { CollectionPaymentStatus } from "@/types"
 
 export interface Category {
@@ -215,20 +223,44 @@ const STORAGE_KEYS = {
   CURRENT_OPERATOR: "classapo_current_operator",
 } as const
 
+/**
+ * クラブ業務データ（STORAGE_KEYS の各キー）は、アクティブクラブ単位でスコープして
+ * 読み書きする（`{key}__{clubId}`）。アクティブクラブが無い場合は既定値を返す／
+ * 書き込みは no-op とし、クラブ間でデータが混ざることを防ぐ。
+ */
 function readStorageJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback
-  const raw = localStorage.getItem(key)
-  if (!raw) return fallback
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
+  return readClubScopedJson<T>(key, fallback)
 }
 
 function writeStorageJson<T>(key: string, value: T): void {
   if (typeof window === "undefined") return
-  localStorage.setItem(key, JSON.stringify(value))
+  writeClubScopedJson<T>(key, value)
+}
+
+function readStorageRaw(key: string): string | null {
+  if (typeof window === "undefined") return null
+  return readClubScopedRaw(key)
+}
+
+function writeStorageRaw(key: string, value: string): void {
+  if (typeof window === "undefined") return
+  writeClubScopedRaw(key, value)
+}
+
+function removeStorageKey(key: string): void {
+  if (typeof window === "undefined") return
+  writeClubScopedRaw(key, null)
+}
+
+/**
+ * ベースキーに紐づく「一回限りの移行済みマーカー」用のクラブスコープ済みキー。
+ * アクティブクラブが無い場合は null（当該クラブの業務データも空のため実行不要）。
+ */
+function activeClubMarkerKey(baseMarkerKey: string): string | null {
+  const clubId = getActiveClubIdForStorage()
+  if (!clubId) return null
+  return clubScopedStorageKey(baseMarkerKey, clubId)
 }
 
 /**
@@ -243,10 +275,11 @@ const TX_ORIGINAL_FILENAME_BACKFILL_VERSION = "2026-04-30-v1"
 
 const applyTransactionOriginalFileNameBackfillOnce = (): void => {
   if (typeof window === "undefined") return
-  const markerKey = "classapo_tx_original_filename_backfill"
+  const markerKey = activeClubMarkerKey("classapo_tx_original_filename_backfill")
+  if (!markerKey) return
   if (localStorage.getItem(markerKey) === TX_ORIGINAL_FILENAME_BACKFILL_VERSION) return
 
-  const raw = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
+  const raw = readStorageRaw(STORAGE_KEYS.TRANSACTIONS)
   if (!raw) {
     localStorage.setItem(markerKey, TX_ORIGINAL_FILENAME_BACKFILL_VERSION)
     return
@@ -267,7 +300,7 @@ const applyTransactionOriginalFileNameBackfillOnce = (): void => {
       return t
     })
     if (changed) {
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(next))
+      writeStorageRaw(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(next))
     }
   } catch {
     /* ignore */
@@ -277,26 +310,26 @@ const applyTransactionOriginalFileNameBackfillOnce = (): void => {
 
 const applyCollectionDataResetOnce = (): void => {
   if (typeof window === "undefined") return
-  const applied = localStorage.getItem(STORAGE_KEYS.COLLECTION_RESET_MARKER)
+  const applied = readStorageRaw(STORAGE_KEYS.COLLECTION_RESET_MARKER)
   if (applied === COLLECTION_RESET_VERSION) return
 
   // 1) 集金設定・集金実績を完全クリア
-  localStorage.removeItem(STORAGE_KEYS.COLLECTION_SCHEDULES)
-  localStorage.removeItem(STORAGE_KEYS.COLLECTION_RECORDS)
+  removeStorageKey(STORAGE_KEYS.COLLECTION_SCHEDULES)
+  removeStorageKey(STORAGE_KEYS.COLLECTION_RECORDS)
 
   // 2) 取引データから「集金登録」で作成された実績のみ除去（他の帳簿データは維持）
-  const rawTx = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
+  const rawTx = readStorageRaw(STORAGE_KEYS.TRANSACTIONS)
   if (rawTx) {
     try {
       const parsed = JSON.parse(rawTx) as Transaction[]
       const kept = parsed.filter((t) => t.type !== "collection")
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(kept))
+      writeStorageRaw(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(kept))
     } catch {
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify([]))
+      writeStorageRaw(STORAGE_KEYS.TRANSACTIONS, JSON.stringify([]))
     }
   }
 
-  localStorage.setItem(STORAGE_KEYS.COLLECTION_RESET_MARKER, COLLECTION_RESET_VERSION)
+  writeStorageRaw(STORAGE_KEYS.COLLECTION_RESET_MARKER, COLLECTION_RESET_VERSION)
 }
 
 function shiftFiscalYear2025To2026Ym(raw: string): string {
@@ -334,10 +367,11 @@ function shiftFiscalYear2025To2026Date(raw: string): string {
 
 const applyCollectionScheduleFiscalYear2026MigrationOnce = (): void => {
   if (typeof window === "undefined") return
-  const markerKey = "classapo_collection_schedule_fy2026_migration"
+  const markerKey = activeClubMarkerKey("classapo_collection_schedule_fy2026_migration")
+  if (!markerKey) return
   if (localStorage.getItem(markerKey) === COLLECTION_SCHEDULE_FISCAL_2026_MIGRATION_VERSION) return
 
-  const raw = localStorage.getItem(STORAGE_KEYS.COLLECTION_SCHEDULES)
+  const raw = readStorageRaw(STORAGE_KEYS.COLLECTION_SCHEDULES)
   if (!raw) {
     localStorage.setItem(markerKey, COLLECTION_SCHEDULE_FISCAL_2026_MIGRATION_VERSION)
     return
@@ -356,7 +390,7 @@ const applyCollectionScheduleFiscalYear2026MigrationOnce = (): void => {
       return s
     })
     if (changed) {
-      localStorage.setItem(STORAGE_KEYS.COLLECTION_SCHEDULES, JSON.stringify(next))
+      writeStorageRaw(STORAGE_KEYS.COLLECTION_SCHEDULES, JSON.stringify(next))
     }
   } catch {
     // no-op
@@ -402,7 +436,8 @@ const syncCollectionTransactionsFromRecords = (): void => {
 
   const schedules = readStorageJson<CollectionSchedule[]>(STORAGE_KEYS.COLLECTION_SCHEDULES, [])
   const records = readStorageJson<CollectionRecord[]>(STORAGE_KEYS.COLLECTION_RECORDS, [])
-  const members = readStorageJson<Member[]>(STORAGE_KEYS.MEMBERS, [])
+  // 部員は classapo_members__{clubId}（getMembers と同じ正本）
+  const members = getMembers()
   const transactions = readStorageJson<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, [])
 
   if (schedules.length === 0 || records.length === 0 || members.length === 0) return
@@ -532,50 +567,30 @@ const syncCollectionTransactionsFromRecords = (): void => {
   if (recordChanged) writeStorageJson(STORAGE_KEYS.COLLECTION_RECORDS, nextRecords)
 }
 
-// カテゴリー関連
+// カテゴリー関連（クラブスコープ）
 export const getCategories = (): Category[] => {
-  if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(STORAGE_KEYS.CATEGORIES)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
-  }
-  return []
+  return readStorageJson<Category[]>(STORAGE_KEYS.CATEGORIES, [])
 }
 
 export const saveCategories = (categories: Category[]): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories))
+  writeStorageJson(STORAGE_KEYS.CATEGORIES, categories)
 }
 
-// 科目関連
+// 科目関連（クラブスコープ）
 export const getAccountTitles = (): AccountTitle[] => {
-  if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(STORAGE_KEYS.ACCOUNT_TITLES)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
-  }
-  return []
+  return readStorageJson<AccountTitle[]>(STORAGE_KEYS.ACCOUNT_TITLES, [])
 }
 
 export const saveAccountTitles = (accountTitles: AccountTitle[]): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.ACCOUNT_TITLES, JSON.stringify(accountTitles))
+  writeStorageJson(STORAGE_KEYS.ACCOUNT_TITLES, accountTitles)
 }
 
-// システム設定（前期繰越金など）
+// システム設定（前期繰越金など・クラブスコープ）
 export const getSystemSettings = (): SystemSettings => {
   if (typeof window === "undefined") {
     return { openingCarryover: null, openingCarryoverLocked: false, yearRolloverCompletedAt: null }
   }
-  const stored = localStorage.getItem(STORAGE_KEYS.SYSTEM_SETTINGS)
+  const stored = readStorageRaw(STORAGE_KEYS.SYSTEM_SETTINGS)
   if (!stored) {
     return { openingCarryover: null, openingCarryoverLocked: false, yearRolloverCompletedAt: null }
   }
@@ -598,8 +613,7 @@ export const getSystemSettings = (): SystemSettings => {
 }
 
 export const saveSystemSettings = (settings: SystemSettings): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.SYSTEM_SETTINGS, JSON.stringify(settings))
+  writeStorageJson(STORAGE_KEYS.SYSTEM_SETTINGS, settings)
 }
 
 /** クラブ担当者名簿（Prisma Club.staffNames のブラウザ側キャッシュ・最大5名） */
@@ -623,10 +637,9 @@ export const saveClubProfile = (profile: ClubProfile): void => {
   writeStorageJson(STORAGE_KEYS.CLUB_PROFILE, { staffNames: names })
 }
 
-/** マイページ等で表示する「現在の作業者」 */
+/** マイページ等で表示する「現在の作業者」（クラブスコープ） */
 export const getCurrentOperator = (): string | null => {
-  if (typeof window === "undefined") return null
-  const v = localStorage.getItem(STORAGE_KEYS.CURRENT_OPERATOR)
+  const v = readStorageRaw(STORAGE_KEYS.CURRENT_OPERATOR)
   if (v == null) return null
   const t = v.trim()
   return t === "" ? null : t
@@ -635,16 +648,16 @@ export const getCurrentOperator = (): string | null => {
 export const setCurrentOperator = (name: string | null): void => {
   if (typeof window === "undefined") return
   if (name == null || name.trim() === "") {
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_OPERATOR)
+    removeStorageKey(STORAGE_KEYS.CURRENT_OPERATOR)
     return
   }
-  localStorage.setItem(STORAGE_KEYS.CURRENT_OPERATOR, name.trim())
+  writeStorageRaw(STORAGE_KEYS.CURRENT_OPERATOR, name.trim())
 }
 
-// 予算設定（年度 × カテゴリー × 科目）
+// 予算設定（年度 × カテゴリー × 科目・クラブスコープ）
 export const getBudgetSettings = (): BudgetSetting[] => {
   if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(STORAGE_KEYS.BUDGET_SETTINGS)
+  const stored = readStorageRaw(STORAGE_KEYS.BUDGET_SETTINGS)
   if (!stored) return []
   try {
     const parsed = JSON.parse(stored) as Partial<BudgetSetting>[]
@@ -673,8 +686,7 @@ export const getBudgetSettings = (): BudgetSetting[] => {
 }
 
 export const saveBudgetSettings = (settings: BudgetSetting[]): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.BUDGET_SETTINGS, JSON.stringify(settings))
+  writeStorageJson(STORAGE_KEYS.BUDGET_SETTINGS, settings)
 }
 
 export const upsertBudgetSetting = (input: {
@@ -716,20 +728,17 @@ export const getTransactions = (): Transaction[] => {
   syncCollectionTransactionsFromRecords()
   // 台帳削除済みの集金リンクを実績側から除去（集計・集金画面の横連動）
   reconcileCollectionRecordsPaidAmount()
-  const stored = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
-  }
-  return []
+  return readStorageJson<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, [])
 }
 
 export const saveTransactions = (transactions: Transaction[]): void => {
   if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions))
+  writeStorageJson(STORAGE_KEYS.TRANSACTIONS, transactions)
+  // クラブポータルの「活動データあり」判定用フラグ（部員登録時と同じパターン）
+  if (transactions.length > 0) {
+    const clubId = getActiveClubIdForStorage()
+    if (clubId) markClubPortalHasDataFlag(clubId)
+  }
 }
 
 /** sync を挟まず LocalStorage から取引一覧を読む（集金の連続登録用） */
@@ -737,13 +746,7 @@ const readTransactionsWithoutSync = (): Transaction[] => {
   if (typeof window === "undefined") return []
   applyCollectionDataResetOnce()
   applyTransactionOriginalFileNameBackfillOnce()
-  const stored = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
-  if (!stored) return []
-  try {
-    return JSON.parse(stored) as Transaction[]
-  } catch {
-    return []
-  }
+  return readStorageJson<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, [])
 }
 
 /**
@@ -1109,23 +1112,13 @@ function removeTransactionIdFromCsvBatch(batchId: string, txId: string): void {
   }
 }
 
-// 月次備考関連
+// 月次備考関連（クラブスコープ）
 export const getMonthlyNotes = (): MonthlyNote[] => {
-  if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(STORAGE_KEYS.MONTHLY_NOTES)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
-  }
-  return []
+  return readStorageJson<MonthlyNote[]>(STORAGE_KEYS.MONTHLY_NOTES, [])
 }
 
 export const saveMonthlyNotes = (notes: MonthlyNote[]): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.MONTHLY_NOTES, JSON.stringify(notes))
+  writeStorageJson(STORAGE_KEYS.MONTHLY_NOTES, notes)
 }
 
 /** 月次備考を取得（科目ID + 年月で検索） */
@@ -1328,7 +1321,8 @@ function repairCollectionSchedulesAgainstMasters(schedules: CollectionSchedule[]
 
 function applyCollectionScheduleMasterRepairOnce(): void {
   if (typeof window === "undefined") return
-  const markerKey = "classapo_collection_schedule_master_repair_marker"
+  const markerKey = activeClubMarkerKey("classapo_collection_schedule_master_repair_marker")
+  if (!markerKey) return
   if (localStorage.getItem(markerKey) === COLLECTION_SCHEDULE_MASTER_REPAIR_VERSION) return
   const raw = readStorageJson<CollectionSchedule[]>(STORAGE_KEYS.COLLECTION_SCHEDULES, [])
   repairCollectionSchedulesAgainstMasters(raw)
@@ -1345,8 +1339,7 @@ export const getCollectionSchedules = (): CollectionSchedule[] => {
 }
 
 export const saveCollectionSchedules = (schedules: CollectionSchedule[]): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.COLLECTION_SCHEDULES, JSON.stringify(schedules))
+  writeStorageJson(STORAGE_KEYS.COLLECTION_SCHEDULES, schedules)
 }
 
 /**
@@ -1621,20 +1614,11 @@ export const deleteCollectionSchedule = (id: string): boolean => {
 export const getCollectionRecords = (): CollectionRecord[] => {
   if (typeof window === "undefined") return []
   applyCollectionDataResetOnce()
-  const stored = localStorage.getItem(STORAGE_KEYS.COLLECTION_RECORDS)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
-  }
-  return []
+  return readStorageJson<CollectionRecord[]>(STORAGE_KEYS.COLLECTION_RECORDS, [])
 }
 
 export const saveCollectionRecords = (records: CollectionRecord[]): void => {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEYS.COLLECTION_RECORDS, JSON.stringify(records))
+  writeStorageJson(STORAGE_KEYS.COLLECTION_RECORDS, records)
 }
 
 /**

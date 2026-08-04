@@ -15,9 +15,17 @@ import {
   saveCategories,
   type Category,
 } from "@/utils/localStorage"
+import {
+  listAllSchoolClubIds,
+  readClubScopedJsonForClubId,
+  writeClubScopedJsonForClubId,
+} from "@/lib/clubScopedStorage"
 
 export const SCHOOL_COMMON_CATEGORIES_STORAGE_KEY =
   "kurasaokaikei-school-common-categories"
+
+/** クラブ側のカテゴリー保存ベースキー（`src/utils/localStorage.ts` の STORAGE_KEYS.CATEGORIES と一致） */
+const CLUB_CATEGORIES_BASE_KEY = "classapo_categories"
 
 export const SCHOOL_COMMON_CATEGORIES_CHANGED_EVENT =
   "kurasaokaikei-school-common-categories-changed"
@@ -178,9 +186,30 @@ export function mergeSchoolAndClubCategories(): Category[] {
   ]
 }
 
+function mergeSchoolCommonWithClubOnly(
+  normalizedSchool: Category[],
+  clubExisting: Category[]
+): Category[] {
+  const clubOnly = clubExisting.filter(
+    (c) => !c.fromSchool && !normalizedSchool.some((s) => isSameCategory(s, c))
+  )
+  return [
+    ...normalizedSchool,
+    ...clubOnly.map((c, idx) => ({
+      ...c,
+      fromSchool: undefined,
+      order: normalizedSchool.length + idx + 1,
+    })),
+  ]
+}
+
 /**
- * 学校共通カテゴリーを保存し、全クラブ参照用マスタへ反映する。
- * クラブ独自カテゴリー（fromSchool でないもの）は消さず残す。
+ * 学校共通カテゴリーを保存し、**登録済み全クラブ**の参照用マスタへ反映する。
+ * クラブ独自カテゴリー（fromSchool でないもの）は各クラブごとに消さず残す。
+ *
+ * 複数クラブが同一ブラウザを使う場合、アクティブクラブのみを更新すると他クラブが
+ * 古い共通カテゴリーのまま残ってしまうため、`loadSchoolClubs()` の全クラブへ
+ * クラブスコープ済みキー（`classapo_categories__{clubId}`）で直接書き込む。
  */
 export function saveSchoolCommonCategories(categories: Category[]): void {
   if (typeof window === "undefined") return
@@ -189,19 +218,24 @@ export function saveSchoolCommonCategories(categories: Category[]): void {
     SCHOOL_COMMON_CATEGORIES_STORAGE_KEY,
     JSON.stringify(normalized)
   )
-  const existing = getCategories()
-  const clubOnly = existing.filter(
-    (c) => !c.fromSchool && !normalized.some((s) => isSameCategory(s, c))
-  )
-  const merged = [
-    ...normalized,
-    ...clubOnly.map((c, idx) => ({
-      ...c,
-      fromSchool: undefined,
-      order: normalized.length + idx + 1,
-    })),
-  ]
-  saveCategories(merged)
+
+  const clubIds = listAllSchoolClubIds()
+  for (const clubId of clubIds) {
+    const existing = readClubScopedJsonForClubId<Category[]>(
+      CLUB_CATEGORIES_BASE_KEY,
+      clubId,
+      []
+    )
+    writeClubScopedJsonForClubId(
+      CLUB_CATEGORIES_BASE_KEY,
+      clubId,
+      mergeSchoolCommonWithClubOnly(normalized, existing)
+    )
+  }
+
+  // アクティブクラブが学校未登録（デモ・移行前など）でも即時反映されるよう保険で更新
+  const activeExisting = getCategories()
+  saveCategories(mergeSchoolCommonWithClubOnly(normalized, activeExisting))
   dispatchChanged()
 }
 

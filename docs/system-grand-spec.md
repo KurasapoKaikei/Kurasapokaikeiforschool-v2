@@ -721,7 +721,7 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 | 項目 | 仕様 |
 |------|------|
 | 正本 | `kurasaokaikei-school-common-categories`（`src/lib/schoolCommonCategories.ts`） |
-| 全クラブ反映 | 保存時にクラブ参照キー `classapo_categories` へ同期 |
+| 全クラブ反映 | 保存時に登録済み全クラブへクラブスコープ済みキー `classapo_categories__{clubId}` として同期 |
 | UI | `CategorySettingsEditor`（追加・編集・削除・並び替え） |
 | イベント | `SCHOOL_COMMON_CATEGORIES_CHANGED_EVENT` |
 | 削除制限 | 選択年度に全クラブ横断で仕訳が1件でもあれば削除不可（`schoolCategoryUsage.ts`）。過年度は判定対象外 |
@@ -733,7 +733,7 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 | 項目 | 仕様 |
 |------|------|
 | 正本 | `kurasaokaikei-school-common-account-titles`（`src/lib/schoolCommonAccountTitles.ts`） |
-| 全クラブ反映 | 保存時にクラブ参照キー `classapo_account_titles` へ同期 |
+| 全クラブ反映 | 保存時に登録済み全クラブへクラブスコープ済みキー `classapo_account_titles__{clubId}` として同期（各クラブの初期残高は保持） |
 | UI | `AccountTitlesSettingsView`（追加・編集・削除・並び替え・カテゴリー紐付け。**期首残高フィールドなし**） |
 | 期首残高 | 学校正本には持たない。各クラブがクラブポータルで入力。学校同期時はクラブ残高を保持 |
 | イベント | `SCHOOL_COMMON_ACCOUNT_TITLES_CHANGED_EVENT` |
@@ -765,15 +765,28 @@ computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEnt
 
 ### 11.4 データスコープ
 
-クラブごとの localStorage キー: `{baseKey}__{clubId}`
+クラブごとの localStorage キー: `{baseKey}__{clubId}`（2026-08-04〜: クラブ業務データは全ベースキーがこの形式でスコープされる。裸のグローバルキーは直接読み書きしない）
 
 | ベースキー | 用途 |
 |------------|------|
-| `classapo_transactions` | 取引データ |
+| `classapo_categories` | カテゴリー |
 | `classapo_account_titles` | 勘定科目 |
+| `classapo_transactions` | 取引データ |
+| `classapo_monthly_notes` | 月次備考 |
 | `classapo_members` | 部員名簿 |
+| `classapo_collection_schedules` | 集金予定（スケジュール） |
+| `classapo_collection_records` | 集金実績レコード |
+| `classapo_system_settings` | 前期繰越金等のシステム設定 |
+| `classapo_budget_settings` | 予算設定 |
+| `classapo_csv_import_batches` | CSV 一括取込履歴 |
+| `classapo_club_profile` | クラブ担当者名簿 |
+| `classapo_current_operator` | 現在の作業者 |
+| `classapo_report_remarks` | 収支報告書の備考 |
+| `classapo_collection_reset_marker` | 集金データリセット適用済みマーカー |
 
-実装: `src/lib/clubPortalData.ts`, `src/utils/localStorage.ts`
+一回限りの移行マーカー: `classapo_club_scope_migration_v1`（未移行かつアクティブクラブがあるとき、裸のグローバルキーのデータをそのクラブへ一度だけ複製）。
+
+実装: `src/lib/clubScopedStorage.ts`（スコープ解決・移行本体）, `src/lib/clubPortalData.ts`, `src/utils/localStorage.ts`
 
 ---
 

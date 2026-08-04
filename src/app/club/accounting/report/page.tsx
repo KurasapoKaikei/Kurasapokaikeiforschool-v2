@@ -24,9 +24,10 @@ import {
 import { computeCashAccountCurrentBalance } from "@/lib/cashAccountBalance"
 import { buildCollectionIncomeFallbackEntries } from "@/lib/collectionIncomeFallback"
 import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
+import { resolveClubDataKey } from "@/lib/clubScopedStorage"
 
 const THEME_COLOR = "#68A384"
-const REPORT_REMARKS_STORAGE_KEY = "classapo_report_remarks"
+const REPORT_REMARKS_BASE_KEY = "classapo_report_remarks"
 
 type CategoryTotal = {
   id: string
@@ -83,7 +84,9 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    const raw = localStorage.getItem(REPORT_REMARKS_STORAGE_KEY)
+    const key = resolveClubDataKey(REPORT_REMARKS_BASE_KEY)
+    if (!key) return
+    const raw = localStorage.getItem(key)
     if (!raw) return
     try {
       const parsed = JSON.parse(raw) as Record<string, string>
@@ -95,7 +98,9 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    localStorage.setItem(REPORT_REMARKS_STORAGE_KEY, JSON.stringify(remarks))
+    const key = resolveClubDataKey(REPORT_REMARKS_BASE_KEY)
+    if (!key) return
+    localStorage.setItem(key, JSON.stringify(remarks))
   }, [remarks])
 
   const sortedCategories = useMemo(

@@ -1,6 +1,6 @@
 ﻿# クラサポ会計 — 最新仕様書
 
-**文書バージョン**: 2026-07-28  
+**文書バージョン**: 2026-08-04  
 **対象範囲**: 学校管理者ポータル（`/school`）、クラブポータル（`/club`）、監査人ポータル（`/audit`）
 
 本書は、初期データ方針の変更・部員 CSV 一括登録プレビュー・作業者ログ連動など、直近の開発・修正を反映した最新仕様です。学校ポータル詳細は `docs/school-portal-specification.md` も併せて参照してください。
@@ -35,10 +35,12 @@
 | 監査人 | `school_auditors` | **空配列 `[]`** |
 | 共通カテゴリー（学校正本） | `kurasaokaikei-school-common-categories` | **未設定**（キーなし） |
 | 共通科目（学校正本） | `kurasaokaikei-school-common-account-titles` | **未設定**（キーなし） |
-| カテゴリー（クラブ参照） | `classapo_categories` | **空配列 `[]`**（学校保存時に同期） |
-| 科目（クラブ参照） | `classapo_account_titles` | **空配列 `[]`**（学校保存時に同期） |
-| 担当者名簿（クラブ） | `classapo_club_profile` | **未設定**（`staffNames: []`） |
-| 部員 | クラブ ID スコープキー | **空配列 `[]`** |
+| カテゴリー（クラブ参照） | `classapo_categories__{clubId}` | **空配列 `[]`**（学校保存時に登録済み全クラブへ同期） |
+| 科目（クラブ参照） | `classapo_account_titles__{clubId}` | **空配列 `[]`**（学校保存時に登録済み全クラブへ同期） |
+| 担当者名簿（クラブ） | `classapo_club_profile__{clubId}` | **未設定**（`staffNames: []`） |
+| 部員 | `classapo_members__{clubId}` | **空配列 `[]`** |
+
+**クラブ業務データのスコープ方針（2026-08-04〜）**: 上記に加え `classapo_transactions` / `classapo_monthly_notes` / `classapo_collection_schedules` / `classapo_collection_records` / `classapo_system_settings` / `classapo_budget_settings` / `classapo_csv_import_batches` / `classapo_current_operator` / `classapo_report_remarks` / `classapo_collection_reset_marker` はすべて **`{key}__{clubId}` のクラブ単位キー**で保存される（`src/lib/clubScopedStorage.ts`）。裸のグローバルキー（`classapo_xxx`）は直接読み書きせず、既存データがあれば初回のみアクティブクラブへ移行する（詳細は 2.6 節）。学校マスタ・登録クラブ一覧・監査人・共通カテゴリー/科目などの学校正本キーはクラブ非依存のままグローバルに保持する。
 
 ### 2.2 廃止した自動投入処理
 
@@ -75,6 +77,25 @@
 3. ブラウザで Hard Reload（Ctrl+Shift+R）
 
 PWA / Service Worker 設定は **未使用**（`next.config.js` に該当設定なし）。
+
+### 2.6 クラブ業務データの分離（クラブスコープ localStorage）
+
+**実装**: `src/lib/clubScopedStorage.ts`（`src/utils/localStorage.ts` から利用）
+
+同一ブラウザ（学校共有 PC 等）で複数クラブ（例: サッカー部・柔道部）を切り替えて使う場合、業務データが
+裸のグローバルキーを共有すると帳簿・設定がクラブ間で混在する。これを防ぐため、クラブ業務データは
+**すべてアクティブクラブ（クラブログイン or なりすまし）単位でスコープ**して保存する。
+
+| 項目 | 内容 |
+|------|------|
+| キー形式 | `{baseKey}__{clubId}`（例: `classapo_transactions__club-1234`） |
+| 対象ベースキー | `classapo_categories` / `classapo_account_titles` / `classapo_transactions` / `classapo_monthly_notes` / `classapo_collection_schedules` / `classapo_collection_records` / `classapo_system_settings` / `classapo_budget_settings` / `classapo_csv_import_batches` / `classapo_club_profile` / `classapo_current_operator` / `classapo_report_remarks` / `classapo_collection_reset_marker`（部員 `classapo_members` は本改修以前から同方式でスコープ済み） |
+| アクティブクラブ無し | 取得系は空既定値（`[]` 等）を返し、保存系は no-op（データを書き込まない） |
+| 一回限りの移行 | マーカー `classapo_club_scope_migration_v1` が未設定かつアクティブクラブが存在する場合のみ、上記ベースキーごとに「スコープ済みキーが空 かつ 裸のグローバルキーにデータがある」ときに **レガシーグローバル → そのときのアクティブクラブのスコープ済みキー** へ複製し、マーカーへ移行先クラブ ID を記録する。以後は移行を再実行しない（2クラブ目以降は素の空状態から開始し、他クラブのデータを引き継がない）。**更新直後は、これまで使っていたクラブ（例: サッカー部）で先にログインすること**（先に別クラブで入ると、そのクラブへ旧データが付く） |
+| 新規クラブ登録 | `seedClubPortalMastersFromSchool` — 学校共通カテゴリー・科目が設定済みなら、新クラブのスコープキーへ初期投入 |
+| 学校側正本 | 学校マスタ・登録クラブ一覧（`kurasaokaikei-school-clubs` 等）・監査人・学校共通カテゴリー/科目の正本キーはクラブ非依存のままグローバルに保持する |
+| 学校共通マスタの反映 | `saveSchoolCommonCategories` / `saveSchoolCommonAccountTitles` は保存時に `loadSchoolClubs()` の**登録済み全クラブ**へクラブスコープ済みキーで直接反映する（アクティブクラブのみの更新では他クラブが古いマスタのまま残るため） |
+| 取引データの活動フラグ | `saveTransactions` は取引が1件以上のとき、当該クラブの `kurasaokaikei-club-has-portal-data-{clubId}` フラグを立てる（部員登録と同じパターン） |
 
 ---
 
@@ -133,7 +154,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 
 **画面 URL**: `/club/settings/staff`  
 **実装**: `src/app/club/settings/staff/page.tsx`  
-**保存先**: `classapo_club_profile`（`staffNames` 配列、最大 5 名）
+**保存先**: `classapo_club_profile__{clubId}`（`staffNames` 配列、最大 5 名）
 
 | 項目 | 仕様 |
 |------|------|
@@ -309,7 +330,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 | カテゴリー切替 | タイトル「収支報告書」の下に **すべて** ＋ 各カテゴリーのボタン（収支集計表と同型） |
 | **すべて** | 収入は前期繰越金＋各カテゴリー収入合計、支出は各カテゴリー支出合計、収支合計（次期繰越金）。続けて **【現金・預金残高】**（各現金・預金科目。残高調整行なし。合計ラベルは「現金・預金残高 合計」）と **【資産・負債残高】**（未収入金・前払費用→「資産合計（回収待ち・立替）」、未払金・預り金→「負債合計（未払い・お預かり）」。計上＋／精算−。資産・負債の総合計行は置かない） |
 | **カテゴリー別** | 当該カテゴリーに紐づく **収入科目**・**支出科目** の明細、収入の部合計・支出の部合計、**収支合計** のみ。前期繰越金・現金・預金残高・資産・負債残高は表示しない |
-| 備考 | 行ごとに入力可（localStorage `classapo_report_remarks`）。カテゴリー別はキーをカテゴリー単位で分離 |
+| 備考 | 行ごとに入力可（localStorage `classapo_report_remarks__{clubId}`）。カテゴリー別はキーをカテゴリー単位で分離 |
 
 ---
 
@@ -323,7 +344,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 |------|------|
 | 役割 | 学校が全クラブ共通のカテゴリーを基本設定する |
 | 正本 | `kurasaokaikei-school-common-categories` |
-| 全クラブ反映 | 保存時に `classapo_categories` へ同期 |
+| 全クラブ反映 | 保存時に `loadSchoolClubs()` の登録済み全クラブへ `classapo_categories__{clubId}` として同期（`saveSchoolCommonCategories`） |
 | クラブ画面 | `/club/settings/category` — 学校登録カテゴリーは編集・削除不可（追加UIも非表示）。`fromSchool` フラグ／「学校共通」バッジ（**学校管理者ポータルではバッジ非表示**） |
 | **削除制限** | ヘッダー選択年度において、**いずれかのクラブに仕訳が1件でもあれば削除不可**。当年度に仕訳が無い場合のみ削除可。過年度仕訳は削除判定に使わず、マスタ削除後も過年度データは変更しない |
 | **名称編集** | **いつでも可能**。波及は選択年度の仕訳のみ（全クラブ横断）。過年度仕訳のカテゴリー名は変更しない |
@@ -342,7 +363,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 |------|------|
 | 役割 | 学校が全クラブ共通の科目を基本設定する |
 | 正本 | `kurasaokaikei-school-common-account-titles` |
-| 全クラブ反映 | 保存時に `classapo_account_titles` へ同期 |
+| 全クラブ反映 | 保存時に `loadSchoolClubs()` の登録済み全クラブへ `classapo_account_titles__{clubId}` として同期（`saveSchoolCommonAccountTitles`。各クラブの初期残高 `balance`/`categoryBalances` は保持） |
 | カテゴリー連携 | 科目のカテゴリー紐付けは学校共通カテゴリー（`getSchoolCommonCategoriesForEditor`）を参照 |
 | 科目追加 UI | 追加フォーム見出しは「科目追加」。グループが収入・支出のときはカテゴリー必須（チェックボックス）。**現金・預金**のときは同じチェックボックス一覧を表示するがすべて無効（チェック不可）とし、説明「現金・預金グループはカテゴリーの設定はありません。」を付記 |
 | 初期残高 | **学校側では入力しない**。クラブ側: **「すべて」タブでは現金・預金のみ入力可**。収入・支出は**カテゴリー別タブでカテゴリーごとに入力**（`categoryBalances`）。「すべて」では収入・支出の初期残高はカテゴリー別の**合計を自動表示**（入力不可）。**ご利用初年度のみ入力可**（文言は「初期残高」に統一）。現金は現金預金出納帳の1行目（初年度は「初期残高」、繰越後は「期首残高」）。収入・支出は科目別台帳に期首日＋科目名「初期残高」で反映。2年目以降の繰越詳細は後日定義（収入・支出はリセット、現金預金残高は次年度へ引継ぎ） |
@@ -652,6 +673,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 ### 2026-08-04
 
 1. **帳簿間の横連動** — 台帳での削除・編集を収支集計表・収支報告書へ反映。集金削除時は実績も整合し、集計への幽霊加算を停止（`collectionIncomeFallback.ts` / `deleteTransaction`）
+2. **クラブ業務データの分離（localStorage クラブスコープ化）** — カテゴリー・科目・取引・月次備考・集金設定/実績・システム設定・予算設定・CSV取込履歴・担当者名簿・現在の作業者・収支報告書備考・集金リセットマーカー・CSVカナ学習を `{key}__{clubId}` 単位で保存（`src/lib/clubScopedStorage.ts`）。既存グローバルキーは初回アクティブクラブへ一回だけ移行（`classapo_club_scope_migration_v1`）。学校共通マスタは全クラブへ同期し、新規クラブ登録時は `seedClubPortalMastersFromSchool` で初期投入。クラブポータルの取引取得（`getPortalTransactions`）はグローバル取引への共有フォールバックを廃止し、常にアクティブクラブのスコープ済みデータのみを参照
 
 ### 2026-08-03
 

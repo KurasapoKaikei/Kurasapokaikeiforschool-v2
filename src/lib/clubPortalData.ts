@@ -25,30 +25,13 @@ import {
   type Member,
   type Transaction,
 } from "@/utils/localStorage"
+import { readClubScopedJsonForClubId } from "@/lib/clubScopedStorage"
 
-const BASE_KEYS = {
-  TRANSACTIONS: "classapo_transactions",
-  ACCOUNT_TITLES: "classapo_account_titles",
-  MEMBERS: "classapo_members",
-} as const
+/** クラブ側の取引データ保存ベースキー（`src/utils/localStorage.ts` の STORAGE_KEYS.TRANSACTIONS と一致） */
+const TRANSACTIONS_BASE_KEY = "classapo_transactions"
 
 const PORTAL_DATA_FLAG = (clubId: string) =>
   `kurasaokaikei-club-has-portal-data-${clubId}`
-
-function readStorageJson<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback
-  const raw = localStorage.getItem(key)
-  if (!raw) return fallback
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-function scopedKey(baseKey: string, clubId: string): string {
-  return `${baseKey}__${clubId}`
-}
 
 export function isSchoolRegisteredClub(clubId: string): boolean {
   return loadSchoolClubs().some((c) => c.id === clubId)
@@ -62,8 +45,9 @@ export function markClubPortalHasData(clubId: string): void {
 export function clubHasPortalData(clubId: string): boolean {
   if (typeof window === "undefined") return false
   if (localStorage.getItem(PORTAL_DATA_FLAG(clubId)) === "1") return true
-  const tx = readStorageJson<Transaction[]>(
-    scopedKey(BASE_KEYS.TRANSACTIONS, clubId),
+  const tx = readClubScopedJsonForClubId<Transaction[]>(
+    TRANSACTIONS_BASE_KEY,
+    clubId,
     []
   )
   return tx.length > 0
@@ -86,12 +70,9 @@ export function getPortalTransactions(
   if (isLegacyGlobalPortal(active)) return []
   if (!active) return []
   if (isEmptyPortalForClub(active)) return []
-  const scoped = readStorageJson<Transaction[]>(
-    scopedKey(BASE_KEYS.TRANSACTIONS, active.id),
-    []
-  )
-  // 出納帳・入出金登録と同じ正本（グローバル）へフォールバック
-  if (scoped.length > 0) return scoped
+  // `getTransactions()` は現在アクティブなクラブのスコープ済みキーのみを読む
+  // （出納帳・入出金登録と同じ正本）。他クラブのグローバル/共有データへは
+  // フォールバックしない（クラブ間のデータ混在を防ぐ）。
   return getTransactions()
 }
 

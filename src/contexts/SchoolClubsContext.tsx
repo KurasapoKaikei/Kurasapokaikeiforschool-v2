@@ -19,6 +19,7 @@ import {
   type SchoolClub,
 } from "@/lib/schoolClubs"
 import { SCHOOL_WORKSPACE_CHANGED_EVENT } from "@/lib/schoolWorkspace"
+import { seedClubPortalMastersFromSchool } from "@/lib/seedClubPortalMasters"
 
 type RegisterClubInput = {
   name: string
@@ -85,26 +86,25 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
 
   const registerClub = useCallback((input: RegisterClubInput): SchoolClub | null => {
     const trimmedName = input.name.trim()
-    let created: SchoolClub | null = null
-    setClubs((prev) => {
-      if (isDuplicateClubName(trimmedName, prev)) return prev
-      const id = generateUniqueClubId(prev)
-      const order = prev.length > 0 ? Math.max(...prev.map((c) => c.order)) + 1 : 1
-      const initialPassword = generateInitialPassword()
-      created = {
-        id,
-        name: trimmedName,
-        groupIds: [input.groupId],
-        groupNames: [input.groupName],
-        registeredAt: new Date().toISOString(),
-        order,
-        initialPassword,
-        password: initialPassword,
-      }
-      const next = [...prev, created]
-      saveSchoolClubs(next)
-      return next
-    })
+    const prev = loadSchoolClubs()
+    if (isDuplicateClubName(trimmedName, prev)) return null
+    const id = generateUniqueClubId(prev)
+    const order = prev.length > 0 ? Math.max(...prev.map((c) => c.order)) + 1 : 1
+    const initialPassword = generateInitialPassword()
+    const created: SchoolClub = {
+      id,
+      name: trimmedName,
+      groupIds: [input.groupId],
+      groupNames: [input.groupName],
+      registeredAt: new Date().toISOString(),
+      order,
+      initialPassword,
+      password: initialPassword,
+    }
+    const next = [...prev, created]
+    saveSchoolClubs(next)
+    setClubs(next)
+    seedClubPortalMastersFromSchool(created.id)
     return created
   }, [])
 
