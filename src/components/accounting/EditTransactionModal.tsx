@@ -16,6 +16,7 @@ import { isCsvLinkedTransaction } from "@/utils/transactionEditPath"
 import {
   formatAmountInputDisplay,
   isAllowedSignedIntegerTyping,
+  normalizeAmountInputRaw,
   parseSubmitAmount,
 } from "@/utils/amountInput"
 import { useUserInfo } from "@/contexts/UserInfoContext"
@@ -291,7 +292,7 @@ export function EditTransactionModal({
                   autoComplete="off"
                   value={formatAmountInputDisplay(formData.amount)}
                   onChange={(e) => {
-                    const raw = e.target.value.replace(/,/g, "")
+                    const raw = normalizeAmountInputRaw(e.target.value)
                     if (isAllowedSignedIntegerTyping(raw)) {
                       setFormData((prev) => ({ ...prev, amount: raw }))
                     }

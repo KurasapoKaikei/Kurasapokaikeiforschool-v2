@@ -15,12 +15,13 @@ import {
   type Transaction,
 } from "@/utils/localStorage"
 import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#D99529"
 const FISCAL_ORDER = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const
 const FISCAL_START_MONTH = 4
 
-const fmt = (n: number): string => n.toLocaleString()
+const fmt = (n: number): string => formatAmountDisplay(n)
 
 /** 会計年度の期首年（4月始まり）。例: 2026-07 → 2026、2027-03 → 2026 */
 function getFiscalStartYear(date: Date = new Date()): number {

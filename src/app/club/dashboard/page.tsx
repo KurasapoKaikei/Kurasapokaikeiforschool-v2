@@ -12,6 +12,8 @@ import {
   getPortalTransactions,
 } from "@/lib/clubPortalData"
 import { computeCashAccountCurrentBalance } from "@/lib/cashAccountBalance"
+import { normalizeDeferredAccountName } from "@/lib/deferredAccounting"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 import { PORTAL_MESSAGES_CHANGED_EVENT } from "@/lib/portalMessages"
 import {
   CLUB_MEMBERS_CHANGED_EVENT,
@@ -111,16 +113,15 @@ export default function DashboardPage() {
   const { assetBalances, liabilityBalances, assetTotal, liabilityTotal } = useMemo(() => {
     const assetBalances: Record<string, number> = {
       未収入金: 0,
-      仮払金: 0,
+      前払費用: 0,
     }
     const liabilityBalances: Record<string, number> = {
       未払金: 0,
-      仮受金: 0,
+      預り金: 0,
     }
 
     transactions.forEach((transaction) => {
-      const accountName =
-        transaction.accountTitle === "預り金" ? "仮受金" : transaction.accountTitle
+      const accountName = normalizeDeferredAccountName(transaction.accountTitle)
 
       // 繰延取引（資産・負債）の計算
       if (transaction.type === "deferred") {
@@ -202,7 +203,7 @@ export default function DashboardPage() {
   const unreadMessageCount = messages.filter((m) => !m.isRead).length
 
   // 金額フォーマット（￥なし、カンマ区切り）
-  const formatAmount = (n: number): string => n.toLocaleString()
+  const formatAmount = (n: number): string => formatAmountDisplay(n)
 
   return (
     <div className="flex flex-col bg-[#F5F5F0]">

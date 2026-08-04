@@ -14,6 +14,7 @@ import {
 import {
   formatAmountInputDisplay,
   isAllowedSignedIntegerTyping,
+  normalizeAmountInputRaw,
   parseSubmitAmount,
 } from "@/utils/amountInput"
 
@@ -256,7 +257,7 @@ export function NewTransactionModal({ isOpen, onClose, onSuccess }: NewTransacti
                 autoComplete="off"
                 value={formatAmountInputDisplay(formData.amount)}
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/,/g, "")
+                  const raw = normalizeAmountInputRaw(e.target.value)
                   if (isAllowedSignedIntegerTyping(raw)) {
                     setFormData((prev) => ({ ...prev, amount: raw }))
                   }

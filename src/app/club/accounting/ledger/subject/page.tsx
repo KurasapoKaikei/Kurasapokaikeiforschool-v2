@@ -24,6 +24,7 @@ import {
 } from "@/lib/openingBalanceLabel"
 import { getDeferredRecordPlAdjustment } from "@/lib/deferredAccounting"
 import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -90,7 +91,7 @@ function subjectGroupLabel(group: AccountTitle["group"] | undefined): "【収入
 }
 
 function formatSignedLedgerAmount(n: number): string {
-  return n.toLocaleString("ja-JP")
+  return formatAmountDisplay(n)
 }
 
 export default function LedgerSubjectPage() {

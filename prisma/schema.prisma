@@ -160,8 +160,8 @@ model Category {
 
 enum AccountGroup {
   CASH_DEPOSIT    // 現金・預金（現金、普通預金等）
-  ASSET           // 資産（未収入金、仮払金）
-  LIABILITY       // 負債（仮受金、未払金）
+  ASSET           // 資産（未収入金、前払費用）
+  LIABILITY       // 負債（預り金、未払金）
   INCOME          // 収入（部費、寄付金、助成金等）
   EXPENSE         // 支出（消耗品費、大会参加費等）
 }
@@ -169,9 +169,9 @@ enum AccountGroup {
 // 繰延処理用の固定科目識別子
 enum DeferredAccountType {
   ACCOUNTS_RECEIVABLE   // 未収入金（資産）
-  ADVANCE_PAYMENT       // 仮払金（資産）
+  ADVANCE_PAYMENT       // 前払費用（資産）
   ACCOUNTS_PAYABLE      // 未払金（負債）
-  ADVANCE_RECEIPT       // 仮受金（負債）
+  ADVANCE_RECEIPT       // 預り金（負債）
 }
 
 model AccountTitle {

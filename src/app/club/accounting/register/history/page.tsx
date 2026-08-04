@@ -12,6 +12,7 @@ import {
 } from "@/utils/localStorage"
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 import { formatDateDisplay } from "@/utils/dateDisplay"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 
@@ -95,7 +96,7 @@ function RegisteredAtBlock({
 
 /** 一覧上の入金額・出金額表示（支出系は出金、収入系は入金） */
 function formatWithdrawalDeposit(t: Transaction): { withdrawal: string; deposit: string } {
-  const amt = t.amount.toLocaleString()
+  const amt = formatAmountDisplay(t.amount)
   if (t.type === "income" || t.type === "collection") {
     return { withdrawal: "—", deposit: amt }
   }
@@ -409,7 +410,7 @@ export default function RegisterHistoryPage() {
                   ) : (
                     allRows.map((row) => {
                       if (row.kind === "transfer") {
-                        const amt = row.amount.toLocaleString()
+                        const amt = formatAmountDisplay(row.amount)
                         const memoText = row.memo.trim()
                         const accountLabel = `振替 ${row.from} → ${row.to}`
                         return (
@@ -574,10 +575,10 @@ export default function RegisterHistoryPage() {
                             {batch.fileName}
                           </td>
                           <td className="border border-gray-200 px-3 py-2 text-right tabular-nums font-medium">
-                            {depositTotal.toLocaleString()}
+                            {formatAmountDisplay(depositTotal)}
                           </td>
                           <td className="border border-gray-200 px-3 py-2 text-right tabular-nums font-medium">
-                            {withdrawalTotal.toLocaleString()}
+                            {formatAmountDisplay(withdrawalTotal)}
                           </td>
                           <td className="border border-gray-200 px-3 py-2 whitespace-nowrap text-xs">
                             {importDateLabel}

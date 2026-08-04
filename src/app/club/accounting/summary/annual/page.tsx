@@ -21,6 +21,8 @@ import {
   FISCAL_OPENING_MONTH,
   getSubjectOpeningForSummary,
 } from "@/lib/accountTitleBalances"
+import { buildCollectionIncomeFallbackEntries } from "@/lib/collectionIncomeFallback"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -123,52 +125,15 @@ export default function SummaryAnnualPage() {
     return categories.find((c) => c.id === selectedCategoryId)?.name ?? null
   }, [selectedCategoryId, categories])
 
-  /**
-   * 集金実績（records）から収入エントリを補完生成する。
-   * 既に同じ transactionId の collection 取引がある場合は二重計上を避けるため除外する。
-   */
-  const collectionIncomeEntries = useMemo(() => {
-    const scheduleMap = new Map(collectionSchedules.map((s) => [s.id, s]))
-    const existingCollectionTxIds = new Set(
-      transactions.filter((t) => t.type === "collection").map((t) => t.id)
-    )
-    const list: Array<{ date: string; amount: number; accountTitle: string; category: string }> = []
-
-    collectionRecords.forEach((record) => {
-      const schedule = scheduleMap.get(record.scheduleId)
-      if (!schedule) return
-      const accountTitle = schedule.accountTitleName || schedule.name || "会費収入"
-      const category = schedule.categoryName || "集金"
-
-      const history = record.paymentHistory ?? []
-      if (history.length > 0) {
-        history.forEach((h) => {
-          // 既存 collection 取引と重複する履歴は補完対象から除外
-          if (h.transactionId && existingCollectionTxIds.has(h.transactionId)) return
-          list.push({
-            date: h.date,
-            amount: h.amount,
-            accountTitle,
-            category,
-          })
-        })
-        return
-      }
-
-      // 履歴未保存の旧データ向けフォールバック
-      if (record.status !== "UNPAID" && (record.paidAmount ?? 0) !== 0 && record.paidAt) {
-        if (record.linkedTransactionId && existingCollectionTxIds.has(record.linkedTransactionId)) return
-        list.push({
-          date: record.paidAt,
-          amount: record.paidAmount ?? 0,
-          accountTitle,
-          category,
-        })
-      }
-    })
-
-    return list
-  }, [collectionSchedules, collectionRecords, transactions])
+  const collectionIncomeEntries = useMemo(
+    () =>
+      buildCollectionIncomeFallbackEntries(
+        collectionRecords,
+        collectionSchedules,
+        transactions
+      ),
+    [collectionSchedules, collectionRecords, transactions]
+  )
 
   // 現金・預金科目名（口座名）を集計表の項目から除外するための集合
   const cashAccountNameSet = useMemo(
@@ -401,7 +366,7 @@ export default function SummaryAnnualPage() {
   )
 
   // 数値のみ表示（カンマ区切り、¥なし）
-  const formatAmount = (n: number) => (n === 0 ? "-" : n.toLocaleString())
+  const formatAmount = (n: number) => formatAmountDisplay(n, { zeroAsDash: true })
 
   return (
     <div className="px-6 py-8 min-h-screen bg-[#F5F5F0]">

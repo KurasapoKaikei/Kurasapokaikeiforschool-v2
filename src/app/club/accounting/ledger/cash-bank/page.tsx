@@ -29,6 +29,7 @@ import {
   normalizeDeferredAccountName,
   parseDeferredMemo,
 } from "@/lib/deferredAccounting"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 const RECEIPT_ALERT_BG = "#FEE2E2" // 証憑未登録時のアラート色（bg-red-100相当）
@@ -360,16 +361,16 @@ export default function LedgerCashBankPage() {
   /** 日付表示用: YYYY-MM-DD → YYYY/MM/DD */
   const formatDateDisplay = (dateStr: string) => dateStr.replace(/-/g, "/")
 
-  /** 金額表示用（￥なし、カンマ区切り） */
+  /** 金額表示用（￥なし、カンマ区切り。0は "-"、負数は △） */
   const formatAmount = (n: number | undefined | null): string => {
-    if (n == null || n === 0) return "-"
-    return n.toLocaleString()
+    if (n == null) return "-"
+    return formatAmountDisplay(n, { zeroAsDash: true })
   }
 
-  /** 残高表示用（0も表示、カンマ区切り） */
+  /** 残高表示用（0も表示、カンマ区切り。負数は △） */
   const formatBalance = (n: number | undefined | null): string => {
     if (n == null) return "-"
-    return n.toLocaleString()
+    return formatAmountDisplay(n)
   }
 
   return (

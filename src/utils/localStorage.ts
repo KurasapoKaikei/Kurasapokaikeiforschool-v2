@@ -81,7 +81,7 @@ export interface Transaction {
    */
   deferredRecordId?: string | null
   /**
-   * 仮受金の精算区分。
+   * 預り金の精算区分。
    * - period: 当期に計上（現金影響なし）
    * - refund: 返金（現金出金）
    */
@@ -438,6 +438,19 @@ const syncCollectionTransactionsFromRecords = (): void => {
       txIndex = nextTransactions.findIndex(
         (t) => t.id === record.linkedTransactionId && t.type === "collection"
       )
+      // 紐付け先が台帳から削除済み → 仕訳を復活させず実績を未入金へ戻す
+      if (txIndex < 0) {
+        nextRecords[recordIndex] = {
+          ...record,
+          status: "UNPAID",
+          paidAt: null,
+          paidAmount: 0,
+          linkedTransactionId: null,
+          paymentHistory: undefined,
+        }
+        recordChanged = true
+        return
+      }
     }
     if (txIndex < 0) {
       txIndex = nextTransactions.findIndex(
@@ -701,6 +714,8 @@ export const getTransactions = (): Transaction[] => {
   applyTransactionOriginalFileNameBackfillOnce()
   // 既存の集金実績を台帳取引へ遡及同期し、常時整合を担保する
   syncCollectionTransactionsFromRecords()
+  // 台帳削除済みの集金リンクを実績側から除去（集計・集金画面の横連動）
+  reconcileCollectionRecordsPaidAmount()
   const stored = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)
   if (stored) {
     try {
@@ -762,17 +777,165 @@ export const addTransaction = (transaction: Omit<Transaction, "id" | "createdAt"
   return newTransaction
 }
 
-export const deleteTransaction = (id: string): boolean => {
-  // sync なしで読む（COMPLETED 実績から仕訳が再生成されて削除が無効化するのを防ぐ）
-  const transactions = readTransactionsWithoutSync()
-  const victim = transactions.find((t) => t.id === id)
-  const filtered = transactions.filter((t) => t.id !== id)
-  if (filtered.length === transactions.length) return false
-  saveTransactions(filtered)
-  if (victim?.csvImportId) {
-    removeTransactionIdFromCsvBatch(victim.csvImportId, id)
+/** 振替の対側レコード ID を解決（無ければ null） */
+function findTransferPairId(
+  t: Transaction,
+  transactions: Transaction[]
+): string | null {
+  if (t.transferGroupId) {
+    const pair = transactions.find(
+      (x) =>
+        x.id !== t.id &&
+        x.transferGroupId === t.transferGroupId &&
+        ((t.type === "expense" && x.type === "income") ||
+          (t.type === "income" && x.type === "expense"))
+    )
+    return pair?.id ?? null
   }
-  return true
+  if (t.type === "expense" && /^振替（出金）/.test(t.memo ?? "")) {
+    const inc = transactions.find(
+      (x) =>
+        x.type === "income" &&
+        /^振替（入金）/.test(x.memo ?? "") &&
+        x.date === t.date &&
+        x.amount === t.amount
+    )
+    return inc?.id ?? null
+  }
+  if (t.type === "income" && /^振替（入金）/.test(t.memo ?? "")) {
+    const exp = transactions.find(
+      (x) =>
+        x.type === "expense" &&
+        /^振替（出金）/.test(x.memo ?? "") &&
+        x.date === t.date &&
+        x.amount === t.amount
+    )
+    return exp?.id ?? null
+  }
+  return null
+}
+
+/**
+ * 削除された取引に紐づく集金実績を整合させる。
+ * - paymentHistory から該当 transactionId を除去
+ * - linkedTransactionId をクリア
+ * - paidAmount / status / paidAt を再計算
+ * → 台帳削除後に sync が仕訳を復活させたり、集計表が幽霊加算するのを防ぐ
+ */
+function unlinkCollectionRecordsForDeletedTransactions(
+  deleted: Transaction[],
+  remainingTransactions: Transaction[]
+): void {
+  if (deleted.length === 0) return
+  const deletedIds = new Set(deleted.map((t) => t.id))
+  const deletedCollectionKeys = new Set(
+    deleted
+      .filter((t) => t.type === "collection")
+      .map((t) => `${t.collectionScheduleId ?? ""}_${t.collectionMemberId ?? ""}`)
+  )
+
+  const records = readStorageJson<CollectionRecord[]>(STORAGE_KEYS.COLLECTION_RECORDS, [])
+  if (records.length === 0) return
+  const schedules = readStorageJson<CollectionSchedule[]>(STORAGE_KEYS.COLLECTION_SCHEDULES, [])
+  const scheduleMap = new Map(schedules.map((s) => [s.id, s]))
+
+  let changed = false
+  const next = records.map((record) => {
+    const history = record.paymentHistory ?? []
+    const newHistory = history.filter(
+      (h) => !h.transactionId || !deletedIds.has(h.transactionId)
+    )
+    let linked = record.linkedTransactionId ?? null
+    if (linked && deletedIds.has(linked)) linked = null
+
+    const key = `${record.scheduleId}_${record.memberId}`
+    const touchedByCollectionKey =
+      deletedCollectionKeys.has(key) && history.length === 0
+
+    if (
+      newHistory.length === history.length &&
+      linked === (record.linkedTransactionId ?? null) &&
+      !touchedByCollectionKey
+    ) {
+      return record
+    }
+
+    changed = true
+    const patched: CollectionRecord = {
+      ...record,
+      paymentHistory: newHistory,
+      linkedTransactionId: linked,
+    }
+    const computed = sumCollectionRecordNetPaid(patched, remainingTransactions)
+    const expected = scheduleMap.get(record.scheduleId)?.amount ?? 0
+    const last = newHistory.length > 0 ? newHistory[newHistory.length - 1] : null
+    return {
+      ...patched,
+      paidAmount: computed,
+      status: getCollectionPaymentStatus(computed, expected),
+      paidAt: computed !== 0 ? last?.date ?? record.paidAt : null,
+      linkedTransactionId: last?.transactionId ?? linked,
+      paymentHistory: newHistory.length > 0 ? newHistory : undefined,
+    }
+  })
+
+  if (changed) saveCollectionRecords(next)
+}
+
+/**
+ * 集金取引の編集内容を paymentHistory へ反映する。
+ */
+function syncCollectionRecordAfterTransactionUpdate(tx: Transaction): void {
+  if (tx.type !== "collection") return
+  const records = readStorageJson<CollectionRecord[]>(STORAGE_KEYS.COLLECTION_RECORDS, [])
+  if (records.length === 0) return
+  const schedules = readStorageJson<CollectionSchedule[]>(STORAGE_KEYS.COLLECTION_SCHEDULES, [])
+  const scheduleMap = new Map(schedules.map((s) => [s.id, s]))
+  const remaining = readTransactionsWithoutSync()
+
+  let changed = false
+  const next = records.map((record) => {
+    const history = record.paymentHistory ?? []
+    const idx = history.findIndex((h) => h.transactionId === tx.id)
+    const matchesLegacy =
+      idx < 0 &&
+      (record.linkedTransactionId === tx.id ||
+        (tx.collectionMemberId === record.memberId &&
+          tx.collectionScheduleId === record.scheduleId &&
+          history.length === 0))
+
+    if (idx < 0 && !matchesLegacy) return record
+
+    changed = true
+    let newHistory = history
+    let linked = record.linkedTransactionId ?? null
+    if (idx >= 0) {
+      newHistory = history.map((h, i) =>
+        i === idx
+          ? { ...h, amount: tx.amount, date: tx.date, memo: tx.memo ?? h.memo }
+          : h
+      )
+      linked = newHistory[newHistory.length - 1]?.transactionId ?? linked
+    } else {
+      linked = tx.id
+    }
+
+    const patched: CollectionRecord = {
+      ...record,
+      paymentHistory: newHistory.length > 0 ? newHistory : record.paymentHistory,
+      linkedTransactionId: linked,
+      paidAt: tx.date,
+    }
+    const computed = sumCollectionRecordNetPaid(patched, remaining)
+    const expected = scheduleMap.get(record.scheduleId)?.amount ?? 0
+    return {
+      ...patched,
+      paidAmount: computed,
+      status: getCollectionPaymentStatus(computed, expected),
+    }
+  })
+
+  if (changed) saveCollectionRecords(next)
 }
 
 /**
@@ -794,11 +957,39 @@ export const isTransferLeg = (t: Pick<Transaction, "type" | "memo" | "transferGr
   return false
 }
 
+export const deleteTransaction = (id: string): boolean => {
+  // sync なしで読む（COMPLETED 実績から仕訳が再生成されて削除が無効化するのを防ぐ）
+  const transactions = readTransactionsWithoutSync()
+  const victim = transactions.find((t) => t.id === id)
+  if (!victim) return false
+
+  const idsToDelete = new Set<string>([id])
+  // 振替は対側も同時削除（片側だけ残ると帳簿間で不整合になる）
+  if (isTransferLeg(victim)) {
+    const pairId = findTransferPairId(victim, transactions)
+    if (pairId) idsToDelete.add(pairId)
+  }
+
+  const deleted = transactions.filter((t) => idsToDelete.has(t.id))
+  const filtered = transactions.filter((t) => !idsToDelete.has(t.id))
+  saveTransactions(filtered)
+
+  for (const t of deleted) {
+    if (t.csvImportId) {
+      removeTransactionIdFromCsvBatch(t.csvImportId, t.id)
+    }
+  }
+
+  unlinkCollectionRecordsForDeletedTransactions(deleted, filtered)
+  return true
+}
+
 export const updateTransaction = (
   id: string,
   updates: Partial<Omit<Transaction, "id" | "createdAt">>
 ): Transaction | null => {
-  const transactions = getTransactions()
+  // sync なしで読む（編集直後に旧 COMPLETED 実績から上書きされないようにする）
+  const transactions = readTransactionsWithoutSync()
   const idx = transactions.findIndex((t) => t.id === id)
   if (idx < 0) return null
   // 編集日時は呼び出し側が明示しなくても自動付与する
@@ -813,6 +1004,7 @@ export const updateTransaction = (
   const newList = [...transactions]
   newList[idx] = updated
   saveTransactions(newList)
+  syncCollectionRecordAfterTransactionUpdate(updated)
   return updated
 }
 
@@ -1458,11 +1650,14 @@ export const sumCollectionRecordNetPaid = (
   const history = record.paymentHistory ?? []
   if (history.length > 0) {
     return history.reduce((sum, entry) => {
-      const txAmount =
-        entry.transactionId && transactions
-          ? transactions.find((t) => t.id === entry.transactionId)?.amount
-          : undefined
-      const n = Number(txAmount ?? entry.amount)
+      // 紐づく取引が削除済みなら実績にも含めない（台帳削除との横連動）
+      if (entry.transactionId && transactions) {
+        const tx = transactions.find((t) => t.id === entry.transactionId)
+        if (!tx) return sum
+        const n = Number(tx.amount)
+        return sum + (Number.isFinite(n) ? n : 0)
+      }
+      const n = Number(entry.amount)
       return sum + (Number.isFinite(n) ? n : 0)
     }, 0)
   }
@@ -1487,6 +1682,7 @@ export const sumCollectionRecordNetPaid = (
 
 /**
  * paymentHistory / 取引から paidAmount・status を再計算し、不整合を修復する。
+ * 台帳で削除済みの transactionId は履歴から除去する。
  */
 export const reconcileCollectionRecordsPaidAmount = (): void => {
   if (typeof window === "undefined") return
@@ -1496,20 +1692,46 @@ export const reconcileCollectionRecordsPaidAmount = (): void => {
 
   const schedules = readStorageJson<CollectionSchedule[]>(STORAGE_KEYS.COLLECTION_SCHEDULES, [])
   const transactions = readTransactionsWithoutSync()
+  const txIds = new Set(transactions.map((t) => t.id))
   const scheduleMap = new Map(schedules.map((s) => [s.id, s]))
 
   let changed = false
   const next = records.map((record) => {
-    const computed = sumCollectionRecordNetPaid(record, transactions)
-    const stored = record.paidAmount ?? 0
-    if (computed === stored) return record
+    const history = record.paymentHistory ?? []
+    const prunedHistory = history.filter(
+      (h) => !h.transactionId || txIds.has(h.transactionId)
+    )
+    let linked = record.linkedTransactionId ?? null
+    if (linked && !txIds.has(linked)) linked = null
 
+    const patched: CollectionRecord = {
+      ...record,
+      paymentHistory: prunedHistory.length > 0 ? prunedHistory : undefined,
+      linkedTransactionId: linked,
+    }
+    const computed = sumCollectionRecordNetPaid(patched, transactions)
     const expected = scheduleMap.get(record.scheduleId)?.amount ?? 0
+    const status = getCollectionPaymentStatus(computed, expected)
+    const last = prunedHistory.length > 0 ? prunedHistory[prunedHistory.length - 1] : null
+    const paidAt = computed !== 0 ? last?.date ?? record.paidAt : null
+
+    if (
+      computed === (record.paidAmount ?? 0) &&
+      status === record.status &&
+      paidAt === record.paidAt &&
+      linked === (record.linkedTransactionId ?? null) &&
+      prunedHistory.length === history.length
+    ) {
+      return record
+    }
+
     changed = true
     return {
-      ...record,
+      ...patched,
       paidAmount: computed,
-      status: getCollectionPaymentStatus(computed, expected),
+      status,
+      paidAt,
+      linkedTransactionId: last?.transactionId ?? linked,
     }
   })
 

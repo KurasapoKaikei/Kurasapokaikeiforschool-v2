@@ -19,6 +19,7 @@ import {
 } from "@/utils/localStorage"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
 import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const AUTO_COL_BG = "bg-gray-50"
 
@@ -51,7 +52,7 @@ function isDateInFiscalYear(dateStr: string, fiscalYear: number): boolean {
   return d >= start && d <= end
 }
 
-const formatAmount = (n: number) => n.toLocaleString()
+const formatAmount = (n: number) => formatAmountDisplay(n)
 const makeBudgetKey = (fiscalYear: number, categoryId: string, accountTitleId: string) =>
   `${fiscalYear}_${categoryId}_${accountTitleId}`
 const makeActualKey = (categoryName: string, accountTitle: string) => `${categoryName}_${accountTitle}`

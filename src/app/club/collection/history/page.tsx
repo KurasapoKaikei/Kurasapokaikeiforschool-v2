@@ -14,6 +14,7 @@ import {
   type CollectionRecord,
 } from "@/utils/localStorage"
 import { COLLECTION_STATUS_BADGE, getCollectionPaymentStatus } from "@/types"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#D99529"
 const GRADES = [4, 3, 2, 1] as const
@@ -30,7 +31,7 @@ function monthToYYYYMM(fiscalStartYear: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`
 }
 
-const fmt = (n: number): string => n.toLocaleString()
+const fmt = (n: number): string => formatAmountDisplay(n)
 
 export default function CollectionHistoryPage() {
   const { userInfo } = useUserInfo()

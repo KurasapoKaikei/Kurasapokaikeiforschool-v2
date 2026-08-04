@@ -19,6 +19,7 @@ import {
   normalizeDeferredAccountName,
   parseDeferredMemo,
 } from "@/lib/deferredAccounting"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#68A384"
 
@@ -186,7 +187,7 @@ export default function LedgerDeferredPage() {
             繰延（計上・精算）
           </h2>
           <p className="text-sm text-[#6B7280] mt-1">
-            未収入金・未払金・仮受金・仮払金の計上・精算台帳
+            未収入金・未払金・預り金・前払費用の計上・精算台帳
           </p>
           <SettlementLockAlert isLocked={isLocked} className="mt-3" />
         </div>
@@ -286,17 +287,17 @@ export default function LedgerDeferredPage() {
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-[#374151] border-r border-gray-200">
                       {row.recordedAmount != null
-                        ? row.recordedAmount.toLocaleString()
+                        ? formatAmountDisplay(row.recordedAmount)
                         : "—"}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-[#374151] border-r border-gray-200">
                       {row.settledAmount != null
-                        ? row.settledAmount.toLocaleString()
+                        ? formatAmountDisplay(row.settledAmount)
                         : "—"}
                     </td>
                     {showBalance && (
                       <td className="px-3 py-2.5 text-right tabular-nums font-medium text-[#374151] border-r border-gray-200">
-                        {row.balance.toLocaleString()}
+                        {formatAmountDisplay(row.balance)}
                       </td>
                     )}
                     <td

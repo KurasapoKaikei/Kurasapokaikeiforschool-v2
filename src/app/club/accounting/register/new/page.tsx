@@ -42,8 +42,10 @@ import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
 import {
   formatAmountInputDisplay,
   isAllowedSignedIntegerTyping,
+  normalizeAmountInputRaw,
   parseSubmitAmount,
 } from "@/utils/amountInput"
+import { formatAmountDisplay, formatYenDisplay } from "@/utils/formatAmountDisplay"
 import { formatDateDisplay as formatColDateDisplay } from "@/utils/dateDisplay"
 import {
   DEFERRED_SETTLEMENT_NON_CASH,
@@ -110,8 +112,8 @@ function resolveCollectionMemo(
   return formatCollectionMemo(memberName, schedule.targetMonth, subjectName)
 }
 
-const fmtNum = (n: number): string => n.toLocaleString()
-const fmtYen = (n: number): string => `¥${fmtNum(n)}`
+const fmtNum = (n: number): string => formatAmountDisplay(n)
+const fmtYen = (n: number): string => formatYenDisplay(n)
 
 /** 部員単位の進捗テキスト（入金済は非表示・過入金/一部入金は差額のみ） */
 function formatCollectionMemberProgressText(
@@ -365,16 +367,16 @@ const DEFERRED_ACCOUNTS = [
     allowedSides: ["expense"] as const,
   },
   {
-    value: "仮受金",
-    label: "仮受金",
+    value: "預り金",
+    label: "預り金",
     type: "liability" as const,
     description:
       "入出金のタイミングは当期。来期の収入として計上されるべきもの。",
     allowedSides: ["income"] as const,
   },
   {
-    value: "仮払金",
-    label: "仮払金",
+    value: "前払費用",
+    label: "前払費用",
     type: "asset" as const,
     description:
       "入出金のタイミングは当期。来期の支出として計上されるべきもの。",
@@ -432,7 +434,7 @@ export default function NewRegisterPage() {
     deferredAccount: "",
     deferredSettlementId: "",
     deferredSettlementAccount: "",
-    /** 仮受金精算: 当期に計上 / 返金 */
+    /** 預り金精算: 当期に計上 / 返金 */
     deferredKaruukeMode: "" as "" | DeferredKaruukeSettlementMode,
   })
   /** 精算一覧のチェック／精算額（key = 計上仕訳 id） */
@@ -1755,7 +1757,8 @@ export default function NewRegisterPage() {
         if (!formData.deferredAccount) return false
         const matchesDeferred =
           t.accountTitle === formData.deferredAccount ||
-          (formData.deferredAccount === "仮受金" && t.accountTitle === "預り金")
+          (formData.deferredAccount === "預り金" && t.accountTitle === "仮受金") ||
+          (formData.deferredAccount === "前払費用" && t.accountTitle === "仮払金")
         if (!matchesDeferred) return false
         // 精算済み（精算合計 ≥ 計上額）の計上は一覧に出さない
         if (isDeferredRecordFullySettled(t, transactions)) return false
@@ -1800,7 +1803,7 @@ export default function NewRegisterPage() {
   )
 
   const settlementKaruukeReady =
-    formData.deferredAccount !== "仮受金" || !!formData.deferredKaruukeMode
+    formData.deferredAccount !== "預り金" || !!formData.deferredKaruukeMode
 
   const settlementConfirmReady =
     formData.deferredType === "settlement" &&
@@ -1814,7 +1817,7 @@ export default function NewRegisterPage() {
   const settlementConfirmText = useMemo(() => {
     if (!settlementConfirmReady) return ""
     const dateLabel = formatDeferredConfirmDate(formData.date)
-    const yen = settlementTotalAmount.toLocaleString("ja-JP")
+    const yen = formatAmountDisplay(settlementTotalAmount)
     const cashEffect = getDeferredSettlementCashEffect(
       formData.deferredAccount,
       formData.deferredKaruukeMode === "period" ||
@@ -1829,7 +1832,7 @@ export default function NewRegisterPage() {
       return `${dateLabel}に${formData.deferredSettlementAccount}から${yen}円を出金しました。`
     }
     if (formData.deferredKaruukeMode === "period") {
-      return `${dateLabel}に仮受金 ${yen}円を当期に計上して精算しました。`
+      return `${dateLabel}に預り金 ${yen}円を当期に計上して精算しました。`
     }
     return `${dateLabel}に精算額 ${yen}円を登録しました。`
   }, [
@@ -2057,12 +2060,12 @@ export default function NewRegisterPage() {
         if (!isDeferredAccountAllowedForSide(formData.deferredAccount, formData.deferredSide)) {
           alert(
             formData.deferredSide === "income"
-              ? "収入では仮払金・未払金は選択できません"
-              : "支出では未収入金・仮受金は選択できません"
+              ? "収入では前払費用・未払金は選択できません"
+              : "支出では未収入金・預り金は選択できません"
           )
           return
         }
-        if (formData.deferredAccount === "仮受金" && !formData.deferredKaruukeMode) {
+        if (formData.deferredAccount === "預り金" && !formData.deferredKaruukeMode) {
           alert("精算区分（当期に計上／返金）を選択してください")
           return
         }
@@ -2081,7 +2084,7 @@ export default function NewRegisterPage() {
 
         const sideLabel = formData.deferredSide === "income" ? "収入" : "支出"
         const karuukeMode =
-          formData.deferredAccount === "仮受金" &&
+          formData.deferredAccount === "預り金" &&
           (formData.deferredKaruukeMode === "period" ||
             formData.deferredKaruukeMode === "refund")
             ? formData.deferredKaruukeMode
@@ -2158,8 +2161,8 @@ export default function NewRegisterPage() {
       if (!isDeferredAccountAllowedForSide(formData.deferredAccount, formData.deferredSide)) {
         alert(
           formData.deferredSide === "income"
-            ? "収入科目では仮払金・未払金は選択できません"
-            : "支出科目では未収入金・仮受金は選択できません"
+            ? "収入科目では前払費用・未払金は選択できません"
+            : "支出科目では未収入金・預り金は選択できません"
         )
         return
       }
@@ -3282,7 +3285,7 @@ export default function NewRegisterPage() {
                           id="deferredAmount"
                           value={formatAmountInputDisplay(formData.amount)}
                           onChange={(e) => {
-                            const rawValue = e.target.value.replace(/,/g, "")
+                            const rawValue = normalizeAmountInputRaw(e.target.value)
                             if (isAllowedSignedIntegerTyping(rawValue)) {
                               setFormData((prev) => ({ ...prev, amount: rawValue }))
                             }
@@ -3466,7 +3469,7 @@ export default function NewRegisterPage() {
                         )}
                       </div>
 
-                      {formData.deferredAccount === "仮受金" && (
+                      {formData.deferredAccount === "預り金" && (
                         <div>
                           <label className={labelClass}>精算区分</label>
                           <div className="flex gap-4">
@@ -3544,7 +3547,7 @@ export default function NewRegisterPage() {
                   </div>
 
                       {formData.deferredAccount &&
-                        (formData.deferredAccount !== "仮受金" ||
+                        (formData.deferredAccount !== "預り金" ||
                           !!formData.deferredKaruukeMode) && (
                         <div className="w-full">
                           <label className={labelClass}>未精算一覧</label>
@@ -3619,7 +3622,7 @@ export default function NewRegisterPage() {
                                           {subject || "—"}
                                         </td>
                                         <td className="px-3 py-2 text-right tabular-nums text-[#374151] border-r border-gray-200 whitespace-nowrap">
-                                          {Number(t.amount).toLocaleString("ja-JP")}
+                                          {formatAmountDisplay(Number(t.amount))}
                                         </td>
                                         <td className="px-2 py-1.5 border-r border-gray-200">
                                           <input
@@ -3632,7 +3635,7 @@ export default function NewRegisterPage() {
                                                 : ""
                                             }
                                             onChange={(e) => {
-                                              const rawValue = e.target.value.replace(/,/g, "")
+                                              const rawValue = normalizeAmountInputRaw(e.target.value)
                                               if (isAllowedSignedIntegerTyping(rawValue)) {
                                                 setSettlementRowAmount(t.id, rawValue)
                                               }
@@ -3668,7 +3671,7 @@ export default function NewRegisterPage() {
                           <p className="text-sm text-[#374151]">
                             精算額合計:{" "}
                             <span className="font-semibold tabular-nums">
-                              {settlementTotalAmount.toLocaleString("ja-JP")}円
+                              {formatAmountDisplay(settlementTotalAmount)}円
                             </span>
                             <span className="text-[#6B7280] ml-2">
                               （{settlementSelectedRows.length}件）
@@ -3710,7 +3713,7 @@ export default function NewRegisterPage() {
                   id="amount"
                   value={formatAmountInputDisplay(formData.amount)}
                   onChange={(e) => {
-                    const rawValue = e.target.value.replace(/,/g, "")
+                    const rawValue = normalizeAmountInputRaw(e.target.value)
                     // 振替は常に「正の金額」のみ許容（誤入力で符号が逆転しないように）
                     const sanitized = showTransferFields ? rawValue.replace(/-/g, "") : rawValue
                     if (isAllowedSignedIntegerTyping(sanitized)) {

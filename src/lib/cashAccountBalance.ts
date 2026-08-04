@@ -19,7 +19,7 @@ export function transactionMatchesCashAccount(
 ): boolean {
   if (isDeferredRecord(t)) return false
   if (isDeferredSettlement(t)) {
-    // 現金影響のない精算（仮払金・仮受金の当期計上など）は除外
+    // 現金影響のない精算（前払費用・預り金の当期計上など）は除外
     if (getDeferredSettlementCashEffectFromTx(t) === null) return false
     return t.counterparty === cashName
   }

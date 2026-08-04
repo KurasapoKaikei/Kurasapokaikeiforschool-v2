@@ -26,6 +26,7 @@ import {
   CsvCollectionLinkModal,
   type CsvCollectionLinkResult,
 } from "@/components/accounting/CsvCollectionLinkModal"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 export { BANK_IMPORT_HEADER_ROW as BANK_CSV_HEADERS, BANK_IMPORT_HEADERS } from "@/utils/bankImportTemplate"
 
@@ -918,10 +919,10 @@ export function BankCsvImportSection({
                           {r.date || "—"}
                         </td>
                         <td className="border border-gray-200 px-2 py-2 text-right tabular-nums">
-                          {r.deposit !== 0 ? r.deposit.toLocaleString() : "—"}
+                          {r.deposit !== 0 ? formatAmountDisplay(r.deposit) : "—"}
                         </td>
                         <td className="border border-gray-200 px-2 py-2 text-right tabular-nums">
-                          {r.withdrawal !== 0 ? r.withdrawal.toLocaleString() : "—"}
+                          {r.withdrawal !== 0 ? formatAmountDisplay(r.withdrawal) : "—"}
                         </td>
                         <td
                           className="border border-gray-200 px-2 py-2 text-[11px] leading-snug break-words whitespace-normal"

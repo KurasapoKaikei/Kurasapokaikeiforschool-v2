@@ -177,8 +177,8 @@ export const mockAssetBalances: AssetBalance[] = [
     amount: 100000,
   },
   {
-    accountTitle: "仮払金",
-    displayName: "仮払金",
+    accountTitle: "前払費用",
+    displayName: "前払費用",
     amount: 50000,
   },
 ]
@@ -197,8 +197,8 @@ export const mockLiabilityBalances: LiabilityBalance[] = [
     amount: 80000,
   },
   {
-    accountTitle: "仮受金",
-    displayName: "仮受金",
+    accountTitle: "預り金",
+    displayName: "預り金",
     amount: 30000,
   },
 ]

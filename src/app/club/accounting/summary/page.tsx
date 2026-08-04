@@ -26,6 +26,8 @@ import {
   getSubjectOpeningForSummary,
 } from "@/lib/accountTitleBalances"
 import { getDeferredRecordPlAdjustment } from "@/lib/deferredAccounting"
+import { buildCollectionIncomeFallbackEntries } from "@/lib/collectionIncomeFallback"
+import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 
 const THEME_COLOR = "#68A384" // 集計・帳簿（青緑）
 
@@ -183,45 +185,15 @@ export default function SummaryPage() {
     return categories.find((c) => c.id === selectedCategoryId)?.name ?? null
   }, [selectedCategoryId, categories])
 
-  const collectionIncomeEntries = useMemo(() => {
-    const scheduleMap = new Map(collectionSchedules.map((s) => [s.id, s]))
-    const existingCollectionTxIds = new Set(
-      transactions.filter((t) => t.type === "collection").map((t) => t.id)
-    )
-    const list: Array<{ date: string; amount: number; accountTitle: string; category: string }> = []
-
-    collectionRecords.forEach((record) => {
-      const schedule = scheduleMap.get(record.scheduleId)
-      if (!schedule) return
-      const accountTitle = schedule.accountTitleName || schedule.name || "会費収入"
-      const category = schedule.categoryName || "集金"
-
-      const history = record.paymentHistory ?? []
-      if (history.length > 0) {
-        history.forEach((h) => {
-          if (h.transactionId && existingCollectionTxIds.has(h.transactionId)) return
-          list.push({
-            date: h.date,
-            amount: h.amount,
-            accountTitle,
-            category,
-          })
-        })
-        return
-      }
-
-      if (record.status !== "UNPAID" && (record.paidAmount ?? 0) !== 0 && record.paidAt) {
-        if (record.linkedTransactionId && existingCollectionTxIds.has(record.linkedTransactionId)) return
-        list.push({
-          date: record.paidAt,
-          amount: record.paidAmount ?? 0,
-          accountTitle,
-          category,
-        })
-      }
-    })
-    return list
-  }, [collectionSchedules, collectionRecords, transactions])
+  const collectionIncomeEntries = useMemo(
+    () =>
+      buildCollectionIncomeFallbackEntries(
+        collectionRecords,
+        collectionSchedules,
+        transactions
+      ),
+    [collectionSchedules, collectionRecords, transactions]
+  )
 
   // 現金・預金科目名（口座名）を集計表の項目から除外するための集合
   const cashAccountNameSet = useMemo(
@@ -618,8 +590,8 @@ export default function SummaryPage() {
   const monthlyBalance = monthlyTotalIncome - monthlyTotalExpense
 
   // 数値のみ表示（カンマ区切り、¥なし）
-  const formatAmount = (n: number) => (n === 0 ? "-" : n.toLocaleString())
-  const formatAmountMonthly = (n: number) => n.toLocaleString()
+  const formatAmount = (n: number) => formatAmountDisplay(n, { zeroAsDash: true })
+  const formatAmountMonthly = (n: number) => formatAmountDisplay(n)
 
   /** 科目別台帳へ遷移（年間：科目名クリック＝全期間） */
   const handleSubjectClickAnnual = (subjectId?: string) => {

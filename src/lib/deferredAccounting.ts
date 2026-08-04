@@ -9,12 +9,12 @@
  *   計上: 科目別・収支＝支出＋／現金＝除外／繰延台帳＝計上額＋
  *   精算: 現金科目必須／科目別・収支＝除外／現金＝出金／繰延台帳＝精算額・日付
  *
- * ■ 仮受金（入出金は当期／来期の収入）
+ * ■ 預り金（入出金は当期／来期の収入）
  *   計上: 科目別・収支＝収入−／現金＝除外／繰延台帳＝計上額＋
  *   精算「当期に計上」: 現金なし／科目別・収支＝除外／現金＝除外／繰延台帳＝精算額・日付
  *   精算「返金」: 現金科目必須／科目別・収支＝除外／現金＝出金／繰延台帳＝精算額・日付
  *
- * ■ 仮払金（入出金は当期／来期の支出）
+ * ■ 前払費用（入出金は当期／来期の支出）
  *   計上: 科目別・収支＝支出−／現金＝除外／繰延台帳＝計上額＋
  *   精算: 現金なし／科目別・収支＝除外／現金＝除外／繰延台帳＝精算額・日付
  */
@@ -25,8 +25,8 @@ import type { Transaction } from "@/utils/localStorage"
 export const DEFERRED_ACCOUNT_ORDER = [
   "未収入金",
   "未払金",
-  "仮受金",
-  "仮払金",
+  "預り金",
+  "前払費用",
 ] as const
 
 export type DeferredAccountName = (typeof DEFERRED_ACCOUNT_ORDER)[number]
@@ -34,12 +34,18 @@ export type DeferredAccountName = (typeof DEFERRED_ACCOUNT_ORDER)[number]
 /** 現金を伴わない精算の counterparty 値 */
 export const DEFERRED_SETTLEMENT_NON_CASH = "settlement"
 
-/** 仮受金の精算区分 */
+/** 預り金の精算区分 */
 export type DeferredKaruukeSettlementMode = "period" | "refund"
 
-/** 旧称「預り金」で保存された仕訳を「仮受金」に正規化する */
+/**
+ * 旧称で保存された仕訳を現行科目名に正規化する。
+ * - 仮受金 → 預り金
+ * - 仮払金 → 前払費用
+ */
 export function normalizeDeferredAccountName(name: string): string {
-  return name === "預り金" ? "仮受金" : name
+  if (name === "仮受金") return "預り金"
+  if (name === "仮払金") return "前払費用"
+  return name
 }
 
 export function isDeferredRecord(t: Transaction): boolean {
@@ -66,8 +72,8 @@ export function getDeferredSettlementCashEffect(
   const name = normalizeDeferredAccountName(deferredAccount)
   if (name === "未収入金") return "income"
   if (name === "未払金") return "expense"
-  if (name === "仮払金") return null
-  if (name === "仮受金") {
+  if (name === "前払費用") return null
+  if (name === "預り金") {
     if (karuukeMode === "refund") return "expense"
     // 「当期に計上」または未選択 → 現金影響なし
     return null
@@ -83,8 +89,8 @@ export function getDeferredSettlementCashEffectFromTx(
   const name = normalizeDeferredAccountName(t.accountTitle)
   if (name === "未収入金") return "income"
   if (name === "未払金") return "expense"
-  if (name === "仮払金") return null
-  if (name === "仮受金") {
+  if (name === "前払費用") return null
+  if (name === "預り金") {
     if (t.deferredSettlementMode === "period") return null
     if (t.deferredSettlementMode === "refund") return "expense"
     // 旧データ（mode なし・現金科目入り）は返金相当として出金扱い
@@ -158,8 +164,8 @@ export function getDeferredPlSide(
   deferredAccount: string
 ): "income" | "expense" | null {
   const name = normalizeDeferredAccountName(deferredAccount)
-  if (name === "未収入金" || name === "仮受金") return "income"
-  if (name === "未払金" || name === "仮払金") return "expense"
+  if (name === "未収入金" || name === "預り金") return "income"
+  if (name === "未払金" || name === "前払費用") return "expense"
   return null
 }
 
@@ -167,15 +173,15 @@ export function getDeferredPlSide(
  * 科目別台帳・収支集計表用の符号付き金額（計上のみ）
  * - 未収入金: 収入＋
  * - 未払金: 支出＋
- * - 仮受金: 収入−
- * - 仮払金: 支出−
+ * - 預り金: 収入−
+ * - 前払費用: 支出−
  */
 export function getDeferredPlSignedAmount(
   deferredAccount: string,
   amount: number
 ): number {
   const name = normalizeDeferredAccountName(deferredAccount)
-  if (name === "仮受金" || name === "仮払金") return -Math.abs(amount)
+  if (name === "預り金" || name === "前払費用") return -Math.abs(amount)
   if (name === "未収入金" || name === "未払金") return Math.abs(amount)
   return amount
 }
