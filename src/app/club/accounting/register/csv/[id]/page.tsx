@@ -317,17 +317,17 @@ export default function CsvImportDetailPage() {
           <SettlementLockAlert isLocked={isLocked} className="mt-4" />
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white overflow-x-auto">
-          <table className="w-full text-sm border-collapse min-w-[980px]">
+        <div className="rounded-lg border border-gray-200 bg-white overflow-x-hidden">
+          <table className="w-full text-xs border-collapse table-fixed">
             <thead>
               <tr className="bg-gray-50 text-[#374151]">
                 <th className="border border-gray-200 px-2 py-2 text-left w-36">日付</th>
                 <th className="border border-gray-200 px-2 py-2 text-left">区分</th>
                 <th className="border border-gray-200 px-2 py-2 text-left">現金・預金</th>
                 <th className="border border-gray-200 px-2 py-2 text-right">金額</th>
-                <th className="border border-gray-200 px-2 py-2 text-left min-w-[120px]">カテゴリー</th>
-                <th className="border border-gray-200 px-2 py-2 text-left min-w-[140px]">科目</th>
-                <th className="border border-gray-200 px-2 py-2 text-left min-w-[160px]">メモ</th>
+                <th className="border border-gray-200 px-2 py-2 text-left ">カテゴリー</th>
+                <th className="border border-gray-200 px-2 py-2 text-left ">科目</th>
+                <th className="border border-gray-200 px-2 py-2 text-left ">メモ</th>
               </tr>
             </thead>
             <tbody>

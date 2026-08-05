@@ -368,8 +368,8 @@ export default function RegisterHistoryPage() {
 
         <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
           {tab === "all" ? (
-            <div className="overflow-x-auto max-h-[min(75vh,42rem)] overflow-y-auto">
-              <table className="w-full text-[11px] border-collapse min-w-[1020px] table-fixed">
+            <div className="max-h-[min(75vh,42rem)] overflow-y-auto overflow-x-hidden">
+              <table className="w-full text-[10px] border-collapse table-fixed">
                 {/*
                  * カラム比率: 日付2 / 口座5 / 入金2 / 出金2 / カテゴリー2.5 / 科目2.5 / メモ3.5 / 登録日2 / 作業者1.5 / 編集1
                  * 指定比率の合計（=24）を分母にして横幅100%を埋める。
@@ -543,8 +543,8 @@ export default function RegisterHistoryPage() {
               </table>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse min-w-[640px]">
+            <div className="overflow-x-hidden">
+              <table className="w-full text-xs border-collapse table-fixed">
                 <thead>
                   <tr className="bg-gray-50 text-[#374151]">
                     <th className="border border-gray-200 px-3 py-2 text-left">ファイル名</th>

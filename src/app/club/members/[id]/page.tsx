@@ -421,7 +421,7 @@ export default function MemberDetailPage() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-hidden">
           <table className="w-full border-collapse table-fixed text-sm" style={{ minWidth: 980 }}>
             <colgroup>
               <col style={{ width: "7%" }} />

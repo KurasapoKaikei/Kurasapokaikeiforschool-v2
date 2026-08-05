@@ -20,7 +20,7 @@ import { SchoolInlineCopyButton } from "@/components/school/SchoolInlineCopyButt
 
 /** 順序｜氏名｜部署｜ID｜初期PW｜電話｜メール｜担当クラブ｜担当クラブ数｜操作 */
 const BACKUP_TABLE_GRID =
-  "grid w-full min-w-[82rem] grid-cols-[2rem_minmax(0,0.5fr)_minmax(0,0.48fr)_8.5rem_6.5rem_5.5rem_minmax(0,0.65fr)_minmax(12rem,2.2fr)_3.25rem_5.5rem] items-center gap-x-2"
+  "grid w-full grid-cols-[1.5rem_minmax(0,0.7fr)_minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,0.55fr)_minmax(0,0.55fr)_minmax(0,0.8fr)_minmax(0,1.2fr)_2.5rem_3.5rem] items-center gap-x-1 text-[10px] leading-tight"
 
 const EMPTY_TEXT = "登録済の監査人はありません"
 
@@ -134,11 +134,11 @@ export function SchoolAuditorsAccountBackupSection({
         </p>
       ) : null}
       <div className="flex min-h-[200px] w-full flex-col overflow-hidden rounded-lg border border-gray-200 border-l-[5px] border-l-[#4A90E2] bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-hidden">
           <div
             className={cn(
               BACKUP_TABLE_GRID,
-              "sticky top-0 z-10 shrink-0 border-b border-gray-300 bg-[#EFF6FF] px-4 py-2.5 text-center text-xs font-semibold text-[#374151]"
+              "sticky top-0 z-10 shrink-0 border-b border-gray-300 bg-[#EFF6FF] px-2 py-2 text-center font-semibold text-[#374151]"
             )}
             role="row"
           >
@@ -189,7 +189,7 @@ export function SchoolAuditorsAccountBackupSection({
                     )}
                   >
                     <div
-                      className={cn(BACKUP_TABLE_GRID, "px-4 py-3 text-sm")}
+                      className={cn(BACKUP_TABLE_GRID, "px-2 py-2")}
                       role="row"
                     >
                       <span className="flex items-center justify-center gap-1 tabular-nums text-[#6B7280]">

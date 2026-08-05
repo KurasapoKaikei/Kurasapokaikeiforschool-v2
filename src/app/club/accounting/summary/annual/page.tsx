@@ -411,29 +411,25 @@ export default function SummaryAnnualPage() {
 
       {/* テーブル（横スクロール・科目列・年間合計列固定・ゼブラ・縦線） */}
       <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] border-collapse text-sm">
+        <div className="overflow-x-hidden">
+          <table className="w-full border-collapse table-fixed text-[10px]">
             <thead>
               <tr className="bg-gray-50">
                 <th
-                  className="px-4 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200 bg-gray-50 sticky left-0 z-20 min-w-[160px]"
-                  style={{ boxShadow: "2px 0 4px -2px rgba(0,0,0,0.1)" }}
+                  className="px-0.5 py-1.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 bg-gray-50"
                 >
                   科目
                 </th>
                 {FISCAL_MONTHS.map((m) => (
                   <th
                     key={m}
-                    className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-r border-gray-200 min-w-[90px]"
+                    className="px-0.5 py-1.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200"
                   >
-                    {m}月度
+                    {m}月
                   </th>
                 ))}
-                <th
-                  className="px-3 py-3 text-center font-semibold text-[#374151] border-b border-gray-200 bg-gray-50 sticky right-0 z-20 min-w-[100px]"
-                  style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.1)" }}
-                >
-                  年間合計
+                <th className="px-0.5 py-1.5 text-center font-semibold text-[#374151] border-b border-gray-200 bg-gray-50">
+                  合計
                 </th>
               </tr>
             </thead>
@@ -455,10 +451,9 @@ export default function SummaryAnnualPage() {
                   } hover:bg-gray-100/50`}
                 >
                   <td
-                    className={`px-4 py-2.5 text-[#374151] border-r border-gray-200 font-medium sticky left-0 z-10 cursor-pointer hover:underline hover:text-[#68A384] ${
+                    className={`px-1 py-1.5 text-[#374151] border-r border-gray-200 font-medium cursor-pointer hover:underline hover:text-[#68A384] ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                     }`}
-                    style={{ boxShadow: "2px 0 4px -2px rgba(0,0,0,0.08)" }}
                     onClick={() => handleSubjectClick(title.id)}
                   >
                     {title.name}
@@ -468,7 +463,7 @@ export default function SummaryAnnualPage() {
                     return (
                       <td
                         key={m}
-                        className={`px-3 py-2.5 text-right text-[#374151] tabular-nums border-r border-gray-200 cursor-pointer hover:underline hover:text-[#68A384] ${
+                        className={`px-0.5 py-1.5 text-right text-[#374151] tabular-nums border-r border-gray-200 cursor-pointer hover:underline hover:text-[#68A384] ${
                           idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                         }`}
                         onClick={() => handleMonthAmountClick(title.id, m)}
@@ -478,10 +473,9 @@ export default function SummaryAnnualPage() {
                     )
                   })}
                   <td
-                    className={`px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 sticky right-0 z-10 ${
+                    className={`px-0.5 py-1.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                     }`}
-                    style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
                   >
                     {formatAmount(
                       FISCAL_MONTHS.reduce((s, m) => s + (incomeByMonthAndTitle[m]?.[title.name] ?? 0), 0)
@@ -491,22 +485,20 @@ export default function SummaryAnnualPage() {
               ))}
               <tr className="border-b-2 border-gray-300 bg-green-200/80">
                 <td
-                  className="px-4 py-2.5 font-semibold text-[#374151] border-r border-gray-200 sticky left-0 z-10 bg-green-200/80"
-                  style={{ boxShadow: "2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                  className="px-1 py-1.5 font-semibold text-[#374151] border-r border-gray-200 bg-green-200/80"
                 >
                   収入合計
                 </td>
                 {FISCAL_MONTHS.map((m) => (
                   <td
                     key={m}
-                    className="px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 bg-green-200/80"
+                    className="px-0.5 py-1.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 bg-green-200/80"
                   >
                     {formatAmount(incomeTotalByMonth[m] ?? 0)}
                   </td>
                 ))}
                 <td
-                  className="px-3 py-2.5 text-right font-bold text-[#374151] tabular-nums border-r border-gray-200 bg-green-300/90 sticky right-0 z-10"
-                  style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                  className="px-0.5 py-1.5 text-right font-bold text-[#374151] tabular-nums border-r border-gray-200 bg-green-300/90"
                 >
                   {formatAmount(yearTotalIncome)}
                 </td>
@@ -529,10 +521,9 @@ export default function SummaryAnnualPage() {
                   } hover:bg-gray-100/50`}
                 >
                   <td
-                    className={`px-4 py-2.5 text-[#374151] border-r border-gray-200 font-medium sticky left-0 z-10 cursor-pointer hover:underline hover:text-[#68A384] ${
+                    className={`px-1 py-1.5 text-[#374151] border-r border-gray-200 font-medium cursor-pointer hover:underline hover:text-[#68A384] ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                     }`}
-                    style={{ boxShadow: "2px 0 4px -2px rgba(0,0,0,0.08)" }}
                     onClick={() => handleSubjectClick(title.id)}
                   >
                     {title.name}
@@ -542,7 +533,7 @@ export default function SummaryAnnualPage() {
                     return (
                       <td
                         key={m}
-                        className={`px-3 py-2.5 text-right text-[#374151] tabular-nums border-r border-gray-200 cursor-pointer hover:underline hover:text-[#68A384] ${
+                        className={`px-0.5 py-1.5 text-right text-[#374151] tabular-nums border-r border-gray-200 cursor-pointer hover:underline hover:text-[#68A384] ${
                           idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                         }`}
                         onClick={() => handleMonthAmountClick(title.id, m)}
@@ -552,10 +543,9 @@ export default function SummaryAnnualPage() {
                     )
                   })}
                   <td
-                    className={`px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 sticky right-0 z-10 ${
+                    className={`px-0.5 py-1.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50/70"
                     }`}
-                    style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
                   >
                     {formatAmount(
                       FISCAL_MONTHS.reduce((s, m) => s + (expenseByMonthAndTitle[m]?.[title.name] ?? 0), 0)
@@ -565,22 +555,20 @@ export default function SummaryAnnualPage() {
               ))}
               <tr className="border-b-2 border-gray-300 bg-amber-200/80">
                 <td
-                  className="px-4 py-2.5 font-semibold text-[#374151] border-r border-gray-200 sticky left-0 z-10 bg-amber-200/80"
-                  style={{ boxShadow: "2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                  className="px-1 py-1.5 font-semibold text-[#374151] border-r border-gray-200 bg-amber-200/80"
                 >
                   支出合計
                 </td>
                 {FISCAL_MONTHS.map((m) => (
                   <td
                     key={m}
-                    className="px-3 py-2.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 bg-amber-200/80"
+                    className="px-0.5 py-1.5 text-right font-semibold text-[#374151] tabular-nums border-r border-gray-200 bg-amber-200/80"
                   >
                     {formatAmount(expenseTotalByMonth[m] ?? 0)}
                   </td>
                 ))}
                 <td
-                  className="px-3 py-2.5 text-right font-bold text-[#374151] tabular-nums border-r border-gray-200 bg-amber-300/90 sticky right-0 z-10"
-                  style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                  className="px-0.5 py-1.5 text-right font-bold text-[#374151] tabular-nums border-r border-gray-200 bg-amber-300/90"
                 >
                   {formatAmount(yearTotalExpense)}
                 </td>
@@ -589,7 +577,7 @@ export default function SummaryAnnualPage() {
               {/* 収支合計（2行表示: ラベル + 計算式） */}
               <tr className="font-bold">
                 <td
-                  className="px-4 py-3 border-r border-gray-200 sticky left-0 z-10 text-white"
+                  className="px-0.5 py-1.5 border-r border-gray-200 text-white"
                   style={{ backgroundColor: THEME_COLOR, boxShadow: "2px 0 4px -2px rgba(0,0,0,0.08)" }}
                 >
                   <div>収支合計</div>
@@ -598,13 +586,13 @@ export default function SummaryAnnualPage() {
                 {FISCAL_MONTHS.map((m) => (
                   <td
                     key={m}
-                    className="px-3 py-3 text-right tabular-nums text-[#374151] bg-gray-50 border-r border-gray-200"
+                    className="px-0.5 py-1.5 text-right tabular-nums text-[#374151] bg-gray-50 border-r border-gray-200"
                   >
                     {formatAmount((incomeTotalByMonth[m] ?? 0) - (expenseTotalByMonth[m] ?? 0))}
                   </td>
                 ))}
                 <td
-                  className="px-3 py-3 text-right tabular-nums font-bold text-white border-r border-gray-200 sticky right-0 z-10"
+                  className="px-0.5 py-1.5 text-right tabular-nums font-bold text-white border-r border-gray-200"
                   style={{ backgroundColor: THEME_COLOR, boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
                 >
                   {formatAmount(balanceTotal)}
@@ -613,23 +601,21 @@ export default function SummaryAnnualPage() {
               {isAllCategory && (
                 <>
                   <tr className="font-bold border-t-2 border-gray-300 bg-slate-100/80">
-                    <td colSpan={13} className="px-4 py-3 text-left text-[#374151] border-r border-gray-200">
+                    <td colSpan={13} className="px-0.5 py-1.5 text-left text-[#374151] border-r border-gray-200">
                       前期繰越金
                     </td>
                     <td
-                      className="px-3 py-3 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 sticky right-0 z-10 bg-slate-100/80"
-                      style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                      className="px-0.5 py-1.5 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 bg-slate-100/80"
                     >
                       {formatAmount(openingCarryover)}
                     </td>
                   </tr>
                   <tr className="font-bold bg-slate-200/80">
-                    <td colSpan={13} className="px-4 py-3 text-left text-[#374151] border-r border-gray-200">
+                    <td colSpan={13} className="px-0.5 py-1.5 text-left text-[#374151] border-r border-gray-200">
                       次期繰越金
                     </td>
                     <td
-                      className="px-3 py-3 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 sticky right-0 z-10 bg-slate-200/80"
-                      style={{ boxShadow: "-2px 0 4px -2px rgba(0,0,0,0.08)" }}
+                      className="px-0.5 py-1.5 text-right tabular-nums font-bold text-[#374151] border-r border-gray-200 bg-slate-200/80"
                     >
                       {formatAmount(nextCarryoverTotal)}
                     </td>

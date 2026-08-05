@@ -643,12 +643,12 @@ export function CollectionIndividualEntry({
             </div>
           )}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm border-collapse">
+            <table className="w-full text-xs border-collapse table-fixed">
               <thead>
                 <tr className="bg-[#EEF6F1] text-[#374151]">
                   {isDirect && <th className="px-1 py-2 border-b w-8" aria-label="選択" />}
                   <th className="px-2 py-2 text-left border-b">科目</th>
-                  <th className="px-2 py-2 text-right border-b whitespace-nowrap">予定/入済</th>
+                  <th className="px-2 py-2 text-right border-b">予定/入済</th>
                   <th className="px-2 py-2 text-left border-b">
                     {isDirect ? "入金額" : "今回の割当額"}
                   </th>
@@ -723,11 +723,11 @@ export function CollectionIndividualEntry({
                                   : { ...row, amount },
                             }))
                           }}
-                          className="w-full min-w-[5rem] px-2 py-1.5 border border-gray-300 rounded text-right text-sm"
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-right text-xs"
                           placeholder="0"
                         />
                       </td>
-                      <td className="px-2 py-2 align-top min-w-[8rem]">
+                      <td className="px-2 py-2 align-top">
                         <DatePickerField
                           value={row.date}
                           onChange={(v) =>
@@ -744,7 +744,7 @@ export function CollectionIndividualEntry({
                         />
                       </td>
                       {isDirect && (
-                        <td className="px-2 py-2 align-top min-w-[10rem]">
+                        <td className="px-2 py-2 align-top">
                           <input
                             type="text"
                             value={row.memo}

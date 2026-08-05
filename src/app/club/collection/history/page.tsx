@@ -261,19 +261,19 @@ export default function CollectionHistoryPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs table-fixed" style={{ minWidth: 1140 }}>
+          <div className="overflow-x-hidden">
+            <table className="w-full border-collapse text-[10px] table-fixed">
               <colgroup>
-                <col style={{ width: 170 }} />
-                <col style={{ width: 80 }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "5%" }} />
                 {FISCAL_MONTHS.map((m) => (
-                  <col key={m} style={{ width: 72 }} />
+                  <col key={m} style={{ width: "6.5%" }} />
                 ))}
-                <col />
+                <col style={{ width: "11%" }} />
               </colgroup>
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="px-3 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 sticky left-0 bg-gray-50 z-10">
+                  <th className="px-3 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200">
                     氏名
                   </th>
                   <th className="px-1 py-2.5 text-center font-semibold text-[#374151] border-b border-r border-gray-200 whitespace-nowrap">
@@ -315,7 +315,7 @@ export default function CollectionHistoryPage() {
                       key={member.id}
                       className={`border-b border-gray-200 ${rowBg} ${isRetired ? "opacity-50" : ""}`}
                     >
-                      <td className={`px-3 py-2 text-center font-medium text-[#374151] border-r border-gray-200 sticky left-0 z-10 whitespace-nowrap overflow-hidden text-ellipsis ${rowBg}`}>
+                      <td className={`px-3 py-2 text-center font-medium text-[#374151] border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis ${rowBg}`}>
                         <Link
                           href={`/club/members/${encodeURIComponent(member.id)}`}
                           className="inline-block hover:underline underline-offset-2 decoration-[#D99529]"
@@ -391,7 +391,7 @@ export default function CollectionHistoryPage() {
                 <tr className="border-t-2 border-[#D99529]" style={{ backgroundColor: "#D99529" + "18" }}>
                   <td
                     colSpan={2}
-                    className="px-3 py-2.5 text-center font-bold text-[#374151] border-r border-gray-200 sticky left-0 z-10"
+                    className="px-3 py-2.5 text-center font-bold text-[#374151] border-r border-gray-200"
                     style={{ backgroundColor: "#D99529" + "18" }}
                   >
                     集金実績合計

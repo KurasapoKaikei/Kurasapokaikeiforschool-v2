@@ -588,8 +588,8 @@ export default function MembersRegisterPage() {
                           className="mb-4 overflow-hidden rounded-lg border border-gray-200"
                           style={{ borderLeftWidth: 4, borderLeftColor: THEME_COLOR }}
                         >
-                          <div className="overflow-x-auto">
-                            <table className="w-full min-w-[32rem] border-collapse text-sm">
+                          <div className="overflow-x-hidden">
+                            <table className="w-full border-collapse table-fixed text-sm">
                               <thead>
                                 <tr
                                   className="text-left text-xs font-semibold text-[#374151]"

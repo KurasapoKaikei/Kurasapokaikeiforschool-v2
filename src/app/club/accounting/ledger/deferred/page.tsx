@@ -218,10 +218,10 @@ export default function LedgerDeferredPage() {
         </div>
 
         <div
-          className="bg-white border border-gray-200 rounded-b-lg overflow-x-auto"
+          className="bg-white border border-gray-200 rounded-b-lg overflow-x-hidden"
           style={{ borderLeftWidth: 5, borderLeftColor: THEME_COLOR }}
         >
-          <table className="w-full text-sm border-collapse min-w-[960px]">
+          <table className="w-full text-xs border-collapse table-fixed">
             <thead>
               <tr className="bg-[#EEF6F1] text-[#374151]">
                 <th className="px-3 py-2.5 text-left font-semibold border-b border-r border-gray-200 whitespace-nowrap">

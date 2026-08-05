@@ -359,8 +359,7 @@ const DEFERRED_ACCOUNTS = [
     value: "未収入金",
     label: "未収入金",
     type: "asset" as const,
-    description:
-      "入出金のタイミングは来期。当期の収入として計上されるべきもの。",
+    description: "「今年度の収入」だけど、まだもらっていないお金",
     /** 選択可能な収支区分 */
     allowedSides: ["income"] as const,
   },
@@ -368,24 +367,21 @@ const DEFERRED_ACCOUNTS = [
     value: "未払金",
     label: "未払金",
     type: "liability" as const,
-    description:
-      "入出金のタイミングは来期。当期の支出として計上されるべきもの。",
+    description: "「今年度の支出」だけど、まだ払っていないお金",
     allowedSides: ["expense"] as const,
   },
   {
     value: "預り金",
     label: "預り金",
     type: "liability" as const,
-    description:
-      "入出金のタイミングは当期。来期の収入として計上されるべきもの。",
+    description: "「来年度の収入」だけど、先にもらって預かっているお金",
     allowedSides: ["income"] as const,
   },
   {
     value: "前払費用",
     label: "前払費用",
     type: "asset" as const,
-    description:
-      "入出金のタイミングは当期。来期の支出として計上されるべきもの。",
+    description: "「来年度の支出」だけど、先に支払いを済ませたお金",
     allowedSides: ["expense"] as const,
   },
 ] as const
@@ -2568,7 +2564,7 @@ export default function NewRegisterPage() {
             {/* テーブル（見出し sticky・本体のみ縦スクロール） */}
             <div className="border border-gray-300 rounded-lg overflow-hidden">
               <div className="overflow-auto max-h-[calc(100vh-14rem)] min-h-[12rem]">
-                <table className="w-full border-collapse table-fixed text-sm min-w-[880px]">
+                <table className="w-full border-collapse table-fixed text-xs">
                   <colgroup>
                     <col className="w-[2.25rem]" />
                     <col style={{ width: "11%" }} />
@@ -3699,7 +3695,7 @@ export default function NewRegisterPage() {
                           !!formData.deferredKaruukeMode) && (
                         <div className="w-full">
                           <label className={labelClass}>未精算一覧</label>
-                          <div className="w-full overflow-x-auto rounded-lg border border-gray-200">
+                          <div className="w-full overflow-x-hidden rounded-lg border border-gray-200">
                             <table className="w-full table-fixed text-sm border-collapse">
                               <colgroup>
                                 <col className="w-10" />

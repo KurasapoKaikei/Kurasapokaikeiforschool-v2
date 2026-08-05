@@ -167,7 +167,7 @@ export default function CollectionSchedulePage() {
 
       {/* テーブル */}
       <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-hidden">
           <table className="w-full border-collapse text-sm table-fixed">
             <colgroup>
               <col style={{ width: "6.06%" }} />

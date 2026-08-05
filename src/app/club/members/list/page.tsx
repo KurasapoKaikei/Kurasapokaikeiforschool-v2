@@ -139,7 +139,7 @@ export default function MembersListPage() {
       {/* テーブル（コンパクト列幅・左寄せ） */}
       <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden py-6 px-6">
         <div className="border border-gray-200 rounded-lg overflow-hidden inline-block max-w-full">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-hidden">
             <table className="table-fixed border-collapse text-sm w-[34rem] sm:w-[38rem]">
               <colgroup>
                 <col className="w-10" />

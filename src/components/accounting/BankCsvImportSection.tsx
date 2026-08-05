@@ -879,18 +879,18 @@ export function BankCsvImportSection({
 
         {rows.length > 0 && (
           <>
-            <div className="border border-gray-200 rounded-lg overflow-auto max-h-[min(72vh,44rem)]">
-              <table className="w-full table-fixed text-sm border-collapse min-w-[1000px]">
+            <div className="border border-gray-200 rounded-lg overflow-y-auto overflow-x-hidden max-h-[min(72vh,44rem)]">
+              <table className="w-full table-fixed text-xs border-collapse">
                 <colgroup>
-                  <col style={{ width: "2.75rem" }} />
-                  <col style={{ width: "15%" }} />
-                  <col style={{ width: "7.5rem" }} />
+                  <col style={{ width: "4%" }} />
+                  <col style={{ width: "12%" }} />
                   <col style={{ width: "10%" }} />
                   <col style={{ width: "10%" }} />
-                  <col />
-                  <col style={{ width: "7.5rem" }} />
                   <col style={{ width: "10%" }} />
-                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "16%" }} />
                 </colgroup>
                 <thead>
                   <tr className="text-[#374151]">

@@ -10,10 +10,10 @@ import { SCHOOL_THEME } from "@/lib/schoolTheme"
 function ContractInfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline border-t border-gray-100 py-3 first:border-t-0 first:pt-0">
-      <span className="w-1/3 shrink-0 min-w-[11rem] pr-4 text-left text-sm text-[#6B7280]">
+      <span className="w-1/3 shrink-0 max-w-[11rem] pr-4 text-left text-sm text-[#6B7280]">
         {label}
       </span>
-      <span className="min-w-0 flex-1 whitespace-nowrap text-left text-sm font-medium text-[#374151]">
+      <span className="min-w-0 flex-1 break-words text-left text-sm font-medium text-[#374151]">
         {value}
       </span>
     </div>
@@ -80,7 +80,7 @@ export function ClubContractInfoSection() {
 
   return (
     <ContractSectionCard title="ご契約情報">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-hidden">
         <ContractInfoRow label="ご利用開始日" value={contract.startDate} />
         <ContractInfoRow label="ご契約プラン" value={contract.planSelectLabel} />
         <ContractInfoRow label="オプション" value={contract.optionsLabel} />

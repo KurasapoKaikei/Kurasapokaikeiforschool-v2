@@ -490,8 +490,8 @@ export default function LedgerSubjectPage() {
             {dynamicTitle}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse text-sm table-fixed">
+          <div className="overflow-x-hidden">
+            <table className="w-full border-collapse text-xs table-fixed">
               <colgroup>
                 {COL_WIDTHS.map((w, i) => (
                   <col key={i} style={{ width: w }} />

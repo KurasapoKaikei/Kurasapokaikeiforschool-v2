@@ -22,7 +22,7 @@ function FormInfoRow({
 }) {
   return (
     <div className="flex items-start border-t border-gray-100 py-3 first:border-t-0 first:pt-0">
-      <span className="w-1/3 shrink-0 min-w-[11rem] pr-4 pt-2 text-left text-sm text-[#6B7280]">
+      <span className="w-1/3 shrink-0 max-w-[11rem] pr-4 pt-2 text-left text-sm text-[#6B7280]">
         {label}
         {required ? <span className="text-[#EF4444]"> *</span> : null}
       </span>
@@ -62,7 +62,7 @@ export function ClubOrganizationInfoSection({
       <h3 className="mb-4 border-b border-gray-200 pb-2 text-lg font-semibold text-[#374151]">
         団体情報
       </h3>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-hidden">
         <FormInfoRow
           label="団体名"
           hint="クラサポ会計 for School（学校管理者ポータル）で登録されたクラブ名です。クラブポータルからは変更できません。"
