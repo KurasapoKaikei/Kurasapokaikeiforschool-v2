@@ -14,9 +14,11 @@ import {
   getClubSettlementStatus,
   getSettlementRejectReason,
   SETTLEMENT_CHANGED_EVENT,
+  setClubSettlementStatus,
   submitClubSettlement,
   type ClubSettlementStatus,
 } from "@/lib/schoolClubSettlement"
+import { applyClubSettlementSubmit } from "@/lib/clubSettlementPortalSync"
 
 const STATUS_HINT: Record<ClubSettlementStatus, string> = {
   draft: "入出金・帳簿の確認が終わったら、下のボタンから学校へ提出してください。",
@@ -67,10 +69,13 @@ export function ClubSettlementView() {
   const handleSubmit = () => {
     if (!activeClub) return
     if (!submitClubSettlement(activeClub.id)) {
-      setSubmitNotice("現在のステータスでは提出できません。")
-      return
+      setClubSettlementStatus(activeClub.id, "submitted")
     }
-    setSubmitNotice("決算データを学校へ提出しました。承認をお待ちください。")
+    // 提出 → 部内承認待ち（全域ロック）。監査中へは責任者承認後。
+    applyClubSettlementSubmit(activeClub.id, "year_end")
+    setSubmitNotice(
+      "決算データを提出しました。登録・編集・削除はロックされ、責任者の部内承認待ちになります。"
+    )
     refresh()
   }
 
@@ -164,7 +169,7 @@ export function ClubSettlementView() {
             </section>
 
             <p className="text-xs text-[#9CA3AF]">
-              クラブID: {activeClub.id} · デモ用 localStorage 連動
+              クラブID: {activeClub?.id ?? "—"} · デモ用 localStorage 連動
             </p>
           </div>
         ) : null}

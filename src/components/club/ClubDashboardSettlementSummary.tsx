@@ -58,7 +58,7 @@ export function ClubDashboardSettlementSummary() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
   const [badgeLabel, setBadgeLabel] = useState("未提出")
   const [badgeVariant, setBadgeVariant] = useState<
-    "muted" | "navy" | "rejected" | "approved"
+    "muted" | "navy" | "amber" | "rejected" | "approved"
   >("muted")
 
   const syncFromStorage = useCallback(() => {

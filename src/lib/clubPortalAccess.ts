@@ -2,7 +2,7 @@
  * クラブポータルのアクセス種別（クラブ本人ログイン vs 学校管理者・監査人閲覧）
  */
 
-import { getCurrentClub } from "@/lib/clubLoginSession"
+import { getClubLoginRole, getCurrentClub } from "@/lib/clubLoginSession"
 import {
   getImpersonatedClub,
   getImpersonationViewer,
@@ -33,7 +33,21 @@ export function resolveClubPortalDashboardBackHref(): string {
     : SCHOOL_ROUTES.clubList
 }
 
-/** クラブポータルで操作可能か（通常ログイン時のみフルアクセス） */
+/** クラブポータルへログイン済みか（作業者・責任者いずれか） */
 export function canOperateClubPortal(): boolean {
   return hasAuthenticatedClubLogin()
+}
+
+/** 入出金等の書き込みが可能か（作業者のみ。責任者は閲覧＋部内承認） */
+export function canEditClubPortalData(): boolean {
+  return hasAuthenticatedClubLogin() && getClubLoginRole() === "worker"
+}
+
+/**
+ * 部内承認（責任者承認）を実行できるか。
+ * 責任者ログイン、または学校／監査人のなりすまし閲覧時。
+ */
+export function canActAsClubManager(): boolean {
+  if (getClubLoginRole() === "manager") return true
+  return isSchoolImpersonatingClub()
 }

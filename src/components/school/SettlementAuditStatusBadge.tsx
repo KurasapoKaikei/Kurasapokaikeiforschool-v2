@@ -1,5 +1,6 @@
 import {
   AUDITOR_APPROVED_BADGE_CLASSES,
+  SETTLEMENT_AWAITING_MANAGER_BADGE_CLASSES,
   SETTLEMENT_IN_AUDIT_BADGE_CLASSES,
   SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES,
   SETTLEMENT_REJECTED_BADGE_CLASSES,
@@ -18,8 +19,9 @@ export function SettlementAuditStatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex w-16 shrink-0 items-center justify-center rounded-full border px-0 py-0.5 text-xs font-medium tracking-tight",
+        "inline-flex min-w-16 shrink-0 items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium tracking-tight whitespace-nowrap",
         variant === "navy" && SETTLEMENT_IN_AUDIT_BADGE_CLASSES,
+        variant === "amber" && SETTLEMENT_AWAITING_MANAGER_BADGE_CLASSES,
         variant === "approved" && AUDITOR_APPROVED_BADGE_CLASSES,
         variant === "rejected" && SETTLEMENT_REJECTED_BADGE_CLASSES,
         variant === "muted" && SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES,

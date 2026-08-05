@@ -137,7 +137,7 @@ export function AuditorClubDashboardCard({
           </Button>
         </div>
         <p className="mt-2 text-center text-xs leading-relaxed text-[#9CA3AF]">
-          クラブから決算が「監査中」になると、承認・差戻しが可能になります。
+          クラブ責任者が部内承認し「監査中」になると、承認・差戻しが可能になります。
         </p>
       </div>
     </article>

@@ -43,7 +43,13 @@ export function classifyFromState(
 ): SchoolAuditProgressBucket {
   if (auditStatus === "rejected") return "rejected"
   if (auditStatus === "approved") return "approved"
-  if (locked || auditStatus === "in_review") return "in_audit"
+  if (
+    locked ||
+    auditStatus === "in_review" ||
+    auditStatus === "awaiting_manager_approval"
+  ) {
+    return "in_audit"
+  }
   return "preparing"
 }
 

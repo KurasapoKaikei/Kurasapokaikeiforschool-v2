@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { ClubCurrentWorkersDialog } from "@/components/club/ClubCurrentWorkersDialog"
 import { useClubSession } from "@/contexts/ClubSessionContext"
 import { useUserInfo } from "@/contexts/UserInfoContext"
-import { getCurrentClub } from "@/lib/clubLoginSession"
+import { getClubLoginRole, getCurrentClub } from "@/lib/clubLoginSession"
 import { hasAuthenticatedClubLogin } from "@/lib/clubPortalAccess"
 import { CLUB_PORTAL_SESSION_CHANGED_EVENT } from "@/lib/clubPortalSessionEvents"
 import {
@@ -14,7 +14,7 @@ import {
   setCurrentWorkers,
 } from "@/lib/currentWorkersSession"
 
-/** クラブログイン後、作業者未宣言なら担当者選択モーダルを表示する */
+/** クラブログイン後、作業者未宣言なら担当者選択モーダルを表示する（責任者ログイン時は不要） */
 export function ClubCurrentWorkersGate() {
   const pathname = usePathname()
   const { activeClub, isHydrated } = useClubSession()
@@ -32,6 +32,11 @@ export function ClubCurrentWorkersGate() {
   const evaluateGate = useCallback(() => {
     if (!isHydrated) return
     if (!hasAuthenticatedClubLogin()) {
+      setOpen(false)
+      return
+    }
+    // 責任者PWログインは閲覧＋部内承認のみのため作業者選定不要
+    if (getClubLoginRole() === "manager") {
       setOpen(false)
       return
     }

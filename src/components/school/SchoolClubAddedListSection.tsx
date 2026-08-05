@@ -12,9 +12,9 @@ import { useActionConfirmDialog } from "@/hooks/useActionConfirmDialog"
 import { SchoolPortalSegmentTabs } from "@/components/school/SchoolPortalSegmentTabs"
 import { SchoolInlineCopyButton } from "@/components/school/SchoolInlineCopyButton"
 
-/** 順序｜クラブ名｜クラブID｜初期PW｜所属グループ｜登録日｜操作 */
+/** 順序｜クラブ名｜クラブID｜作業者PW｜責任者PW｜所属グループ｜登録日｜操作 */
 const CLUB_LIST_GRID =
-  "sm:[grid-template-columns:minmax(2.5rem,0.4fr)_minmax(0,1.5fr)_minmax(0,0.95fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(5.5rem,auto)]"
+  "sm:[grid-template-columns:minmax(2.5rem,0.35fr)_minmax(0,1.3fr)_minmax(0,0.85fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(5.5rem,auto)]"
 
 type SchoolClubAddedListSectionProps = {
   resetTabKey?: number
@@ -36,6 +36,8 @@ export function SchoolClubAddedListSection({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState("")
   const [editingGroupId, setEditingGroupId] = useState("")
+  const [editingManagerTitle, setEditingManagerTitle] = useState("")
+  const [editingManagerName, setEditingManagerName] = useState("")
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
@@ -55,11 +57,14 @@ export function SchoolClubAddedListSection({
     setEditingId(club.id)
     setEditingName(club.name)
     setEditingGroupId(club.groupIds[0] ?? "")
+    setEditingManagerTitle(club.managerTitle ?? "")
+    setEditingManagerName(club.managerName ?? "")
   }
 
   const handleSaveEdit = (id: string) => {
     const trimmed = editingName.trim()
     if (!trimmed || !editingGroupId) return
+    if (!editingManagerTitle.trim() || !editingManagerName.trim()) return
     const group = sortedGroups.find((g) => g.id === editingGroupId)
     if (!group) return
     requestConfirm("edit", () => {
@@ -67,6 +72,8 @@ export function SchoolClubAddedListSection({
         name: trimmed,
         groupId: group.id,
         groupName: group.name,
+        managerTitle: editingManagerTitle.trim(),
+        managerName: editingManagerName.trim(),
       })
       setEditingId(null)
     })
@@ -156,9 +163,10 @@ export function SchoolClubAddedListSection({
             className={`mb-2 hidden items-center gap-x-2 border-b border-gray-200 pb-2 text-xs font-semibold text-[#6B7280] sm:grid ${CLUB_LIST_GRID}`}
           >
             <span className="pl-5 text-left">順序</span>
-            <span className="pl-5 text-left">クラブ名</span>
+            <span className="pl-5 text-left">クラブ名／責任者</span>
             <span className="text-left">クラブID</span>
-            <span className="text-left">初期PW</span>
+            <span className="text-left">作業者PW</span>
+            <span className="text-left">責任者PW</span>
             <span className="text-left">所属グループ</span>
             <span className="text-left">登録日</span>
             <span className="pr-4 text-right">操作</span>
@@ -200,17 +208,41 @@ export function SchoolClubAddedListSection({
                         クラブ名
                       </span>
                       {isEditing ? (
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
-                          autoFocus
-                        />
+                        <div className="space-y-1.5">
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
+                            autoFocus
+                            placeholder="クラブ名"
+                          />
+                          <input
+                            type="text"
+                            value={editingManagerTitle}
+                            onChange={(e) => setEditingManagerTitle(e.target.value)}
+                            className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
+                            placeholder="責任者役職"
+                          />
+                          <input
+                            type="text"
+                            value={editingManagerName}
+                            onChange={(e) => setEditingManagerName(e.target.value)}
+                            className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
+                            placeholder="責任者氏名"
+                          />
+                        </div>
                       ) : (
-                        <span className="text-base font-semibold leading-snug text-[#374151]">
-                          {club.name}
-                        </span>
+                        <div>
+                          <span className="text-base font-semibold leading-snug text-[#374151]">
+                            {club.name}
+                          </span>
+                          <p className="mt-0.5 text-[11px] text-[#6B7280]">
+                            {[club.managerTitle, club.managerName]
+                              .filter(Boolean)
+                              .join(" ") || "責任者未設定"}
+                          </p>
+                        </div>
                       )}
                     </div>
 
@@ -224,15 +256,30 @@ export function SchoolClubAddedListSection({
 
                     <div className="flex min-w-0 items-center gap-1 font-mono text-xs text-[#6B7280]">
                       <span className="mb-0.5 block w-full text-[#9CA3AF] sm:hidden">
-                        初期PW
+                        作業者PW
                       </span>
                       <span className="min-w-0 truncate select-none">
                         {club.initialPassword}
                       </span>
                       <SchoolInlineCopyButton
                         value={club.initialPassword}
-                        label="初期PW"
+                        label="作業者PW"
                       />
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-1 font-mono text-xs text-[#6B7280]">
+                      <span className="mb-0.5 block w-full text-[#9CA3AF] sm:hidden">
+                        責任者PW
+                      </span>
+                      <span className="min-w-0 truncate select-none">
+                        {club.managerInitialPassword || "—"}
+                      </span>
+                      {club.managerInitialPassword ? (
+                        <SchoolInlineCopyButton
+                          value={club.managerInitialPassword}
+                          label="責任者PW"
+                        />
+                      ) : null}
                     </div>
 
                     <div className="min-w-0">

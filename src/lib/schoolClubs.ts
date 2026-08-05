@@ -16,10 +16,18 @@ export type SchoolClub = {
   /** ISO 8601 */
   registeredAt: string
   order: number
-  /** 配布用の初期パスワード（登録時に固定） */
+  /** 配布用の初期パスワード（作業者用・登録時に固定） */
   initialPassword: string
-  /** 現在のログインパスワード（変更可能） */
+  /** 現在の作業者ログインパスワード（変更可能） */
   password: string
+  /** クラブ責任者（役職）例: 顧問、監督 */
+  managerTitle: string
+  /** クラブ責任者（氏名） */
+  managerName: string
+  /** クラブ責任者用初期パスワード（英数字6桁） */
+  managerInitialPassword: string
+  /** クラブ責任者用ログインパスワード（変更可能） */
+  managerPassword: string
 }
 
 const PASSWORD_CHARS =
@@ -49,7 +57,23 @@ function migrateClubFields(c: SchoolClub): SchoolClub {
       : generateInitialPassword()
   const password =
     typeof c.password === "string" && c.password ? c.password : initial
-  return { ...c, initialPassword: initial, password }
+  const managerInitial =
+    typeof c.managerInitialPassword === "string" && c.managerInitialPassword
+      ? c.managerInitialPassword
+      : generateInitialPassword()
+  const managerPassword =
+    typeof c.managerPassword === "string" && c.managerPassword
+      ? c.managerPassword
+      : managerInitial
+  return {
+    ...c,
+    initialPassword: initial,
+    password,
+    managerTitle: typeof c.managerTitle === "string" ? c.managerTitle : "",
+    managerName: typeof c.managerName === "string" ? c.managerName : "",
+    managerInitialPassword: managerInitial,
+    managerPassword,
+  }
 }
 
 function compareClubDisplayOrder(a: SchoolClub, b: SchoolClub): number {
@@ -122,10 +146,14 @@ function parseClubsFromRaw(parsed: unknown): SchoolClub[] {
       )
       .map((c, idx) =>
         migrateClubFields({
-          ...c,
-          order: typeof c.order === "number" ? c.order : idx + 1,
+          ...(c as SchoolClub),
+          order: typeof (c as SchoolClub).order === "number" ? (c as SchoolClub).order : idx + 1,
           initialPassword: (c as SchoolClub).initialPassword ?? "",
           password: (c as SchoolClub).password ?? "",
+          managerTitle: (c as SchoolClub).managerTitle ?? "",
+          managerName: (c as SchoolClub).managerName ?? "",
+          managerInitialPassword: (c as SchoolClub).managerInitialPassword ?? "",
+          managerPassword: (c as SchoolClub).managerPassword ?? "",
         })
       )
   )
@@ -193,6 +221,18 @@ export function updateClubPassword(clubId: string, newPassword: string): boolean
 export function verifyClubPassword(clubId: string, password: string): boolean {
   const club = loadSchoolClubs().find((c) => c.id === clubId)
   return club?.password === password
+}
+
+/** 作業者PWまたは責任者PWのいずれかと一致するか */
+export function verifyClubLoginPassword(
+  clubId: string,
+  password: string
+): "worker" | "manager" | null {
+  const club = loadSchoolClubs().find((c) => c.id === clubId)
+  if (!club) return null
+  if (club.password === password) return "worker"
+  if (club.managerPassword === password) return "manager"
+  return null
 }
 
 export function getClubById(clubId: string): SchoolClub | undefined {

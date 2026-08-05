@@ -1,6 +1,6 @@
 ﻿# クラサポ会計 — 最新仕様書
 
-**文書バージョン**: 2026-08-04  
+**文書バージョン**: 2026-08-05  
 **対象範囲**: 学校管理者ポータル（`/school`）、クラブポータル（`/club`）、監査人ポータル（`/audit`）
 
 本書は、初期データ方針の変更・部員 CSV 一括登録プレビュー・作業者ログ連動など、直近の開発・修正を反映した最新仕様です。学校ポータル詳細は `docs/school-portal-specification.md` も併せて参照してください。
@@ -171,8 +171,8 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 
 | 項目 | 内容 |
 |------|------|
-| 表示条件 | クラブログイン済み ＋ 担当者名簿が 1 名以上 ＋ 当該 clubId の作業者セッション未宣言 |
-| 非表示 | `/club/login`、学校/監査人なりすまし閲覧、担当者 0 名 |
+| 表示条件 | **作業者PW** でクラブログイン済み ＋ 担当者名簿が 1 名以上 ＋ 当該 clubId の作業者セッション未宣言 |
+| 非表示 | `/club/login`、**責任者PWログイン（`role: manager`）**、学校/監査人なりすまし閲覧、担当者 0 名 |
 | UI | チェックボックスで **複数選択** 可。「確定する」でセッション保存 |
 | 実装 | `ClubCurrentWorkersGate` → `ClubCurrentWorkersDialog`（`ClubAppShell` に組込み） |
 
@@ -535,6 +535,7 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 | クラブ名・ID | ヘッダーにクラブ名とクラブ ID（モノスペース） |
 | 監査ステータス | `useAuditorSettlementState` + `SettlementAuditStatusBadge`（未提出 / 監査中 / 差戻 / 承認済） |
 | 担当監査人 | 琥珀色バッジ **「未割当」** |
+| 役職／氏名 | `managerTitle` / `managerName` を部員数の上に各1行。未設定時は「—」 |
 | 部員数 | `useClubMemberCount` で表示 |
 | フッター | 「監査人登録画面から担当監査人を割り当ててください。」（遷移ボタンはなし） |
 
@@ -614,6 +615,42 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 - レイアウトは §8.2 ご契約情報と同型（項目名左・入力左端揃え）
 - **削除**: パスワード変更セクション（`ClubPasswordChangeSection`）およびメールアドレス変更ボタン・フォーム
 - ログイン情報セクションは **ログインIDの表示のみ**（変更不可）
+
+---
+
+## 9a. クラブ責任者ログインと決算監査フロー（二重ロック）
+
+**正本（詳細）**: `docs/system-grand-spec.md` §9、`docs/settlement-spec.md`  
+**画面**: `/club/settlement`（`src/app/club/settlement/page.tsx`）  
+**同期**: `src/lib/clubSettlementPortalSync.ts` / `src/lib/clubLoginSession.ts`
+
+### クラブ責任者認証
+
+| 項目 | 仕様 |
+|------|------|
+| 学校登録 | `/school/clubs/register` に「クラブ責任者（役職）」「クラブ責任者（氏名）」を必須追加。責任者用初期PW（英数字6桁）を自動発行し `kurasaokaikei-school-clubs` に保存 |
+| ログイン | 同一クラブIDで、作業者PW → `role: "worker"`／責任者PW → `role: "manager"`（`kurasaokaikei-current-club`） |
+| 権限 | worker＝入力・編集。manager＝**閲覧のみ**（登録・編集・削除不可）＋決算承認。作業者選定モーダルなし |
+| ヘッダー右端 | 責任者ログイン時、第1段右端に「役職：〇〇｜氏名：〇〇」を表示（`clubManagerIdentity`） |
+| 閲覧制御 | `ClubManagerReadOnlyShield` でメイン内の入力操作を抑止。`useClubSettlementLock` でも書き込みボタンを disabled |
+| 承認 UI | シェル上部の `ClubManagerApproveBanner`（「決算を承認する」／承認と同時に監査人へ提出）。部内承認待ちのときのみ活性 |
+
+### 決算ステータス遷移
+
+| ステップ | `club_auditor_audit_status` | ロック |
+|----------|----------------------------|--------|
+| 作業者入力中 | `not_started` | false |
+| 作業者が提出 | `awaiting_manager_approval`（部内承認待ち） | **true** |
+| 責任者が部内承認 | `in_review`（監査中） | true 維持 |
+| 監査人承認 | `approved` | true 維持 |
+| 監査人差戻 | `rejected` | **false**（再提出可） |
+
+| 項目 | 仕様 |
+|------|------|
+| 日々の取引 | 個別承認なし・即時反映 |
+| 双六 UI | `作成中 → 部内承認待ち → 監査中 → 承認済`（差戻し挿入可） |
+| 監査人 | `canAuditorActOnSettlement` はロック＋`in_review` のときのみ true |
+| イベント | `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` で各ポータル同期 |
 
 ---
 
@@ -720,6 +757,10 @@ CSV ファイルをアップロードした直後に **即時保存しない**�
 ### 2026-08-05
 
 1. **入出金登録・繰延タブ** — 繰延科目の説明文を差し替え（未収入金／未払金／預り金／前払費用。「今年度／来年度」表記）
+2. **決算・承認フロー** — 日々の取引は個別承認なしで即時反映。半期／年度末の決算提出時のみ全域ロック
+3. **クラブ責任者ログイン＋部内承認** — 学校クラブ登録に責任者役職・氏名・責任者用PWを追加。セッション `role: worker\|manager`。提出後は `awaiting_manager_approval`→責任者承認で `in_review`。双六は「作成中→部内承認待ち→監査中→承認済」
+4. **学校クラブカード** — `SchoolClubDashboardCard` / `SchoolUnassignedClubDashboardCard` の部員数の上に役職・氏名を各1行表示
+5. **責任者ポータルトップ** — 閲覧モードで「決算を承認する」＋説明文（承認と同時に監査人へ提出）。ヘッダー右端に役職・氏名。登録・編集・削除は不可
 
 1. **初期データ完全廃止** — デモ自動投入モジュール削除、空状態維持の防御的修正
 2. **部員 CSV 一括登録** — アップロード後プレビュー確認 → 登録する / キャンセル

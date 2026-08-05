@@ -24,11 +24,18 @@ export const CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT =
 
 export type AuditorAuditStatusValue =
   | "not_started"
+  | "awaiting_manager_approval"
   | "in_review"
   | "approved"
   | "rejected"
 
-export type HistoryStatus = "PREPARING" | "SUBMITTED" | "REJECTED" | "APPROVED"
+export type HistoryStatus =
+  | "PREPARING"
+  | "AWAITING_MANAGER"
+  | "IN_REVIEW"
+  | "SUBMITTED" // 旧データ互換（読込時に正規化）
+  | "REJECTED"
+  | "APPROVED"
 
 export type SettlementHistoryStep = {
   id: string
@@ -41,11 +48,92 @@ export type SettlementHistoryFlow = {
   currentIndex: number
 }
 
+/** 双六 UI: 作成中 → 部内承認待ち → 監査中 → 承認済（差戻しは挿入） */
 const DEFAULT_FLOW: SettlementHistoryStep[] = [
-  { id: "1", label: "未提出", status: "PREPARING" },
-  { id: "2", label: "監査中", status: "SUBMITTED" },
-  { id: "3", label: "承認済", status: "APPROVED" },
+  { id: "1", label: "作成中", status: "PREPARING" },
+  { id: "2", label: "部内承認待ち", status: "AWAITING_MANAGER" },
+  { id: "3", label: "監査中", status: "IN_REVIEW" },
+  { id: "4", label: "承認済", status: "APPROVED" },
 ]
+
+/** 決算提出区分（半期＝中間 / 年度末） */
+export type ClubSettlementPeriodKind = "mid_term" | "year_end"
+
+export const CLUB_SETTLEMENT_PERIOD_KEY = "club_settlement_period"
+
+export function makeClubSettlementPeriodKey(clubId: string): string {
+  return `${CLUB_SETTLEMENT_PERIOD_KEY}_${clubId}`
+}
+
+export function getClubSettlementPeriod(
+  clubId: string
+): ClubSettlementPeriodKind | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(makeClubSettlementPeriodKey(clubId))
+    if (raw === "mid_term" || raw === "year_end") return raw
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function setClubSettlementPeriod(
+  clubId: string,
+  period: ClubSettlementPeriodKind | null
+): void {
+  if (typeof window === "undefined") return
+  try {
+    const key = makeClubSettlementPeriodKey(clubId)
+    if (!period) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, period)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function getClubSettlementPeriodLabel(
+  period: ClubSettlementPeriodKind | null
+): string {
+  if (period === "mid_term") return "半期決算（中間）"
+  if (period === "year_end") return "年度末決算"
+  return "—"
+}
+
+/** 保存済み双六を新フロー（部内承認待ち）へ正規化 */
+function normalizeHistoryStepLabels(
+  steps: SettlementHistoryStep[]
+): SettlementHistoryStep[] {
+  const mapped = steps.map((s) => {
+    if (s.status === "PREPARING" && (s.label === "未提出" || !s.label)) {
+      return { ...s, label: "作成中", status: "PREPARING" as const }
+    }
+    if (s.status === "SUBMITTED") {
+      if (s.label === "監査中") {
+        return { ...s, label: "監査中", status: "IN_REVIEW" as const }
+      }
+      return { ...s, label: "部内承認待ち", status: "AWAITING_MANAGER" as const }
+    }
+    if (s.status === "AWAITING_MANAGER") {
+      return { ...s, label: "部内承認待ち" }
+    }
+    if (s.status === "IN_REVIEW") {
+      return { ...s, label: "監査中" }
+    }
+    return s
+  })
+  const hasAwaiting = mapped.some((s) => s.status === "AWAITING_MANAGER")
+  const hasInReview = mapped.some((s) => s.status === "IN_REVIEW")
+  const hasReject = mapped.some((s) => s.status === "REJECTED")
+  // 旧デフォルト3ステップのみを4ステップへ置換（差戻履歴は維持）
+  if (!hasAwaiting && !hasInReview && !hasReject && mapped.length <= 3) {
+    return [...DEFAULT_FLOW]
+  }
+  return mapped
+}
 
 function dispatchLockChanged(): void {
   if (typeof window === "undefined") return
@@ -110,6 +198,7 @@ export function getAuditorAuditStatus(
   try {
     const raw = localStorage.getItem(makeClubAuditorAuditStatusKey(clubId))
     if (
+      raw === "awaiting_manager_approval" ||
       raw === "in_review" ||
       raw === "approved" ||
       raw === "rejected" ||
@@ -117,6 +206,7 @@ export function getAuditorAuditStatus(
     ) {
       return raw
     }
+    // 旧データ: ロック中かつステータス未設定は監査中扱い
     if (readClubSettlementLocked(clubId)) return "in_review"
     return "not_started"
   } catch {
@@ -137,11 +227,19 @@ export function setAuditorAuditStatus(
   }
 }
 
-/** 監査人が承認・差戻できるか（提出ロック中かつ監査中） */
+/** 監査人が承認・差戻できるか（部内承認後の監査中のみ） */
 export function canAuditorActOnSettlement(clubId: string): boolean {
   return (
     readClubSettlementLocked(clubId) &&
     getAuditorAuditStatus(clubId) === "in_review"
+  )
+}
+
+/** クラブ責任者が部内承認できるか（部内承認待ちかつロック中） */
+export function canManagerApproveSettlement(clubId: string): boolean {
+  return (
+    readClubSettlementLocked(clubId) &&
+    getAuditorAuditStatus(clubId) === "awaiting_manager_approval"
   )
 }
 
@@ -159,10 +257,11 @@ export function loadSettlementHistoryFlow(clubId: string): SettlementHistoryFlow
       steps?: SettlementHistoryStep[]
       currentIndex?: number
     }
-    const steps =
+    const steps = normalizeHistoryStepLabels(
       Array.isArray(parsed.steps) && parsed.steps.length > 0
         ? parsed.steps
         : [...DEFAULT_FLOW]
+    )
     const currentIndex =
       typeof parsed.currentIndex === "number"
         ? Math.min(Math.max(0, parsed.currentIndex), steps.length - 1)
@@ -188,35 +287,71 @@ export function saveSettlementHistoryFlow(
   }
 }
 
-/** クラブ提出時：ロック＋監査中＋履歴を提出済へ */
-export function applyClubSettlementSubmit(clubId: string): void {
+/**
+ * 作業者：決算提出（半期／年度末共通）
+ * → 全域ロック ON・部内承認待ち・双六を部内承認待ちへ
+ */
+export function applyClubSettlementSubmit(
+  clubId: string,
+  period: ClubSettlementPeriodKind = "year_end"
+): void {
+  setClubSettlementPeriod(clubId, period)
   const flow = loadSettlementHistoryFlow(clubId)
-  let nextIndex = flow.currentIndex + 1
-  if (nextIndex > flow.steps.length - 1) nextIndex = flow.steps.length - 1
-  saveSettlementHistoryFlow(clubId, { steps: flow.steps, currentIndex: nextIndex })
+  const steps = normalizeHistoryStepLabels(flow.steps)
+  const awaitingIdx = steps.findIndex((s) => s.status === "AWAITING_MANAGER")
+  const nextIndex = awaitingIdx >= 0 ? awaitingIdx : Math.min(1, steps.length - 1)
+  saveSettlementHistoryFlow(clubId, { steps, currentIndex: nextIndex })
   setClubSettlementLocked(clubId, true)
-  setAuditorAuditStatus(clubId, "in_review")
+  setAuditorAuditStatus(clubId, "awaiting_manager_approval")
 }
 
-/** 監査人差戻：ロック解除・差戻しステップを履歴末尾付近に追加 */
+/**
+ * クラブ責任者：部内承認
+ * → 監査中へ移行・ロック継続（監査人の承認・差戻が活性化）
+ */
+export function applyManagerApproveSettlement(clubId: string): boolean {
+  if (!canManagerApproveSettlement(clubId)) return false
+  const flow = loadSettlementHistoryFlow(clubId)
+  const steps = normalizeHistoryStepLabels(flow.steps)
+  const reviewIdx = steps.findIndex((s) => s.status === "IN_REVIEW")
+  const nextIndex =
+    reviewIdx >= 0 ? reviewIdx : Math.min(2, steps.length - 1)
+  saveSettlementHistoryFlow(clubId, { steps, currentIndex: nextIndex })
+  setClubSettlementLocked(clubId, true)
+  setAuditorAuditStatus(clubId, "in_review")
+  dispatchSettlementChanged()
+  return true
+}
+
+/** 監査人差戻：ロック解除・差戻しステップを履歴に挿入 */
 export function applyAuditorRejectToHistory(clubId: string): void {
   const flow = loadSettlementHistoryFlow(clubId)
   const { steps, currentIndex } = flow
   const current = steps[currentIndex]
-  if (!current || current.status !== "SUBMITTED") return
+  if (
+    !current ||
+    (current.status !== "IN_REVIEW" &&
+      current.status !== "AWAITING_MANAGER" &&
+      current.status !== "SUBMITTED")
+  ) {
+    return
+  }
 
-  const tail = steps.slice(currentIndex + 1)
-  const hasApprovedTail = tail.some((s) => s.status === "APPROVED")
   const base = steps.slice(0, currentIndex + 1)
   const rejectStep: SettlementHistoryStep = {
     id: genStepId(),
     label: "差戻し",
     status: "REJECTED",
   }
-  const resubmitStep: SettlementHistoryStep = {
+  const awaitingStep: SettlementHistoryStep = {
+    id: genStepId(),
+    label: "部内承認待ち",
+    status: "AWAITING_MANAGER",
+  }
+  const reviewStep: SettlementHistoryStep = {
     id: genStepId(),
     label: "監査中",
-    status: "SUBMITTED",
+    status: "IN_REVIEW",
   }
   const approvedStep: SettlementHistoryStep = {
     id: genStepId(),
@@ -224,12 +359,13 @@ export function applyAuditorRejectToHistory(clubId: string): void {
     status: "APPROVED",
   }
 
-  let nextSteps: SettlementHistoryStep[]
-  if (hasApprovedTail) {
-    nextSteps = [...base, rejectStep, resubmitStep, approvedStep]
-  } else {
-    nextSteps = [...base, rejectStep, resubmitStep, approvedStep]
-  }
+  const nextSteps = [
+    ...base,
+    rejectStep,
+    awaitingStep,
+    reviewStep,
+    approvedStep,
+  ]
 
   saveSettlementHistoryFlow(clubId, {
     steps: nextSteps,
@@ -315,9 +451,9 @@ export function auditorRejectSettlement(
   return true
 }
 
-/** 差戻後の再提出用：監査中へ戻す（クラブ提出ハンドラから呼ぶ） */
+/** 差戻後の再提出用：部内承認待ちへ（クラブ提出ハンドラから呼ぶ） */
 export function onClubResubmitAfterReject(clubId: string): void {
-  setAuditorAuditStatus(clubId, "in_review")
+  setAuditorAuditStatus(clubId, "awaiting_manager_approval")
 }
 
 export function getAuditorAuditStatusLabel(
@@ -326,17 +462,28 @@ export function getAuditorAuditStatusLabel(
 ): string {
   if (status === "approved") return "承認済"
   if (status === "rejected") return "差戻"
-  if (status === "in_review" || isSubmitted) return "監査中"
+  if (status === "awaiting_manager_approval") return "部内承認待ち"
+  if (status === "in_review") return "監査中"
+  if (isSubmitted) return "部内承認待ち"
   return "未提出"
 }
 
-export type AuditorAuditBadgeVariant = "muted" | "navy" | "rejected" | "approved"
+export type AuditorAuditBadgeVariant =
+  | "muted"
+  | "navy"
+  | "amber"
+  | "rejected"
+  | "approved"
 
-/** 未提出（旧作成中） */
+/** 部内承認待ちバッジ */
+export const SETTLEMENT_AWAITING_MANAGER_BADGE_CLASSES =
+  "border-amber-600/30 bg-amber-500 text-white"
+
+/** 監査進捗バケット「未提出」（双六の「作成中」に対応） */
 export const SETTLEMENT_NOT_SUBMITTED_BADGE_CLASSES =
   "border-red-600/30 bg-red-500 text-white"
 
-/** 監査中（旧提出済） */
+/** 監査進捗バケット「監査中」（双六の「提出済」＋ロック中に対応） */
 export const SETTLEMENT_IN_AUDIT_BADGE_CLASSES =
   "border-green-600/30 bg-green-600 text-white"
 
@@ -357,6 +504,8 @@ export function getAuditorAuditStatusBadgeVariant(
 ): AuditorAuditBadgeVariant {
   if (status === "approved") return "approved"
   if (status === "rejected") return "rejected"
-  if (status === "in_review" || isSubmitted) return "navy"
+  if (status === "awaiting_manager_approval") return "amber"
+  if (status === "in_review") return "navy"
+  if (isSubmitted) return "amber"
   return "muted"
 }

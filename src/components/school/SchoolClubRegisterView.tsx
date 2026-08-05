@@ -22,8 +22,11 @@ export function SchoolClubRegisterView() {
   const { registerClub, sortedClubs, isLoaded: clubsLoaded } = useSchoolClubs()
   const [selectedGroupId, setSelectedGroupId] = useState("")
   const [clubName, setClubName] = useState("")
+  const [managerTitle, setManagerTitle] = useState("")
+  const [managerName, setManagerName] = useState("")
   const [groupError, setGroupError] = useState<string | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
+  const [managerError, setManagerError] = useState<string | null>(null)
   const [listResetKey, setListResetKey] = useState(0)
   const [registeredClub, setRegisteredClub] = useState<SchoolClub | null>(null)
   const { requestConfirm, confirmProps } = useActionConfirmDialog()
@@ -62,6 +65,13 @@ export function SchoolClubRegisterView() {
       setNameError(null)
     }
 
+    if (!managerTitle.trim() || !managerName.trim()) {
+      setManagerError("クラブ責任者の役職と氏名を入力してください。")
+      valid = false
+    } else {
+      setManagerError(null)
+    }
+
     if (!valid) return
 
     const group = sortedGroups.find((g) => g.id === selectedGroupId)
@@ -72,6 +82,8 @@ export function SchoolClubRegisterView() {
         name: trimmedName,
         groupId: group.id,
         groupName: group.name,
+        managerTitle: managerTitle.trim(),
+        managerName: managerName.trim(),
       })
       if (!created) {
         setNameError(DUPLICATE_CLUB_NAME_ERROR)
@@ -79,6 +91,8 @@ export function SchoolClubRegisterView() {
       }
 
       setClubName("")
+      setManagerTitle("")
+      setManagerName("")
       setSelectedGroupId("")
       setListResetKey((k) => k + 1)
       setRegisteredClub(created)
@@ -92,10 +106,13 @@ export function SchoolClubRegisterView() {
         open={registeredClub !== null}
         onClose={() => setRegisteredClub(null)}
         title="クラブ登録が完了しました"
-        description={`「${registeredClub?.name ?? ""}」のログイン情報を担当者へ共有してください。`}
+        description={`「${registeredClub?.name ?? ""}」のログイン情報を担当者・責任者へ共有してください。`}
         loginIdLabel="ログインID（クラブID）"
         loginId={registeredClub?.id ?? ""}
         initialPassword={registeredClub?.initialPassword ?? ""}
+        managerTitle={registeredClub?.managerTitle ?? ""}
+        managerName={registeredClub?.managerName ?? ""}
+        managerInitialPassword={registeredClub?.managerInitialPassword ?? ""}
       />
       <div className="w-full max-w-none">
         <div className="mb-6">
@@ -187,6 +204,55 @@ export function SchoolClubRegisterView() {
               ) : null}
             </div>
 
+            <div>
+              <label
+                htmlFor="managerTitle"
+                className="mb-1.5 flex items-center text-sm font-medium text-[#374151]"
+              >
+                クラブ責任者（役職）
+                <SchoolFormRequiredBadge />
+              </label>
+              <input
+                id="managerTitle"
+                type="text"
+                value={managerTitle}
+                onChange={(e) => {
+                  setManagerTitle(e.target.value)
+                  setManagerError(null)
+                }}
+                disabled={!isLoaded}
+                placeholder="例：顧問、監督"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="managerName"
+                className="mb-1.5 flex items-center text-sm font-medium text-[#374151]"
+              >
+                クラブ責任者（氏名）
+                <SchoolFormRequiredBadge />
+              </label>
+              <input
+                id="managerName"
+                type="text"
+                value={managerName}
+                onChange={(e) => {
+                  setManagerName(e.target.value)
+                  setManagerError(null)
+                }}
+                disabled={!isLoaded}
+                placeholder="例：山田 太郎"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005088]/40"
+              />
+              {managerError ? (
+                <p className="mt-2 text-sm text-[#EF4444]" role="alert">
+                  {managerError}
+                </p>
+              ) : null}
+            </div>
+
             <div className="pt-2">
               <Button
                 type="submit"
@@ -194,7 +260,9 @@ export function SchoolClubRegisterView() {
                   !isLoaded ||
                   sortedGroups.length === 0 ||
                   !trimmedName ||
-                  isDuplicateName
+                  isDuplicateName ||
+                  !managerTitle.trim() ||
+                  !managerName.trim()
                 }
                 className="rounded-lg px-6 py-2.5 text-white hover:opacity-90"
                 style={{ backgroundColor: SCHOOL_BRAND_NAVY }}

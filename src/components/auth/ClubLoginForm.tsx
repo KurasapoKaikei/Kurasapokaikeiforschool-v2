@@ -60,6 +60,10 @@ export function ClubLoginForm({
       </h2>
       <p className="mb-8 text-center text-sm text-[#6B7280]">
         クラブIDとパスワードを入力してください
+        <br />
+        <span className="text-xs">
+          作業者用PW＝入力・編集／責任者用PW＝閲覧・部内承認
+        </span>
       </p>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">

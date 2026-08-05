@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Check, Copy, X } from "lucide-react"
 import { SCHOOL_BRAND_NAVY } from "@/lib/schoolTheme"
 
-type CopyField = "loginId" | "password" | "all"
+type CopyField =
+  | "loginId"
+  | "password"
+  | "managerPassword"
+  | "managerInfo"
+  | "all"
 
 type SchoolLoginCredentialsModalProps = {
   open: boolean
@@ -16,10 +21,34 @@ type SchoolLoginCredentialsModalProps = {
   loginIdLabel?: string
   loginId: string
   initialPassword: string
+  /** クラブ責任者（役職） */
+  managerTitle?: string
+  /** クラブ責任者（氏名） */
+  managerName?: string
+  /** 責任者用初期PW */
+  managerInitialPassword?: string
 }
 
-function formatBulkCopyText(loginId: string, initialPassword: string): string {
-  return `ログインID: ${loginId}\n初期パスワード: ${initialPassword}`
+function formatBulkCopyText(props: {
+  loginId: string
+  initialPassword: string
+  managerTitle?: string
+  managerName?: string
+  managerInitialPassword?: string
+}): string {
+  const lines = [
+    `ログインID: ${props.loginId}`,
+    `作業者用初期パスワード: ${props.initialPassword}`,
+  ]
+  if (props.managerTitle || props.managerName) {
+    lines.push(
+      `クラブ責任者: ${[props.managerTitle, props.managerName].filter(Boolean).join(" ")}`
+    )
+  }
+  if (props.managerInitialPassword) {
+    lines.push(`責任者用初期パスワード: ${props.managerInitialPassword}`)
+  }
+  return lines.join("\n")
 }
 
 /** 登録完了時：ログインID・初期パスワードの表示とクリップボードコピー */
@@ -31,6 +60,9 @@ export function SchoolLoginCredentialsModal({
   loginIdLabel = "ログインID",
   loginId,
   initialPassword,
+  managerTitle = "",
+  managerName = "",
+  managerInitialPassword = "",
 }: SchoolLoginCredentialsModalProps) {
   const [copiedField, setCopiedField] = useState<CopyField | null>(null)
 
@@ -64,6 +96,8 @@ export function SchoolLoginCredentialsModal({
 
   if (!open || !mounted) return null
 
+  const managerLabel = [managerTitle, managerName].filter(Boolean).join(" ") || "—"
+
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
@@ -71,7 +105,7 @@ export function SchoolLoginCredentialsModal({
       aria-modal="true"
       aria-labelledby="login-credentials-title"
     >
-      <div className="flex w-full max-w-md flex-col rounded-lg border border-gray-200 bg-white shadow-xl">
+      <div className="flex w-full max-w-md flex-col rounded-lg border border-gray-200 bg-white shadow-xl max-h-[90vh]">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
           <h2
             id="login-credentials-title"
@@ -89,7 +123,7 @@ export function SchoolLoginCredentialsModal({
           </button>
         </div>
 
-        <div className="space-y-5 px-6 py-5">
+        <div className="space-y-5 px-6 py-5 overflow-y-auto">
           {description ? (
             <p className="text-sm text-[#6B7280]">{description}</p>
           ) : null}
@@ -102,11 +136,27 @@ export function SchoolLoginCredentialsModal({
               onCopy={() => copyText(loginId, "loginId")}
             />
             <CredentialRow
-              label="初期パスワード"
+              label="作業者用初期パスワード"
               value={initialPassword}
               copied={copiedField === "password"}
               onCopy={() => copyText(initialPassword, "password")}
             />
+            <CredentialRow
+              label="クラブ責任者（役職・氏名）"
+              value={managerLabel}
+              copied={copiedField === "managerInfo"}
+              onCopy={() => copyText(managerLabel, "managerInfo")}
+            />
+            {managerInitialPassword ? (
+              <CredentialRow
+                label="責任者用初期パスワード"
+                value={managerInitialPassword}
+                copied={copiedField === "managerPassword"}
+                onCopy={() =>
+                  copyText(managerInitialPassword, "managerPassword")
+                }
+              />
+            ) : null}
           </div>
 
           <Button
@@ -114,7 +164,16 @@ export function SchoolLoginCredentialsModal({
             variant="outline"
             className="w-full gap-2"
             onClick={() =>
-              copyText(formatBulkCopyText(loginId, initialPassword), "all")
+              copyText(
+                formatBulkCopyText({
+                  loginId,
+                  initialPassword,
+                  managerTitle,
+                  managerName,
+                  managerInitialPassword,
+                }),
+                "all"
+              )
             }
           >
             {copiedField === "all" ? (
@@ -138,7 +197,7 @@ export function SchoolLoginCredentialsModal({
         </div>
       </div>
     </div>,
-    document.body,
+    document.body
   )
 }
 

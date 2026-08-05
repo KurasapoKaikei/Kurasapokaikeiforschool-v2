@@ -26,6 +26,7 @@ function readLastActiveClub(): ActiveClubSession | null {
       id: parsed.id,
       name: parsed.name,
       groupNames: Array.isArray(parsed.groupNames) ? parsed.groupNames : [],
+      role: parsed.role === "manager" ? "manager" : "worker",
     }
   } catch {
     return null
@@ -49,7 +50,8 @@ export function resolveActiveClubSession(): ActiveClubSession | null {
     const session = {
       id: impersonated.id,
       name: impersonated.name,
-      groupNames: [],
+      groupNames: [] as string[],
+      role: "worker" as const,
     }
     writeLastActiveClub(session)
     return session

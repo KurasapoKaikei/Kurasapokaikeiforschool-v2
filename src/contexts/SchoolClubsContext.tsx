@@ -25,12 +25,16 @@ type RegisterClubInput = {
   name: string
   groupId: string
   groupName: string
+  managerTitle: string
+  managerName: string
 }
 
 type UpdateClubInput = {
   name?: string
   groupId?: string
   groupName?: string
+  managerTitle?: string
+  managerName?: string
 }
 
 type SchoolClubsContextValue = {
@@ -91,6 +95,7 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
     const id = generateUniqueClubId(prev)
     const order = prev.length > 0 ? Math.max(...prev.map((c) => c.order)) + 1 : 1
     const initialPassword = generateInitialPassword()
+    const managerInitialPassword = generateInitialPassword()
     const created: SchoolClub = {
       id,
       name: trimmedName,
@@ -100,6 +105,10 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
       order,
       initialPassword,
       password: initialPassword,
+      managerTitle: input.managerTitle.trim(),
+      managerName: input.managerName.trim(),
+      managerInitialPassword,
+      managerPassword: managerInitialPassword,
     }
     const next = [...prev, created]
     saveSchoolClubs(next)
@@ -127,6 +136,14 @@ export function SchoolClubsProvider({ children }: { children: ReactNode }) {
               name,
               groupIds: groupId ? [groupId] : [],
               groupNames: groupName ? [groupName] : [],
+              managerTitle:
+                input.managerTitle !== undefined
+                  ? input.managerTitle.trim()
+                  : c.managerTitle,
+              managerName:
+                input.managerName !== undefined
+                  ? input.managerName.trim()
+                  : c.managerName,
             }
           : c
       )

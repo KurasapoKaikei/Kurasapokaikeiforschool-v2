@@ -177,7 +177,7 @@ export function AuditorClubReviewView({ clubId }: AuditorClubReviewViewProps) {
           </div>
           {!canReview ? (
             <p className="mt-2 text-xs text-[#6B7280]">
-              クラブから決算が「監査中」になると、承認・差戻しが可能になります。
+              クラブ責任者が部内承認し「監査中」になると、承認・差戻しが可能になります。
             </p>
           ) : null}
         </div>

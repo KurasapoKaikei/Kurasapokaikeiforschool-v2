@@ -48,10 +48,13 @@
 ### 1.3 ポータル間連携（決算監査フロー）
 
 ```
-[クラブ] 決算データ提出（applyClubSettlementSubmit）
+[クラブ作業者] 決算データ提出（applyClubSettlementSubmit）
     ↓ is_club_settlement_locked_{clubId} = "true"
-    ↓ club_auditor_audit_status_{clubId} = "in_review"
-[監査人] 査読 → 承認 or 差戻
+    ↓ club_auditor_audit_status_{clubId} = "awaiting_manager_approval"（部内承認待ち）
+[クラブ責任者] 部内承認（applyManagerApproveSettlement）※ role: manager またはなりすまし
+    ↓ ロック true 維持
+    ↓ club_auditor_audit_status_{clubId} = "in_review"（監査中）
+[監査人] 査読 → 承認 or 差戻（canAuditorActOnSettlement = ロック＋in_review のときのみ）
     ↓ 承認: approved + ロック維持
     ↓ 差戻: rejected + ロック解除
 [学校管理者] 全校俯瞰（監査進捗サマリー）・最終完全ロック（承認済年度）
@@ -175,7 +178,7 @@
 |------|-----|
 | 背景色 | 非常に薄いグレー `#FAFAFA`（または白） |
 | 左側 | 学校名（大学名）— `text-xl font-bold text-[#4B5563]` ＋ 会計期間（小さめグレー） |
-| 右側（**クラブポータルのみ**） | **現在の作業者：〇〇〇** — 作業者選択モーダルで宣言した担当者名（複数時は「、」区切り）。未宣言時は「未選択」 |
+| 右側（**クラブポータルのみ**） | 作業者PW：**現在の作業者：〇〇〇**（未宣言時「未選択」）。責任者PW：**役職：〇〇｜氏名：〇〇**（選定モーダルなし） |
 
 > **実装定数との対応**: デモ実装では `SCHOOL_DISPLAY_NAME`（`"東京都市大学"`）および `SCHOOL_FISCAL_PERIOD`（`"2026.8.1～2027.7.31"`）を `src/lib/schoolTheme.ts` で保持。本番・デモ切替時は `schoolHeaderDisplay.ts` / `currentSchool.ts` 経由で表示。クラブの作業者表示は `ClubPortalHeader` → `UserInfoContext.currentWorkers`（`kurasaokaikei-current-workers`）。
 
@@ -332,7 +335,7 @@ lg以上における画面配置イメージ：
 | 内部バケット | 表示名称 | localStorage 正本の判定 | クラブ側データロック | 意味 |
 |--------------|----------|------------------------|---------------------|------|
 | **`preparing`** | **未提出** | `club_auditor_audit_status` が `not_started`（または未設定）かつ `is_club_settlement_locked` が `false` | なし | クラブが編集・提出可能 |
-| **`in_audit`** | **監査中** | ロック `true` または監査状態 `in_review` | **一次ロック** | 提出済み、監査人審査中 |
+| **`in_audit`** | **監査中** | ロック `true` または監査状態 `awaiting_manager_approval` / `in_review` | **一次ロック** | 提出済み（部内承認待ち含む）〜監査人審査中 |
 | **`rejected`** | **差戻し** | 監査状態 `rejected`（ロックは `false`） | 解除（修正・再提出可能） | 監査人コメント付きでクラブへ通知 |
 | **`approved`** | **承認済** | 監査状態 `approved`（ロック `true` 維持） | **監査完了ロック** | 監査人承認済。編集原則禁止 |
 
@@ -508,7 +511,7 @@ lg以上における画面配置イメージ：
 
 ### 8.3 ダッシュボードカード（`AuditorClubDashboardCard`）
 
-**表示（2026-06-20 改定）**: ハイライト枠内に **監査ステータス**（`SettlementAuditStatusBadge`）のみ。「当期の決算提出状況」行は削除（学校管理者ポータルと統一）。部員数・下部アクションボタンは従来どおり。
+**表示（2026-06-20 改定）**: ハイライト枠内に **監査ステータス**（`SettlementAuditStatusBadge`）のみ。「当期の決算提出状況」行は削除（学校管理者ポータルと統一）。部員数の上に **役職**・**氏名** を各1行で表示。下部アクションボタンは従来どおり。
 
 **下部 3 ボタン（2:1:1 = 50%:25%:25%）**:
 
@@ -535,41 +538,69 @@ lg以上における画面配置イメージ：
 
 ---
 
-## 9. 決算提出フローと全域ロック機構
+## 9. 決算提出フローと全域ロック機構（二重ロック＋クラブ責任者）
+
+### 9.0 運用スキーム（日次 vs 決算）
+
+| タイミング | 承認 | データ反映 | ロック |
+|------------|------|------------|--------|
+| **日々の取引登録**（入出金・集金・振替等） | **不要**（個別の承認待ち・pending なし） | **即時**（出納帳・集計へ反映） | なし（未提出時） |
+| **半期／年度末の提出〜部内承認〜監査** | 作業者提出 → **責任者部内承認** → 監査人承認／差戻 | 提出時点の帳簿を確定対象とする | 提出後に全域ロック（差戻で解除） |
+
+### 9.0a クラブ責任者ログイン
+
+| 項目 | 仕様 |
+|------|------|
+| 学校登録 | `/school/clubs/register` に「クラブ責任者（役職）」「クラブ責任者（氏名）」必須。責任者用初期PW（英数字6桁）を自動発行し `kurasaokaikei-school-clubs` に保存 |
+| ログイン判定 | クラブID＋作業者PW → `role: "worker"`／クラブID＋責任者PW → `role: "manager"`（`kurasaokaikei-current-club`） |
+| 権限 | worker＝入力・編集・提出。manager＝閲覧＋決算承認のみ（`ClubManagerReadOnlyShield` + `useClubSettlementLock`） |
+| 承認 UI | シェル上部 `ClubManagerApproveBanner`（`awaiting_manager_approval` 時のみ活性）。承認と同時に監査人へ提出 |
 
 ### 9.1 localStorage キー（クラブ ID 末尾で完全分離）
 
 | キー | 値 | 用途 |
 |------|-----|------|
-| `is_club_settlement_locked_{clubId}` | `"true"` / `"false"` | 一次ロック・「監査中」表示 |
-| `club_auditor_audit_status_{clubId}` | `not_started` / `in_review` / `approved` / `rejected` | 監査バッジ・承認/差戻ボタン活性 |
-| `club_settlement_history_flow_{clubId}` | `{ steps, currentIndex }` | 双六 UI 履歴 |
+| `is_club_settlement_locked_{clubId}` | `"true"` / `"false"` | 全域ロック（提出後〜承認済／差戻で解除） |
+| `club_auditor_audit_status_{clubId}` | `not_started` / `awaiting_manager_approval` / `in_review` / `approved` / `rejected` | 監査バッジ・ボタン活性 |
+| `club_settlement_history_flow_{clubId}` | `{ steps, currentIndex }` | 双六 UI（作成中→部内承認待ち→監査中→承認済、差戻し挿入可） |
+| `club_settlement_period_{clubId}` | `mid_term` / `year_end` | 直近の提出区分（半期／年度末） |
 | `kurasaokaikei-school-club-settlement-status` | 学校側決算マップ | 学校ポータル一覧バッジ |
 
 **原則**: 状態キーは必ず `_{clubId}` 末尾で完全分離。グローバル共有禁止。
 
 ### 9.2 クラブ決算ページ（`/club/settlement`）
 
-`ClubSettlementView` — 縦並び:
+`src/app/club/settlement/page.tsx` — 縦並び:
 
-1. 小タイトル「決算」
+1. 小タイトル「決算」（現在ログイン role 表示）
 2. 担当監査人カード（`bg-gray-50 rounded-xl`）
-3. 決算ステータスカード（双六 UI + 「メッセージBOXへ ➔」）
-4. 提出ボタン（ロック時「決算データ提出済み（監査中）」disabled）
+3. 決算ステータスカード（双六 UI: **作成中 → 部内承認待ち → 監査中 → 承認済** + 「メッセージBOXへ ➔」）
+4. 提出区分（半期決算（中間）／年度末決算）— 作業者・未ロック時
+5. 作業者「決算データを提出する」／責任者「決算を承認する（部内承認）」
 
-### 9.3 提出時（`applyClubSettlementSubmit`）
+### 9.3 作業者提出（`applyClubSettlementSubmit(clubId, period)`）
 
-1. `is_club_settlement_locked_{clubId} = "true"`
-2. `club_auditor_audit_status_{clubId} = "in_review"`
-3. 双六 UI を「監査中」へ
-4. 学校側決算マップを `submitted` に同期
+1. `club_settlement_period_{clubId}` = `mid_term` | `year_end`
+2. `is_club_settlement_locked_{clubId} = "true"`
+3. `club_auditor_audit_status_{clubId} = "awaiting_manager_approval"`
+4. 双六 UI を「部内承認待ち」へ
+5. 学校側決算マップを `submitted` に同期
+6. `CLUB_SETTLEMENT_LOCK_CHANGED_EVENT` / `CLUB_AUDITOR_AUDIT_STATUS_CHANGED_EVENT` 発火
+
+### 9.3a 責任者部内承認（`applyManagerApproveSettlement(clubId)`）
+
+1. 前提: ロック true かつ `awaiting_manager_approval`（`canManagerApproveSettlement`）
+2. 監査状態 → `in_review`
+3. ロック **`true` 維持**
+4. 双六 → 「監査中」
+5. この時点で `canAuditorActOnSettlement` が true になり監査人の承認・差戻が活性
 
 ### 9.4 監査人承認（`auditorApproveSettlement`）
 
 1. 監査状態 → `approved`
 2. ロック **`true` 維持**（編集不可継続）
 3. 双六 → 承認済
-4. カード背景 `bg-gray-50`
+4. 部内承認前（`awaiting_manager_approval`）および未提出は承認・差戻ボタン **非活性**
 
 ### 9.5 監査人差戻（`auditorRejectSettlement`）
 
@@ -577,13 +608,15 @@ lg以上における画面配置イメージ：
 2. ロック → **`false`**（編集再開）
 3. 双六に差戻し履歴追加
 4. 理由はメッセージ BOX 経由（`sendAuditPortalMessage` で自動投稿）
+5. 作業者は修正のうえ再提出（再度 9.3 → 9.3a）
 
 ### 9.6 ロック時の UI 制限
 
-**ロック対象機能**（監査中）: ダッシュボード、入出金登録、集計・帳簿、集金管理、予実管理、設定
+**ロック対象機能**（部内承認待ち〜承認済）: 入出金登録、集計・帳簿、集金管理、予実管理、設定
 
-- 赤警告 `SettlementLockAlert`: 「当年度の決算は**監査中**のため…」
-- 全書き込みボタン `disabled={isLocked}` — `useClubSettlementLock()` hook
+- 赤警告 `SettlementLockAlert`（`bg-red-50 text-red-600 border-red-200`）: 部内承認待ち時は専用文言、それ以外は提出済／承認済文言
+- 書き込み抑止: `useClubSettlementLock()` — 決算ロック中 **または** `role === "manager"` で `disabled`
+- アラート表示判定のみ: `useClubSettlementLockedOnly()`（ストレージの決算ロック）
 
 ### 9.7 証憑管理（クラブ）
 

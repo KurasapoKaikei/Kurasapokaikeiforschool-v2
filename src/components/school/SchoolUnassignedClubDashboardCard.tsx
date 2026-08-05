@@ -78,6 +78,16 @@ export function SchoolUnassignedClubDashboardCard({
             未割当
           </span>
         </DataRow>
+        <DataRow label="役職">
+          <span className="font-medium text-[#374151]">
+            {club?.managerTitle?.trim() || "—"}
+          </span>
+        </DataRow>
+        <DataRow label="氏名">
+          <span className="font-medium text-[#374151]">
+            {club?.managerName?.trim() || "—"}
+          </span>
+        </DataRow>
         <DataRow label="部員数">
           <span className="font-semibold tabular-nums text-[#374151]">
             {memberCount}名

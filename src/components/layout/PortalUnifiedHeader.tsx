@@ -15,9 +15,14 @@ export type PortalUnifiedHeaderProps = {
   onLogout: () => void
   /**
    * クラブポータル第1段右端の「現在の作業者」表示名。
-   * 未宣言時は「未選択」。学校・監査人では渡さない。
+   * 未宣言時は「未選択」。学校・監査人・責任者ログインでは渡さない。
    */
   currentWorkerLabel?: string
+  /**
+   * 責任者ログイン時：第1段右端に役職・氏名を表示。
+   * 作業者ラベルと同時には出さない。
+   */
+  clubManagerIdentity?: { title: string; name: string } | null
 }
 
 /**
@@ -29,6 +34,7 @@ export function PortalUnifiedHeader({
   portalTitle,
   onLogout,
   currentWorkerLabel,
+  clubManagerIdentity,
 }: PortalUnifiedHeaderProps) {
   const brandColor = PORTAL_BRAND[portal]
   const { selectedYear, setSelectedYear, fiscalYears } = usePortalFiscalYear()
@@ -67,7 +73,24 @@ export function PortalUnifiedHeader({
               {hydrated ? fiscalPeriod : "\u00a0"}
             </span>
           </div>
-          {portal === "club" && currentWorkerLabel != null ? (
+          {portal === "club" && clubManagerIdentity != null ? (
+            <p
+              className="shrink-0 text-sm text-[#374151]"
+              aria-live="polite"
+            >
+              <span className="text-[#6B7280]">役職：</span>
+              <span className="font-medium">
+                {clubManagerIdentity.title || "—"}
+              </span>
+              <span className="mx-2 text-[#D1D5DB]" aria-hidden>
+                |
+              </span>
+              <span className="text-[#6B7280]">氏名：</span>
+              <span className="font-medium">
+                {clubManagerIdentity.name || "—"}
+              </span>
+            </p>
+          ) : portal === "club" && currentWorkerLabel != null ? (
             <p
               className="shrink-0 text-sm text-[#374151]"
               aria-live="polite"
