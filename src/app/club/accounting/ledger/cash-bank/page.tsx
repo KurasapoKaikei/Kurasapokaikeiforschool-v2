@@ -18,7 +18,10 @@ import {
 } from "@/utils/localStorage"
 import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
-import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import {
+  useClubSettlementLock,
+  useSettlementDateLock,
+} from "@/hooks/useClubSettlementLock"
 import {
   getCashLedgerFlowAmounts,
   transactionMatchesCashAccount,
@@ -88,12 +91,15 @@ export default function LedgerCashBankPage() {
   const [startDate, setStartDate] = useState<string>(getFiscalYearStart())
   const [endDate, setEndDate] = useState<string>(getTodayString())
   const [isInitialized, setIsInitialized] = useState(false)
-  const isLocked = useClubSettlementLock()
+  const isFullyLocked = useClubSettlementLock()
+  const dateLock = useSettlementDateLock()
+  const isTxLocked = (date: string) =>
+    isFullyLocked || dateLock.isDateLocked(date)
 
   const refreshTransactions = () => setTransactions(getTransactions())
 
-  const handleDelete = (id: string) => {
-    if (isLocked) return
+  const handleDelete = (id: string, date: string) => {
+    if (isTxLocked(date)) return
     if (!confirm("この取引を削除しますか？")) return
     if (deleteTransaction(id)) {
       refreshTransactions()
@@ -136,7 +142,7 @@ export default function LedgerCashBankPage() {
   }
 
   const handleEdit = (t: Transaction) => {
-    if (isLocked) return
+    if (isTxLocked(t.date)) return
     // 振替の片側レコードは登録履歴と同じく「振替専用編集モード」へ遷移する
     if (isTransferLeg(t)) {
       const pair = resolveTransferPair(t)
@@ -152,7 +158,7 @@ export default function LedgerCashBankPage() {
     router.push(getEditUrl(t, editReturnTo))
   }
   const handleOpenCollection = (t: Transaction) => {
-    if (isLocked) return
+    if (isTxLocked(t.date)) return
     if (t.type !== "collection" || !t.collectionMemberId) return
     const month = Number(t.date.slice(5, 7))
     const params = new URLSearchParams()
@@ -385,7 +391,7 @@ export default function LedgerCashBankPage() {
             現金・預金出納帳
           </h2>
           <p className="text-sm text-[#6B7280] mt-1">現金・預金科目の入出金一覧</p>
-          <SettlementLockAlert isLocked={isLocked} className="mt-3" />
+          <SettlementLockAlert className="mt-3" />
         </div>
 
         {/* 検索・絞り込み */}
@@ -621,7 +627,7 @@ export default function LedgerCashBankPage() {
                           row.transaction.type === "collection" ? (
                             <button
                               type="button"
-                              disabled={isLocked}
+                              disabled={isTxLocked(row.transaction.date)}
                               onClick={() => handleOpenCollection(row.transaction!)}
                               className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title="集金タブへ移動"
@@ -632,7 +638,7 @@ export default function LedgerCashBankPage() {
                           ) : (
                             <button
                               type="button"
-                              disabled={isLocked}
+                              disabled={isTxLocked(row.transaction.date)}
                               onClick={() => handleEdit(row.transaction!)}
                               className="p-1.5 rounded hover:bg-[#68A384]/20 text-[#68A384] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title={isCsvLinkedTransaction(row.transaction) ? "CSV一括編集へ" : "明細を編集"}
@@ -652,8 +658,10 @@ export default function LedgerCashBankPage() {
                         ) : row.transaction ? (
                           <button
                             type="button"
-                            disabled={isLocked}
-                            onClick={() => handleDelete(row.transactionId!)}
+                            disabled={isTxLocked(row.transaction.date)}
+                            onClick={() =>
+                              handleDelete(row.transactionId!, row.transaction!.date)
+                            }
                             className="p-1.5 rounded hover:bg-red-100 text-red-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                             title="削除"
                             aria-label="削除"

@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import { SchoolClubDashboardListSection } from "@/components/school/SchoolClubDashboardListSection"
-import { SchoolClubSettlementActions } from "@/components/school/SchoolClubSettlementActions"
 import { SCHOOL_BRAND_NAVY, SCHOOL_PAGE_TITLES, SCHOOL_ROUTES } from "@/lib/schoolTheme"
 import { Button } from "@/components/ui/button"
 
@@ -28,7 +27,6 @@ export function SchoolClubListView() {
             <Link href={SCHOOL_ROUTES.clubRegister}>クラブを登録する</Link>
           </Button>
         </div>
-        <SchoolClubSettlementActions />
         <SchoolClubDashboardListSection />
       </div>
     </div>

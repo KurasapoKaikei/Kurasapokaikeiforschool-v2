@@ -10,7 +10,10 @@ import {
 } from "@/utils/localStorage"
 import { getEditUrl } from "@/utils/transactionEditPath"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
-import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import {
+  useClubSettlementLock,
+  useSettlementDateLock,
+} from "@/hooks/useClubSettlementLock"
 import { formatDateDisplay } from "@/utils/dateDisplay"
 import {
   DEFERRED_ACCOUNT_ORDER,
@@ -54,7 +57,10 @@ export default function LedgerDeferredPage() {
   const router = useRouter()
   const pathname = usePathname()
   const editReturnTo = pathname
-  const isLocked = useClubSettlementLock()
+  const isFullyLocked = useClubSettlementLock()
+  const dateLock = useSettlementDateLock()
+  const isTxLocked = (date: string) =>
+    isFullyLocked || dateLock.isDateLocked(date)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accountFilter, setAccountFilter] = useState<DeferredLedgerAccount>("all")
 
@@ -156,7 +162,7 @@ export default function LedgerDeferredPage() {
   }, [transactions, accountFilter])
 
   const handleDelete = (row: DeferredRow) => {
-    if (isLocked) return
+    if (isTxLocked(row.transaction.date)) return
     const hasSettlements = row.settlementTransactions.length > 0
     const message = hasSettlements
       ? "この繰延計上と、紐づく精算を削除しますか？"
@@ -169,7 +175,7 @@ export default function LedgerDeferredPage() {
   }
 
   const handleEdit = (t: Transaction) => {
-    if (isLocked) return
+    if (isTxLocked(t.date)) return
     router.push(getEditUrl(t, editReturnTo))
   }
 
@@ -189,7 +195,7 @@ export default function LedgerDeferredPage() {
           <p className="text-sm text-[#6B7280] mt-1">
             未収入金・未払金・預り金・前払費用の計上・精算台帳
           </p>
-          <SettlementLockAlert isLocked={isLocked} className="mt-3" />
+          <SettlementLockAlert className="mt-3" />
         </div>
 
         <div
@@ -309,7 +315,7 @@ export default function LedgerDeferredPage() {
                     <td className="px-2 py-2.5 text-center border-r border-gray-200">
                       <button
                         type="button"
-                        disabled={isLocked}
+                        disabled={isTxLocked(row.transaction.date)}
                         onClick={() => handleEdit(row.transaction)}
                         className="inline-flex p-1 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="編集"
@@ -321,7 +327,7 @@ export default function LedgerDeferredPage() {
                     <td className="px-2 py-2.5 text-center">
                       <button
                         type="button"
-                        disabled={isLocked}
+                        disabled={isTxLocked(row.transaction.date)}
                         onClick={() => handleDelete(row)}
                         className="inline-flex p-1 rounded-md text-[#EF4444] hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="削除"

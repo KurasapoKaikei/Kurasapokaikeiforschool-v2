@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { SchoolAuditPeriodStatusCard } from "@/components/school/SchoolAuditPeriodStatusCard"
 import { SchoolAuditProgressSummary } from "@/components/school/SchoolAuditProgressSummary"
 import { SchoolContractStatusSummaryCard } from "@/components/school/SchoolContractStatusSummaryCard"
 import { usePortalFiscalYear } from "@/contexts/PortalFiscalYearContext"
@@ -154,6 +155,10 @@ export function SchoolMypageView() {
           </div>
         ) : (
           <>
+            <SchoolAuditPeriodStatusCard
+              className="mb-6"
+              idleHint="サイドメニュー「監査」で提出区分と期限を設定して通知すると、ここに監査期間中のステータスが表示されます。"
+            />
             <SchoolAuditProgressSummary />
 
             <div className="mt-6 flex flex-col gap-6">

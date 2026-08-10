@@ -510,25 +510,75 @@ export function formatPortalMessageDateTime(iso: string): string {
   return `${date} ${time}`
 }
 
-/** 全クラブへ決算提出期限通知（メッセージBOXへ自動投稿） */
-export function sendSettlementDeadlineNotice(): PortalMessage {
-  const deadline = "2026年7月31日"
-  return sendPortalMessage({
-    subject: "【重要】会計年度末 決算データ提出期限のお知らせ",
+function formatSettlementDeadlineJa(isoDate: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate ?? "").trim())
+  if (!m) return isoDate
+  return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`
+}
+
+/** 学校管理者からの決算提出期限通知の区分 */
+export type SettlementDeadlineNoticePeriod = "mid_term" | "year_end"
+
+function settlementDeadlinePeriodLabel(
+  period: SettlementDeadlineNoticePeriod
+): string {
+  return period === "mid_term" ? "半期決算（中間）" : "年度末決算"
+}
+
+/**
+ * 全クラブ・全監査人へ決算提出期限通知（メッセージBOXへ自動投稿）
+ * @param period 半期決算 / 年度末決算
+ * @param deadlineDate 決算データ提出期限（YYYY-MM-DD）
+ * @param auditCompletionDate 監査完了期限（YYYY-MM-DD）
+ */
+export function sendSettlementDeadlineNotice(
+  period: SettlementDeadlineNoticePeriod,
+  deadlineDate: string,
+  auditCompletionDate: string
+): { clubMessage: PortalMessage; auditorMessage: PortalMessage } {
+  const periodLabel = settlementDeadlinePeriodLabel(period)
+  const deadline = formatSettlementDeadlineJa(deadlineDate)
+  const auditDeadline = formatSettlementDeadlineJa(auditCompletionDate)
+  const subject = `【重要】${periodLabel} 提出期限のお知らせ`
+  const sharedBody = [
+    "学校管理者より、決算データ提出期限のご案内です。",
+    "",
+    `■対象: ${periodLabel}`,
+    `■決算データ提出期限: ${deadline}`,
+    `■監査完了期限: ${auditDeadline}`,
+  ]
+  const clubMessage = sendPortalMessage({
+    subject,
     body: [
-      "学校管理者より、決算データ提出期限のご案内です。",
-      "",
-      `■提出期限: ${deadline}`,
-      "■提出方法: クラブポータルのダッシュボードより「決算データを学校へ提出する」を実行してください。",
+      ...sharedBody,
+      "■提出方法: クラブポータルの「決算」画面より、上記の提出区分を選択して提出してください。",
+      "　提出後はクラブ責任者の部内承認を経て、監査人の査読へ進みます。",
       "",
       "期限内に提出がない場合、年度繰越処理が遅れる可能性があります。",
-      "ご不明点は本メッセージBOXより学生支援課までお問い合わせください。",
+      "ご不明点は本メッセージBOXより学校管理者までお問い合わせください。",
     ].join("\n"),
-    targetClubId: "all",
+    targetClubId: ALL_CLUBS_TARGET_ID,
     targetClubName: "全クラブ",
     kind: "settlement_deadline",
     sender: "school",
+    audience: "club",
   })
+  const auditorMessage = sendPortalMessage({
+    subject,
+    body: [
+      ...sharedBody,
+      "■ご対応: 担当クラブの提出・部内承認後、監査人ポータルより査読（承認／差戻）を行ってください。",
+      "",
+      "監査完了期限までにご対応をお願いいたします。",
+      "ご不明点は本メッセージBOXより学校管理者までお問い合わせください。",
+    ].join("\n"),
+    targetClubId: ALL_AUDITORS_TARGET_ID,
+    targetClubName: "全監査人",
+    kind: "settlement_deadline",
+    sender: "school",
+    audience: "auditor",
+  })
+  return { clubMessage, auditorMessage }
 }
 
 /** クラサポ（システム）からの通知用（将来の自動配信） */

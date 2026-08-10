@@ -18,11 +18,13 @@ import {
   type SettlementHistoryStep,
 } from "@/lib/clubSettlementPortalSync"
 import { useClubSession } from "@/contexts/ClubSessionContext"
+import { usePortalFiscalYearOptional } from "@/contexts/PortalFiscalYearContext"
 import { useClubSettlementLockedOnly } from "@/hooks/useClubSettlementLock"
 import { setClubSettlementStatus, submitClubSettlement } from "@/lib/schoolClubSettlement"
 import { clubPath } from "@/lib/routes"
 import { canActAsClubManager } from "@/lib/clubPortalAccess"
 import { getClubLoginRole } from "@/lib/clubLoginSession"
+import { parsePortalFiscalYearLabel } from "@/lib/schoolCategoryUsage"
 
 export default function ClubSettlementPage() {
   const { activeClub } = useClubSession()
@@ -36,6 +38,8 @@ export default function ClubSettlementPage() {
     useState<ReturnType<typeof getAuditorAuditStatus>>("not_started")
   const [role, setRole] = useState(getClubLoginRole())
   const isSettlementLocked = useClubSettlementLockedOnly()
+  const portalFiscalYear = usePortalFiscalYearOptional()
+  const fiscalYear = parsePortalFiscalYearLabel(portalFiscalYear?.selectedYear)
 
   const syncFromStorage = useCallback(() => {
     if (!clubId) return
@@ -72,11 +76,11 @@ export default function ClubSettlementPage() {
 
   const handleSubmit = () => {
     const periodLabel = getClubSettlementPeriodLabel(periodKind)
-    if (
-      !confirm(
-        `${periodLabel}のデータを提出しますか？提出後は全域ロックされ、クラブ責任者の部内承認待ちになります。`
-      )
-    ) {
+    const lockHint =
+      periodKind === "mid_term"
+        ? "提出後は上期（4/1〜9/30）のデータがロックされ、下期は引き続き入力できます。クラブ責任者の部内承認待ちになります。"
+        : "提出後は当年度全体がロックされ、クラブ責任者の部内承認待ちになります。"
+    if (!confirm(`${periodLabel}のデータを提出しますか？${lockHint}`)) {
       return
     }
     try {
@@ -84,15 +88,17 @@ export default function ClubSettlementPage() {
         if (!submitClubSettlement(activeClub.id)) {
           setClubSettlementStatus(activeClub.id, "submitted")
         }
-        applyClubSettlementSubmit(activeClub.id, periodKind)
+        applyClubSettlementSubmit(activeClub.id, periodKind, fiscalYear)
       }
       alert(
-        `${periodLabel}を提出しました。責任者の部内承認をお待ちください（この間、登録・編集・削除はできません）。`
+        periodKind === "mid_term"
+          ? `${periodLabel}を提出しました。上期データはロックされ、下期は入力可能です。責任者の部内承認をお待ちください。`
+          : `${periodLabel}を提出しました。責任者の部内承認をお待ちください（この間、登録・編集・削除はできません）。`
       )
       syncFromStorage()
     } catch {
       if (activeClub) {
-        applyClubSettlementSubmit(activeClub.id, periodKind)
+        applyClubSettlementSubmit(activeClub.id, periodKind, fiscalYear)
       }
       syncFromStorage()
     }
@@ -221,7 +227,7 @@ export default function ClubSettlementPage() {
               半期または年度末の確認が完了したら提出してください。
               <br />
               <span className="text-red-500 font-medium">
-                ※提出後は全域ロックされ、責任者の部内承認待ちになります。
+                ※半期提出時は上期のみ期間ロック、年度末提出時は年度全体がロックされ、責任者の部内承認待ちになります。
               </span>
             </p>
             <div className="mb-2 space-y-2">

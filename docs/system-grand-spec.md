@@ -233,11 +233,16 @@
 
 ### 5.2 画面構成（上から下）
 
-#### ① 監査進捗サマリー（全幅）
+#### ① 現在のステータス（全幅）
 
-コンポーネント: `SchoolAuditProgressSummary` — §6 参照。
+コンポーネント: `SchoolAuditPeriodStatusCard`。監査期間中／監査期間外のみ表示（設定・通知操作は `/school/audit`）。
 
-#### ② メインメニュー（1:1 等高グリッド）
+#### ② 監査進捗サマリー（全幅）
+
+コンポーネント: `SchoolAuditProgressSummary` — §6 参照。  
+（提出期限の設定・通知・期間解除・年度繰越はサイドメニュー「監査」「繰越」。§5.2.1 参照）
+
+#### ③ メインメニュー（1:1 等高グリッド）
 
 大画面（`lg` 以上）において、左右50%ずつ（1:1）に分割する **完全な等高グリッド構造** を採用する。
 
@@ -261,6 +266,34 @@ lg以上における画面配置イメージ：
 |------|---------------|------|
 | **左半分（50%）** | `lg:grid-cols-2` の第1列 | 3 等分メニューカード（縦一列） |
 | **右半分（50%）** | 第2列 | 契約状況カード（`h-full` で左と高さ同期） |
+
+### 5.2.1 監査・繰越（サイドメニュー）
+
+サイドメニューは「ポータルトップ」の直下に **監査** → **繰越** の順で配置する（`SchoolSidebar`）。
+
+#### 監査（`/school/audit`）
+
+コンポーネント: `SchoolAuditPeriodView`
+
+| 項目 | 仕様 |
+|------|------|
+| 提出区分 | 半期決算（中間）／年度末決算 |
+| 決算データ提出期限 | 日付指定（会計年度内） |
+| 監査完了期限 | 日付指定（提出期限以降・会計年度内） |
+| 通知 | 「全クラブ・全監査人に通知」— `sendSettlementDeadlineNotice` がクラブ宛て・監査人宛て各1通を投稿 |
+| ステータス表示（上部） | **監査期間中**／**監査期間外**。期間中は提出区分・両期限を強調表示。本日≦監査完了期限なら監査期間中。設定フォームの上に全幅表示 |
+| 監査期間解除 | 通知ボタンの下に「監査期間を解除」。`clearSchoolSettlementNoticeWindow()` |
+| 保存キー | `kurasaokaikei-school-settlement-notice-window`（period / deadlineDate / auditCompletionDate） |
+
+半期・年度末の決算提出は学校管理者が期限を指定して指示し、クラブ側の提出→責任者部内承認→監査人査読のフローで進める。
+
+#### 繰越（`/school/rollover`）
+
+コンポーネント: `SchoolRolloverView`
+
+| 項目 | 仕様 |
+|------|------|
+| 年度繰越 | 全クラブ承認済のときのみ「2026年度への年度繰越処理を実行」が活性 |
 
 ### 5.3 【左半分（50%幅）】3 等分メニューカード
 
@@ -560,13 +593,20 @@ lg以上における画面配置イメージ：
 
 | キー | 値 | 用途 |
 |------|-----|------|
-| `is_club_settlement_locked_{clubId}` | `"true"` / `"false"` | 全域ロック（提出後〜承認済／差戻で解除） |
+| `locked_period_{clubId}` | `H1` / `FULL` / `NONE` | 期間ロック種別（半期=上期のみ / 年度末=全体） |
+| `locked_start_date_{clubId}` / `locked_end_date_{clubId}` | `YYYY-MM-DD` | ロック対象日付範囲 |
+| `locked_fiscal_year_{clubId}` | 例: `2026` | ロック対象会計年度の期首年 |
+| `is_club_settlement_locked_{clubId}` | `"true"` / `"false"` | 互換フラグ（H1/FULL 時 true。監査バッジ・提出済判定） |
 | `club_auditor_audit_status_{clubId}` | `not_started` / `awaiting_manager_approval` / `in_review` / `approved` / `rejected` | 監査バッジ・ボタン活性 |
 | `club_settlement_history_flow_{clubId}` | `{ steps, currentIndex }` | 双六 UI（作成中→部内承認待ち→監査中→承認済、差戻し挿入可） |
 | `club_settlement_period_{clubId}` | `mid_term` / `year_end` | 直近の提出区分（半期／年度末） |
 | `kurasaokaikei-school-club-settlement-status` | 学校側決算マップ | 学校ポータル一覧バッジ |
 
 **原則**: 状態キーは必ず `_{clubId}` 末尾で完全分離。グローバル共有禁止。
+
+**期間ロック範囲（会計年度 N）**:
+- `H1`（半期提出）: `N-04-01`〜`N-09-30` の取引のみ登録・編集・削除不可。下期は入力可。
+- `FULL`（年度末提出）: `N-04-01`〜`(N+1)-03-31` 全体。
 
 ### 9.2 クラブ決算ページ（`/club/settlement`）
 
@@ -578,10 +618,10 @@ lg以上における画面配置イメージ：
 4. 提出区分（半期決算（中間）／年度末決算）— 作業者・未ロック時
 5. 作業者「決算データを提出する」／責任者「決算を承認する（部内承認）」
 
-### 9.3 作業者提出（`applyClubSettlementSubmit(clubId, period)`）
+### 9.3 作業者提出（`applyClubSettlementSubmit(clubId, period, fiscalYear?)`）
 
 1. `club_settlement_period_{clubId}` = `mid_term` | `year_end`
-2. `is_club_settlement_locked_{clubId} = "true"`
+2. 期間ロック設定: `mid_term`→`H1`、`year_end`→`FULL`（日付範囲・fiscalYear を保存）。互換 boolean も true
 3. `club_auditor_audit_status_{clubId} = "awaiting_manager_approval"`
 4. 双六 UI を「部内承認待ち」へ
 5. 学校側決算マップを `submitted` に同期
@@ -610,13 +650,13 @@ lg以上における画面配置イメージ：
 4. 理由はメッセージ BOX 経由（`sendAuditPortalMessage` で自動投稿）
 5. 作業者は修正のうえ再提出（再度 9.3 → 9.3a）
 
-### 9.6 ロック時の UI 制限
+### 9.6 ロック時の UI 制限（期間ロック）
 
-**ロック対象機能**（部内承認待ち〜承認済）: 入出金登録、集計・帳簿、集金管理、予実管理、設定
-
-- 赤警告 `SettlementLockAlert`（`bg-red-50 text-red-600 border-red-200`）: 部内承認待ち時は専用文言、それ以外は提出済／承認済文言
-- 書き込み抑止: `useClubSettlementLock()` — 決算ロック中 **または** `role === "manager"` で `disabled`
-- アラート表示判定のみ: `useClubSettlementLockedOnly()`（ストレージの決算ロック）
+- 赤警告 `SettlementLockAlert`: H1 時は上期範囲＋「下期は引き続き入力可能」文言。FULL 時は年度全体文言
+- **取引日付ベース**: `isTransactionDateLocked(clubId, date)` で登録・編集・削除を制御（履歴は行ごと）
+- `useClubSettlementLock()`: **FULL** または責任者のときのみ全域 `disabled`（H1 では false）
+- `useSettlementDateLock()` / `useClubSettlementLockedOnly()`: 期間ロック状態・アラート用
+- 設定マスタ等: FULL 時のみ従来どおり抑止。H1 時は取引以外の設定は操作可
 
 ### 9.7 証憑管理（クラブ）
 

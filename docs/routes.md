@@ -37,6 +37,8 @@ npm run routes
 | URL | 説明 |
 |-----|------|
 | `/school` | ポータルトップ |
+| `/school/audit` | 監査（提出区分・期限通知・監査期間解除） |
+| `/school/rollover` | 繰越（年度繰越処理） |
 | `/school/clubs` | クラブダッシュボード（一覧） |
 | `/school/clubs/register` | クラブ登録 |
 | `/school/clubs/groups` | グループ作成 |

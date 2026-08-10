@@ -28,7 +28,15 @@ import {
   resolveFiscalDateBounds,
 } from "@/lib/fiscalDateBounds"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
-import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import {
+  useClubSettlementLock,
+  useSettlementDateLock,
+} from "@/hooks/useClubSettlementLock"
+import { getCurrentClub } from "@/lib/clubLoginSession"
+import {
+  getSettlementPeriodLockErrorMessage,
+  isTransactionDateLocked,
+} from "@/lib/clubSettlementPortalSync"
 
 const THEME_COLOR = "#A3BC68"
 
@@ -73,7 +81,10 @@ export default function CsvImportDetailPage() {
   const [batchFileName, setBatchFileName] = useState<string>("")
   const [draftRows, setDraftRows] = useState<DraftRow[]>([])
   const [notFound, setNotFound] = useState(false)
-  const [isLocked, setIsLocked] = useState(false)
+  const isLocked = useClubSettlementLock()
+  const dateLock = useSettlementDateLock()
+  const hasPeriodLockedRow = draftRows.some((r) => dateLock.isDateLocked(r.date))
+  const writeBlocked = isLocked || hasPeriodLockedRow
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -195,6 +206,14 @@ export default function CsvImportDetailPage() {
       alert(formatFiscalBoundsMessage(fiscalBounds))
       return
     }
+    const clubId = getCurrentClub()?.id
+    if (clubId) {
+      const lockedRow = draftRows.find((d) => isTransactionDateLocked(clubId, d.date))
+      if (lockedRow) {
+        alert(getSettlementPeriodLockErrorMessage(clubId))
+        return
+      }
+    }
     for (const d of draftRows) {
       const subject = accountTitles.find((t) => t.name === d.accountTitle)
       const categoryToSave =
@@ -220,7 +239,7 @@ export default function CsvImportDetailPage() {
   }
 
   const handleDeleteBatchAndReupload = () => {
-    if (isLocked) return
+    if (writeBlocked) return
     if (
       !confirm(
         `「${batchFileName}」に紐づく明細をすべて削除し、新しいCSVをアップロードする画面へ移動します。よろしいですか？\nこの操作は取り消せません。`
@@ -276,10 +295,10 @@ export default function CsvImportDetailPage() {
           </Link>
           <button
             type="button"
-            disabled={isLocked}
+            disabled={writeBlocked}
             className="text-red-600 font-semibold text-sm hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
             onClick={() => {
-              if (isLocked) return
+              if (writeBlocked) return
               if (
                 confirm(
                   "明細が空のため履歴のみ残っています。履歴を削除し、CSVを取り込み直せる画面へ移動しますか？"
@@ -314,7 +333,7 @@ export default function CsvImportDetailPage() {
           <p className="text-xs text-[#6B7280] mt-2 max-w-3xl">
             ここでの変更は常に「このCSVファイル単位」の更新として帳簿に反映されます。CSV由来の明細は単体編集画面では編集できません。
           </p>
-          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
+          <SettlementLockAlert className="mt-4" />
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-white overflow-x-hidden">
@@ -425,7 +444,7 @@ export default function CsvImportDetailPage() {
         <div className="fixed bottom-0 left-0 right-0 ml-64 border-t border-gray-200 bg-white/95 backdrop-blur px-6 py-4 flex flex-wrap gap-3 z-40">
           <Button
             type="button"
-            disabled={!canSave || isLocked}
+            disabled={!canSave || writeBlocked}
             style={{ backgroundColor: THEME_COLOR }}
             className="text-white disabled:opacity-40"
             onClick={handleSave}
@@ -435,7 +454,7 @@ export default function CsvImportDetailPage() {
           <Button
             type="button"
             variant="destructive"
-            disabled={isLocked}
+            disabled={writeBlocked}
             onClick={handleDeleteBatchAndReupload}
           >
             このCSVを削除して再アップロード

@@ -10,6 +10,12 @@ import {
   resolveRegisterEditBackHref,
   REGISTER_EDIT_RETURN_QUERY,
 } from "@/utils/transactionEditPath"
+import { getClubLoginRole, getCurrentClub } from "@/lib/clubLoginSession"
+import {
+  getSettlementPeriodLockErrorMessage,
+  isFullSettlementLock,
+  isTransactionDateLocked,
+} from "@/lib/clubSettlementPortalSync"
 
 export default function RegisterEditTransactionPage() {
   const params = useParams()
@@ -24,6 +30,8 @@ export default function RegisterEditTransactionPage() {
   const id = typeof params.id === "string" ? params.id : ""
   const [tx, setTx] = useState<Transaction | null>(null)
   const [ready, setReady] = useState(false)
+  const [periodLocked, setPeriodLocked] = useState(false)
+  const [lockMessage, setLockMessage] = useState("")
 
   useEffect(() => {
     if (!id) {
@@ -39,6 +47,16 @@ export default function RegisterEditTransactionPage() {
         router.replace(target)
         return
       }
+      const clubId = getCurrentClub()?.id
+      const blocked =
+        getClubLoginRole() === "manager" ||
+        (clubId != null &&
+          (isFullSettlementLock(clubId) ||
+            isTransactionDateLocked(clubId, found.date)))
+      setPeriodLocked(blocked)
+      setLockMessage(
+        clubId && blocked ? getSettlementPeriodLockErrorMessage(clubId) : ""
+      )
     }
     setTx(found)
     setReady(true)
@@ -55,6 +73,22 @@ export default function RegisterEditTransactionPage() {
         <Link
           href={backHref}
           className="text-[#A3BC68] font-semibold mt-2 inline-block hover:underline"
+        >
+          戻る
+        </Link>
+      </div>
+    )
+  }
+
+  if (periodLocked) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F0] px-6 py-8 space-y-3">
+        <p className="text-red-600 text-sm">
+          {lockMessage || "ロック期間内のため編集できません。"}
+        </p>
+        <Link
+          href={backHref}
+          className="text-[#A3BC68] font-semibold inline-block hover:underline"
         >
           戻る
         </Link>

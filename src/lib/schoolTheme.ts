@@ -46,6 +46,8 @@ export type SchoolFiscalYearLabel = (typeof SCHOOL_FISCAL_YEARS)[number]
 
 export const SCHOOL_PAGE_TITLES = {
   home: "管理者ポータル",
+  audit: "監査",
+  rollover: "繰越",
   clubs: "クラブ管理",
   clubList: "クラブダッシュボード",
   clubGroups: "グループ作成",
@@ -68,6 +70,10 @@ export const SCHOOL_PAGE_TITLES = {
 export const SCHOOL_ROUTES = {
   home: "/school",
   login: "/school/login",
+  /** 決算提出期間の通知・解除 */
+  audit: "/school/audit",
+  /** 年度繰越 */
+  rollover: "/school/rollover",
   clubList: "/school/clubs",
   clubGroups: "/school/clubs/groups",
   clubRegister: "/school/clubs/register",

@@ -26,6 +26,11 @@ import {
   isDateWithinFiscalBounds,
   resolveFiscalDateBounds,
 } from "@/lib/fiscalDateBounds"
+import { getCurrentClub } from "@/lib/clubLoginSession"
+import {
+  getSettlementPeriodLockErrorMessage,
+  isTransactionDateLocked,
+} from "@/lib/clubSettlementPortalSync"
 
 const THEME_COLOR = "#68A384"
 
@@ -132,6 +137,16 @@ export function EditTransactionModal({
     if (!isDateWithinFiscalBounds(formData.date, fiscalBounds)) {
       alert(formatFiscalBoundsMessage(fiscalBounds))
       return
+    }
+    const clubId = getCurrentClub()?.id
+    if (clubId) {
+      if (
+        isTransactionDateLocked(clubId, transaction.date) ||
+        isTransactionDateLocked(clubId, formData.date)
+      ) {
+        alert(getSettlementPeriodLockErrorMessage(clubId))
+        return
+      }
     }
 
     const selectedAccount = accountTitles.find((t) => t.name === formData.accountTitle)

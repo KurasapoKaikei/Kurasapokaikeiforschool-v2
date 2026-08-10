@@ -6,6 +6,7 @@ import {
   CLUB_SETTLEMENT_LOCK_CHANGED_EVENT,
   canAuditorActOnSettlement,
   makeClubAuditorAuditStatusKey,
+  makeClubLockedPeriodKey,
   makeClubSettlementLockKey,
   getAuditorAuditStatus,
   getAuditorAuditStatusBadgeVariant,
@@ -34,6 +35,7 @@ export function useAuditorSettlementState(clubId: string) {
       if (
         e.key === null ||
         e.key === makeClubSettlementLockKey(clubId) ||
+        e.key === makeClubLockedPeriodKey(clubId) ||
         e.key === makeClubAuditorAuditStatusKey(clubId)
       ) {
         sync()

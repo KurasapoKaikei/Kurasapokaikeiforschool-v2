@@ -33,6 +33,11 @@ import {
   isDateWithinFiscalBounds,
   resolveFiscalDateBounds,
 } from "@/lib/fiscalDateBounds"
+import { getCurrentClub } from "@/lib/clubLoginSession"
+import {
+  getSettlementPeriodLockErrorMessage,
+  isTransactionDateLocked,
+} from "@/lib/clubSettlementPortalSync"
 
 export { BANK_IMPORT_HEADER_ROW as BANK_CSV_HEADERS, BANK_IMPORT_HEADERS } from "@/utils/bankImportTemplate"
 
@@ -678,6 +683,17 @@ export function BankCsvImportSection({
     if (outOfBounds) {
       alert(formatFiscalBoundsMessage(fiscalBounds))
       return
+    }
+
+    const clubId = getCurrentClub()?.id
+    if (clubId) {
+      const periodLocked = registerableRows.find(
+        (r) => rowIsRegisterReady(r) && isTransactionDateLocked(clubId, r.date)
+      )
+      if (periodLocked) {
+        alert(getSettlementPeriodLockErrorMessage(clubId))
+        return
+      }
     }
 
     const partials: Omit<Transaction, "id" | "createdAt" | "csvImportId" | "originalFileName">[] =

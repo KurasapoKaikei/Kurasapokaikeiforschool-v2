@@ -33,6 +33,8 @@ import {
   ListOrdered,
   Mail,
   Plus,
+  RefreshCw,
+  Scale,
   Settings,
   SlidersHorizontal,
   Tags,
@@ -67,6 +69,22 @@ function buildMenuItems(auditFlowEnabled: boolean): MenuItem[] {
       href: SCHOOL_ROUTES.home,
       icon: LayoutDashboard,
       match: (path) => path === SCHOOL_ROUTES.home,
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.audit,
+      href: SCHOOL_ROUTES.audit,
+      icon: Scale,
+      match: (path) =>
+        path === SCHOOL_ROUTES.audit ||
+        path.startsWith(`${SCHOOL_ROUTES.audit}/`),
+    },
+    {
+      title: SCHOOL_PAGE_TITLES.rollover,
+      href: SCHOOL_ROUTES.rollover,
+      icon: RefreshCw,
+      match: (path) =>
+        path === SCHOOL_ROUTES.rollover ||
+        path.startsWith(`${SCHOOL_ROUTES.rollover}/`),
     },
     {
       title: SCHOOL_PAGE_TITLES.clubs,

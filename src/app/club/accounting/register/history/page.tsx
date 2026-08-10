@@ -14,7 +14,10 @@ import { getEditUrl, isCsvLinkedTransaction, withReturnTo } from "@/utils/transa
 import { formatDateDisplay } from "@/utils/dateDisplay"
 import { formatAmountDisplay } from "@/utils/formatAmountDisplay"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
-import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import {
+  useClubSettlementLock,
+  useSettlementDateLock,
+} from "@/hooks/useClubSettlementLock"
 
 type Tab = "all" | "csv"
 
@@ -154,9 +157,13 @@ export default function RegisterHistoryPage() {
     [pathname, searchQs]
   )
   const [tab, setTab] = useState<Tab>("all")
-  const [isLocked, setIsLocked] = useState(false)
+  const isFullyLocked = useClubSettlementLock()
+  const dateLock = useSettlementDateLock()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [batches, setBatches] = useState<CsvImportBatch[]>([])
+
+  const isRowDateLocked = (date: string) =>
+    isFullyLocked || dateLock.isDateLocked(date)
 
   const refresh = () => {
     setTransactions(getTransactions())
@@ -310,7 +317,8 @@ export default function RegisterHistoryPage() {
   }, [batches, transactions])
 
   const handleRowEdit = (row: HistoryRow) => {
-    if (isLocked) return
+    const rowDate = row.kind === "transfer" ? row.date : row.tx.date
+    if (isRowDateLocked(rowDate)) return
     if (row.kind === "transfer") {
       const expId = row.expenseTx?.id ?? ""
       const incId = row.incomeTx?.id ?? ""
@@ -338,7 +346,7 @@ export default function RegisterHistoryPage() {
           <p className="text-sm text-[#6B7280]">
             「すべて」で手動・CSV・その他の取引を一覧します。「CSV」は取込ファイル単位の履歴です。
           </p>
-          <SettlementLockAlert isLocked={isLocked} className="mt-4" />
+          <SettlementLockAlert className="mt-4" />
         </div>
 
         <div className="flex gap-1 mb-4 border-b border-gray-200">
@@ -459,10 +467,14 @@ export default function RegisterHistoryPage() {
                             <td className={TD_CENTER}>
                               <button
                                 type="button"
-                                disabled={isLocked}
+                                disabled={isRowDateLocked(row.date)}
                                 onClick={() => handleRowEdit(row)}
                                 className="inline-flex p-1 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                                title="振替を編集"
+                                title={
+                                  isRowDateLocked(row.date)
+                                    ? "ロック期間内のため編集できません"
+                                    : "振替を編集"
+                                }
                                 aria-label="振替を編集"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -526,10 +538,16 @@ export default function RegisterHistoryPage() {
                           <td className={TD_CENTER}>
                             <button
                               type="button"
-                              disabled={isLocked}
+                              disabled={isRowDateLocked(t.date)}
                               onClick={() => handleRowEdit(row)}
                               className="inline-flex p-1 rounded-md text-[#68A384] hover:bg-[#68A384]/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                              title={isCsvLinkedTransaction(t) ? "CSV一括編集へ" : "明細を編集"}
+                              title={
+                                isRowDateLocked(t.date)
+                                  ? "ロック期間内のため編集できません"
+                                  : isCsvLinkedTransaction(t)
+                                    ? "CSV一括編集へ"
+                                    : "明細を編集"
+                              }
                               aria-label="編集"
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -569,6 +587,13 @@ export default function RegisterHistoryPage() {
                         `/club/accounting/register/csv/${batch.id}`,
                         editReturnTo
                       )
+                      const batchDateLocked =
+                        isFullyLocked ||
+                        transactions.some(
+                          (t) =>
+                            t.csvImportId === batch.id &&
+                            dateLock.isDateLocked(t.date)
+                        )
                       return (
                         <tr key={batch.id} className="hover:bg-gray-50/80">
                           <td className="border border-gray-200 px-3 py-2 font-medium text-[#374151]">
@@ -584,10 +609,10 @@ export default function RegisterHistoryPage() {
                             {importDateLabel}
                           </td>
                           <td className="border border-gray-200 px-3 py-2 text-center">
-                            {isLocked ? (
+                            {batchDateLocked ? (
                               <span
                                 className="inline-flex p-1 rounded-md text-gray-400 opacity-40 cursor-not-allowed"
-                                title="決算ロック中のため編集できません"
+                                title="ロック期間内の明細があるため編集できません"
                                 aria-label="編集（ロック中）"
                               >
                                 <Pencil className="h-3.5 w-3.5" />

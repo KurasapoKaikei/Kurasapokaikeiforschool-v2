@@ -44,7 +44,15 @@ import {
   type CollectionIndividualLine,
 } from "@/components/accounting/CollectionIndividualEntry"
 import { SettlementLockAlert } from "@/components/club/SettlementLockAlert"
-import { useClubSettlementLock } from "@/hooks/useClubSettlementLock"
+import {
+  useClubSettlementLock,
+  useSettlementDateLock,
+} from "@/hooks/useClubSettlementLock"
+import { getCurrentClub } from "@/lib/clubLoginSession"
+import {
+  getSettlementPeriodLockErrorMessage,
+  isTransactionDateLocked,
+} from "@/lib/clubSettlementPortalSync"
 import {
   formatAmountInputDisplay,
   isAllowedSignedIntegerTyping,
@@ -421,6 +429,7 @@ export default function NewRegisterPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [activeTab, setActiveTab] = useState<TabType>("income")
   const isLocked = useClubSettlementLock()
+  const dateLock = useSettlementDateLock()
   const [ocrLoading, setOcrLoading] = useState(false)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -594,6 +603,18 @@ export default function NewRegisterPage() {
     },
     [fiscalBounds]
   )
+
+  const assertDateNotPeriodLocked = useCallback((dateStr: string): boolean => {
+    const clubId = getCurrentClub()?.id
+    if (clubId && isTransactionDateLocked(clubId, dateStr)) {
+      alert(getSettlementPeriodLockErrorMessage(clubId))
+      return false
+    }
+    return true
+  }, [])
+
+  const formDateBlocked = dateLock.isDateLocked(formData.date)
+  const submitDisabled = isLocked || formDateBlocked
 
   const reloadCollectionData = useCallback(() => {
     syncAllCollectionRecords()
@@ -1144,6 +1165,10 @@ export default function NewRegisterPage() {
       if (!isDateWithinFiscalBounds(date, fiscalBounds)) {
         return { saved: 0, error: formatFiscalBoundsMessage(fiscalBounds) }
       }
+      const clubId = getCurrentClub()?.id
+      if (clubId && isTransactionDateLocked(clubId, date)) {
+        return { saved: 0, error: getSettlementPeriodLockErrorMessage(clubId) }
+      }
       lines.push({
         schedule,
         amount,
@@ -1403,6 +1428,8 @@ export default function NewRegisterPage() {
           alert(`集金設定が見つかりません（${line.accountTitle}）`)
           return
         }
+        if (!assertDateInFiscalPeriod(line.date)) return
+        if (!assertDateNotPeriodLocked(line.date)) return
         const recKey = `${line.memberId}__${line.scheduleId}`
         const rec = recordByKey.get(recKey)
         if (!rec) {
@@ -1498,6 +1525,8 @@ export default function NewRegisterPage() {
       currentOperatorName,
       toCollectionStatus,
       reloadCollectionData,
+      assertDateInFiscalPeriod,
+      assertDateNotPeriodLocked,
     ]
   )
 
@@ -2068,6 +2097,7 @@ export default function NewRegisterPage() {
     if (activeTab === "csv") return
 
     if (formData.date && !assertDateInFiscalPeriod(formData.date)) return
+    if (formData.date && !assertDateNotPeriodLocked(formData.date)) return
 
     if (activeTab === "transfer") {
       if (
@@ -2966,7 +2996,7 @@ export default function NewRegisterPage() {
           registerDisabled={isLocked}
         />
       ) : (
-      /* ===== 他のタブ: 既存フォーム ===== */
+      /* ===== 他のタブ: 既存フォーム（H1期間ロック時は日付単位で制御） ===== */
       <div
         className={`flex-1 grid gap-0 min-h-0 transition-[grid-template-columns] duration-300 ${
           showReceiptArea ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
@@ -3913,7 +3943,7 @@ export default function NewRegisterPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isLocked}
+                    disabled={submitDisabled}
                     className="shrink-0 py-3 px-6 text-sm font-semibold text-white rounded-lg shadow-sm"
                     style={{ backgroundColor: THEME_COLOR }}
                   >
@@ -3922,9 +3952,16 @@ export default function NewRegisterPage() {
                 </div>
               ) : (
                 <div className={showDeferredFields ? "max-w-lg w-full" : "w-full"}>
+                  {formDateBlocked && !isLocked && (
+                    <p className="mb-2 text-sm text-red-600">
+                      {getCurrentClub()?.id
+                        ? getSettlementPeriodLockErrorMessage(getCurrentClub()!.id)
+                        : "ロック期間内の日付では登録できません。"}
+                    </p>
+                  )}
                   <Button
                     type="submit"
-                    disabled={isLocked}
+                    disabled={submitDisabled}
                     className="w-full py-6 text-base font-semibold text-white rounded-lg"
                     style={{ backgroundColor: THEME_COLOR }}
                   >
