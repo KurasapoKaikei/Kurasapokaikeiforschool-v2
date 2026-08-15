@@ -73,6 +73,35 @@ export function getOperationalSchoolId(): string | null {
   return id || null
 }
 
+/** クラブ ID が登録されている学校ワークスペースを探す（クラブ側メッセージ読取用） */
+export function findSchoolIdForClubId(clubId: string): string | null {
+  const id = clubId.trim()
+  if (!id || typeof window === "undefined") return null
+  const all = loadAllWorkspaces()
+  for (const [schoolId, ws] of Object.entries(all)) {
+    if (Array.isArray(ws?.clubs) && ws.clubs.some((c) => c?.id === id)) {
+      return schoolId
+    }
+  }
+  return null
+}
+
+/** 監査人 ID が登録されている学校ワークスペースを探す */
+export function findSchoolIdForAuditorId(auditorId: string): string | null {
+  const id = auditorId.trim()
+  if (!id || typeof window === "undefined") return null
+  const all = loadAllWorkspaces()
+  for (const [schoolId, ws] of Object.entries(all)) {
+    if (
+      Array.isArray(ws?.auditors) &&
+      ws.auditors.some((a) => a?.id === id)
+    ) {
+      return schoolId
+    }
+  }
+  return null
+}
+
 export function usesLegacyGlobalSchoolStorage(
   schoolId?: string | null
 ): boolean {

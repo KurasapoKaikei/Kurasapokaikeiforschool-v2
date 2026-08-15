@@ -21,7 +21,8 @@ export function ClubManagerReadOnlyShield() {
 
     const shouldBlock = (target: EventTarget | null): boolean => {
       if (!enabled || !(target instanceof Element)) return false
-      if (target.closest('[data-manager-action="approve"]')) return false
+      // 承認・メッセージ閲覧／確認など、責任者に許可する操作
+      if (target.closest("[data-manager-action]")) return false
       const el = target.closest(INTERACTIVE_SELECTOR)
       if (!el) return false
       // 年度切替などはヘッダー側。メイン内の読み取り専用表示は許可

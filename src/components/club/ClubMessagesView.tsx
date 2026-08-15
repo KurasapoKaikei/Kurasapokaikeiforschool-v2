@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { ClubMessageDetailPanel } from "@/components/club/ClubMessageDetailPanel"
 import {
   CLUB_MESSAGE_BOX_BAND_COLOR,
@@ -20,6 +21,7 @@ const CLUB_PAGE_CONTENT_CLASS = "px-6 py-4 pb-8"
 
 /** クラブ：メッセージBOX（ダッシュボードと同一データ） */
 export function ClubMessagesView() {
+  const searchParams = useSearchParams()
   const { activeClub, isHydrated, isLegacyGlobalPortal } = useClubSession()
   const [messages, setMessages] = useState<ClubPortalMessageView[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -44,15 +46,23 @@ export function ClubMessagesView() {
     }
   }, [refresh])
 
+  // ダッシュボード等から ?id= で遷移したとき詳細を開く
+  useEffect(() => {
+    const id = searchParams.get("id")?.trim()
+    if (id) setSelectedId(id)
+  }, [searchParams])
+
   const selected =
     messages.find((m) => m.id === selectedId) ?? null
 
+  useEffect(() => {
+    if (!selected || !clubId || selected.isRead) return
+    markPortalMessageRead(selected.id, clubId)
+    refresh()
+  }, [selected, clubId, refresh])
+
   const handleSelect = (message: ClubPortalMessageView) => {
     setSelectedId(message.id)
-    if (clubId && !message.isRead) {
-      markPortalMessageRead(message.id, clubId)
-      refresh()
-    }
   }
 
   if (!isHydrated) {

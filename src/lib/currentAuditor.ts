@@ -7,6 +7,10 @@ import {
   loadSchoolAuditors,
   type SchoolAuditor,
 } from "@/lib/schoolAuditors"
+import {
+  findSchoolIdForAuditorId,
+  getOperationalSchoolId,
+} from "@/lib/schoolWorkspace"
 
 export const CURRENT_AUDITOR_KEY = "kurasaokaikei-current-auditor"
 
@@ -55,13 +59,17 @@ export function establishAuditorSession(
   options?: { simulatedBySchool?: boolean }
 ): void {
   if (typeof window === "undefined") return
+  const schoolId =
+    getOperationalSchoolId() ||
+    findSchoolIdForAuditorId(auditor.id) ||
+    DEMO_SCHOOL_MASTER_ID
   const session: CurrentAuditorSession = {
     id: auditor.id,
     name: formatAuditorDisplayName(auditor),
     department: (auditor.department ?? "").trim(),
     email: auditor.email ?? "",
     assignedClubIds: [...(auditor.assignedClubIds ?? [])],
-    schoolId: DEMO_SCHOOL_MASTER_ID,
+    schoolId,
     simulatedBySchool: options?.simulatedBySchool === true,
   }
   localStorage.setItem(CURRENT_AUDITOR_KEY, JSON.stringify(session))

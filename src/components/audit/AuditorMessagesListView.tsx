@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -75,6 +75,7 @@ export function AuditorMessagesListView() {
   >(undefined)
 
   const assignedClubIds = auditor?.assignedClubIds ?? []
+  const didAutoOpenSchoolTab = useRef(false)
 
   const refresh = useCallback(() => {
     const session = loadCurrentAuditor()
@@ -110,6 +111,22 @@ export function AuditorMessagesListView() {
       window.removeEventListener("storage", onChange)
     }
   }, [refresh])
+
+  // 学校からの受信があるときは「学校管理者」タブを初期表示（1回のみ）
+  useEffect(() => {
+    if (!auditor) {
+      didAutoOpenSchoolTab.current = false
+      return
+    }
+    if (didAutoOpenSchoolTab.current) return
+    if (searchParams.get("compose") || searchParams.get("draft")) return
+    const hasSchoolInbound = schoolHistory.some(
+      (m) => m.sender === "school" || m.sender === "system" || !m.sender
+    )
+    if (!hasSchoolInbound) return
+    setActiveTab("school")
+    didAutoOpenSchoolTab.current = true
+  }, [auditor, schoolHistory, searchParams])
 
   useEffect(() => {
     if (!auditor) return
@@ -185,8 +202,14 @@ export function AuditorMessagesListView() {
       ? displayedHistory.find((m) => m.id === selectedDetailId) ?? null
       : null
 
+  const schoolInboxCount = schoolHistory.filter(
+    (m) => m.sender === "school" || m.sender === "system" || !m.sender
+  ).length
+
   const listTitle =
-    activeTab === "club" ? "クラブ宛て送信履歴" : "学校管理者宛て送信履歴"
+    activeTab === "club"
+      ? "クラブ宛て送信履歴"
+      : "学校管理者とのメッセージ（受信・送信）"
 
   const createButtonLabel =
     activeTab === "club" ? "クラブへ新規作成" : "学校管理者へ新規作成"
@@ -356,10 +379,16 @@ export function AuditorMessagesListView() {
         <div className="shrink-0 bg-white px-6 pt-3">
           <SchoolPortalSegmentTabs
             className={MESSAGE_PAGE_CONTENT_CLASS}
-            ariaLabel="メッセージ送信先"
+            ariaLabel="メッセージ送受信先"
             tabs={[
               { id: "club", label: "クラブ宛て" },
-              { id: "school", label: "学校管理者宛て" },
+              {
+                id: "school",
+                label:
+                  schoolInboxCount > 0
+                    ? `学校管理者（${schoolInboxCount}）`
+                    : "学校管理者",
+              },
             ]}
             activeId={activeTab}
             onChange={(id) => handleTabChange(id as MessageTab)}
@@ -379,6 +408,16 @@ export function AuditorMessagesListView() {
                 {createButtonLabel}
               </Button>
             </div>
+
+            {activeTab === "club" && schoolInboxCount > 0 ? (
+              <p
+                className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"
+                role="status"
+              >
+                学校管理者からのお知らせが {schoolInboxCount}{" "}
+                件あります。「学校管理者」タブで確認できます。
+              </p>
+            ) : null}
 
             {listNotice ? (
               <p

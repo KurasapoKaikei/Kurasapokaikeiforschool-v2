@@ -60,6 +60,7 @@ export function ClubMessageDetailPanel({
             type="button"
             onClick={handleConfirm}
             disabled={!clubId}
+            data-manager-action="message"
             className="rounded-lg bg-[#E66A84] px-5 text-sm font-medium text-white hover:opacity-90"
           >
             メッセージを確認しました

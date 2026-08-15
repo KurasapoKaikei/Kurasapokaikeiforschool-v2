@@ -147,8 +147,8 @@ export function SchoolAuditPeriodView() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="min-w-0">
+          <div className="relative z-10 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="relative min-w-0">
               <label
                 htmlFor="settlement-deadline-date"
                 className="mb-1 block text-xs font-medium text-[#6B7280]"
@@ -165,7 +165,7 @@ export function SchoolAuditPeriodView() {
                 aria-label="決算データ提出期限"
               />
             </div>
-            <div className="min-w-0">
+            <div className="relative min-w-0">
               <label
                 htmlFor="settlement-audit-completion-date"
                 className="mb-1 block text-xs font-medium text-[#6B7280]"

@@ -389,6 +389,11 @@ export default function DashboardPage() {
                 maxItems={5}
                 showUnreadSummary={unreadMessageCount > 0}
                 className="min-h-0 flex-1"
+                onSelect={(message) => {
+                  router.push(
+                    `${clubPath("/messages")}?id=${encodeURIComponent(message.id)}`
+                  )
+                }}
               />
             </div>
           </div>

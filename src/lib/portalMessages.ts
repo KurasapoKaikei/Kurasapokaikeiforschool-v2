@@ -1,10 +1,46 @@
 /** 学校⇔クラブ メッセージBOX（5/27デモ・localStorage） */
 
+import { getCurrentClub } from "@/lib/clubLoginSession"
+import { loadCurrentAuditor } from "@/lib/currentAuditor"
 import {
+  findSchoolIdForAuditorId,
+  findSchoolIdForClubId,
   getOperationalSchoolId,
   readScopedWorkspace,
   writeScopedWorkspace,
 } from "@/lib/schoolWorkspace"
+
+/**
+ * メッセージ正本の学校 ID を解決する。
+ * 学校未ログインでもクラブ／監査人セッションからワークスペースを辿れるようにする。
+ */
+function resolvePortalMessagesSchoolId(): string | null {
+  const operational = getOperationalSchoolId()
+  if (operational) return operational
+
+  try {
+    const auditor = loadCurrentAuditor()
+    if (auditor?.schoolId?.trim()) return auditor.schoolId.trim()
+    if (auditor?.id) {
+      const fromAuditor = findSchoolIdForAuditorId(auditor.id)
+      if (fromAuditor) return fromAuditor
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const club = getCurrentClub()
+    if (club?.id) {
+      const fromClub = findSchoolIdForClubId(club.id)
+      if (fromClub) return fromClub
+    }
+  } catch {
+    // ignore
+  }
+
+  return null
+}
 
 /** 学校→クラブメッセージの正本キー（学校・クラブ双方で同一） */
 export const SCHOOL_TO_CLUB_MESSAGES_KEY = "school_to_club_messages"
@@ -241,7 +277,7 @@ function loadPortalMessagesFromGlobal(): PortalMessage[] {
 }
 
 export function loadPortalMessages(): PortalMessage[] {
-  const schoolId = getOperationalSchoolId()
+  const schoolId = resolvePortalMessagesSchoolId()
   return readScopedWorkspace(
     schoolId,
     (ws) => parsePortalMessages(ws.portalMessages),
@@ -260,7 +296,7 @@ function savePortalMessagesToGlobal(messages: PortalMessage[]): void {
 }
 
 function savePortalMessages(messages: PortalMessage[]): void {
-  const schoolId = getOperationalSchoolId()
+  const schoolId = resolvePortalMessagesSchoolId()
   writeScopedWorkspace(
     schoolId,
     (ws) => ({ ...ws, portalMessages: messages }),
@@ -327,15 +363,19 @@ export function isStaffAudienceMessage(m: PortalMessage): boolean {
 
 export const ALL_CLUBS_TARGET_ID = "all"
 
-/** 監査人宛て一括送信（`audience: "auditor"` と組み合わせて解釈） */
-export const ALL_AUDITORS_TARGET_ID = "all"
+/**
+ * 監査人宛て一括送信の宛先 ID。
+ * クラブ一括の `all` と区別し、audience 欠落時もクラブ受信箱へ混入しない。
+ */
+export const ALL_AUDITORS_TARGET_ID = "auditor-all"
 
 export function isAllClubsTarget(targetClubId: string): boolean {
   return targetClubId === ALL_CLUBS_TARGET_ID
 }
 
 export function isAllAuditorsTarget(targetId: string): boolean {
-  return targetId === ALL_AUDITORS_TARGET_ID
+  // 旧データ互換: audience=auditor かつ targetClubId=all も全監査人宛て
+  return targetId === ALL_AUDITORS_TARGET_ID || targetId === ALL_CLUBS_TARGET_ID
 }
 
 /** 学校→クラブ送信履歴の送信先表示（全クラブ / 個別） */
@@ -345,7 +385,11 @@ export function formatSchoolClubOutboundTargetLabel(m: PortalMessage): string {
 }
 
 export function loadSchoolClubOutboundMessages(): PortalMessage[] {
-  return loadPortalMessages().filter(isClubAudienceMessage)
+  return loadPortalMessages().filter(
+    (m) =>
+      isClubAudienceMessage(m) &&
+      m.targetClubId !== ALL_AUDITORS_TARGET_ID
+  )
 }
 
 /** クラブ一覧の✉から：全クラブ宛＋当該クラブ個別宛の送信履歴のみ */
@@ -356,7 +400,11 @@ export function loadSchoolClubMessagesForClub(clubId: string): PortalMessage[] {
 }
 
 export function loadSchoolAuditorOutboundMessages(): PortalMessage[] {
-  return loadPortalMessages().filter(isAuditorAudienceMessage)
+  return loadPortalMessages().filter(
+    (m) =>
+      isAuditorAudienceMessage(m) ||
+      m.targetClubId === ALL_AUDITORS_TARGET_ID
+  )
 }
 
 /** @deprecated loadSchoolAuditorOutboundMessages を使用 */
@@ -379,8 +427,8 @@ export function getMessagesForAuditor(auditorId: string): PortalMessage[] {
   )
 }
 
-export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage {
-  const message: PortalMessage = {
+function buildPortalMessage(input: SendPortalMessageInput): PortalMessage {
+  return {
     id: newMessageId(),
     subject: input.subject.trim(),
     body: input.body.trim(),
@@ -394,16 +442,27 @@ export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage 
     auditorId: input.auditorId?.trim() || undefined,
     audience: input.audience ?? "club",
   }
-  const next = [message, ...loadPortalMessages()]
+}
+
+/** 複数メッセージを一度に先頭追加して保存（連送時の欠落防止） */
+function appendPortalMessages(messages: PortalMessage[]): void {
+  if (messages.length === 0) return
+  const next = [...messages, ...loadPortalMessages()]
   savePortalMessages(next)
+}
+
+export function sendPortalMessage(input: SendPortalMessageInput): PortalMessage {
+  const message = buildPortalMessage(input)
+  appendPortalMessages([message])
   return message
 }
 
-/** クラブ向け受信メッセージ（全体宛て + 個別宛て・担当者宛ては除外） */
+/** クラブ向け受信メッセージ（全体宛て + 個別宛て・監査人一括宛ては除外） */
 export function getMessagesForClub(clubId: string): PortalMessage[] {
   return loadPortalMessages().filter(
     (m) =>
       isClubAudienceMessage(m) &&
+      m.targetClubId !== ALL_AUDITORS_TARGET_ID &&
       (m.targetClubId === "all" || m.targetClubId === clubId)
   )
 }
@@ -540,44 +599,35 @@ export function sendSettlementDeadlineNotice(
   const deadline = formatSettlementDeadlineJa(deadlineDate)
   const auditDeadline = formatSettlementDeadlineJa(auditCompletionDate)
   const subject = `【重要】${periodLabel} 提出期限のお知らせ`
-  const sharedBody = [
-    "学校管理者より、決算データ提出期限のご案内です。",
+  const body = [
+    "学校管理者より、決算データ提出期限と監査完了期限のご案内です。",
     "",
-    `■対象: ${periodLabel}`,
-    `■決算データ提出期限: ${deadline}`,
-    `■監査完了期限: ${auditDeadline}`,
-  ]
-  const clubMessage = sendPortalMessage({
+    `■対象：${periodLabel}`,
+    `■決算データ提出期限：${deadline}`,
+    `■監査完了期限：${auditDeadline}`,
+    "■提出方法：",
+    "クラブポータルにて入力が完了したら、クラブ責任者に承認申請します。クラブ責任者の承認をもって、決算データの提出となります。監査人の承認を得たら、監査完了となります。",
+  ].join("\n")
+  // クラブ宛て・監査人宛てを同一保存で追加し、学校メッセージBOX両タブに履歴が残るようにする
+  const clubMessage = buildPortalMessage({
     subject,
-    body: [
-      ...sharedBody,
-      "■提出方法: クラブポータルの「決算」画面より、上記の提出区分を選択して提出してください。",
-      "　提出後はクラブ責任者の部内承認を経て、監査人の査読へ進みます。",
-      "",
-      "期限内に提出がない場合、年度繰越処理が遅れる可能性があります。",
-      "ご不明点は本メッセージBOXより学校管理者までお問い合わせください。",
-    ].join("\n"),
+    body,
     targetClubId: ALL_CLUBS_TARGET_ID,
     targetClubName: "全クラブ",
     kind: "settlement_deadline",
     sender: "school",
     audience: "club",
   })
-  const auditorMessage = sendPortalMessage({
+  const auditorMessage = buildPortalMessage({
     subject,
-    body: [
-      ...sharedBody,
-      "■ご対応: 担当クラブの提出・部内承認後、監査人ポータルより査読（承認／差戻）を行ってください。",
-      "",
-      "監査完了期限までにご対応をお願いいたします。",
-      "ご不明点は本メッセージBOXより学校管理者までお問い合わせください。",
-    ].join("\n"),
+    body,
     targetClubId: ALL_AUDITORS_TARGET_ID,
     targetClubName: "全監査人",
     kind: "settlement_deadline",
     sender: "school",
     audience: "auditor",
   })
+  appendPortalMessages([auditorMessage, clubMessage])
   return { clubMessage, auditorMessage }
 }
 

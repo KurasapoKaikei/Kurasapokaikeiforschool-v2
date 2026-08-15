@@ -280,7 +280,7 @@ lg以上における画面配置イメージ：
 | 提出区分 | 半期決算（中間）／年度末決算 |
 | 決算データ提出期限 | 日付指定（会計年度内） |
 | 監査完了期限 | 日付指定（提出期限以降・会計年度内） |
-| 通知 | 「全クラブ・全監査人に通知」— `sendSettlementDeadlineNotice` がクラブ宛て・監査人宛て各1通を投稿 |
+| 通知 | 「全クラブ・全監査人に通知」— `sendSettlementDeadlineNotice` がクラブ宛て（`audience: club`）・監査人宛て（`audience: auditor`, 宛先 `auditor-all`）を **同一保存** で各1通投稿（同一本文）。学校メッセージBOXの「クラブ宛て」「監査人宛て」両タブに履歴が残る。監査人ポータルは「学校管理者」タブで受信。本文は対象・両期限・提出方法（責任者承認申請→提出→監査人承認） |
 | ステータス表示（上部） | **監査期間中**／**監査期間外**。期間中は提出区分・両期限を強調表示。本日≦監査完了期限なら監査期間中。設定フォームの上に全幅表示 |
 | 監査期間解除 | 通知ボタンの下に「監査期間を解除」。`clearSchoolSettlementNoticeWindow()` |
 | 保存キー | `kurasaokaikei-school-settlement-notice-window`（period / deadlineDate / auditCompletionDate） |

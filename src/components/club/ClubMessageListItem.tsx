@@ -71,7 +71,12 @@ export function ClubMessageListItem({
 
   if (as === "button" && onClick) {
     return (
-      <button type="button" onClick={onClick} className={rowClass}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={rowClass}
+        data-manager-action="message"
+      >
         {content}
       </button>
     )

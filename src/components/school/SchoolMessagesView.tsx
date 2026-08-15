@@ -78,7 +78,15 @@ function SchoolMessageListView({
 
   if (selectedMessage) {
     return (
-      <SchoolMessageDetailPanel message={selectedMessage} onBack={onBackFromDetail} />
+      <SchoolMessageDetailPanel
+        message={selectedMessage}
+        onBack={onBackFromDetail}
+        formatTargetLabel={
+          activeTab === "auditor"
+            ? formatSchoolAuditorOutboundTargetLabel
+            : formatSchoolClubOutboundTargetLabel
+        }
+      />
     )
   }
 
