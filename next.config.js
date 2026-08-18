@@ -1,6 +1,9 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // ECS Fargate 上で `node server.js` として動かすための自己完結出力。
+  // ビルド成果物は .next/standalone に出る（Dockerfile 参照）。
+  output: 'standalone',
   images: {
     domains: ['localhost'],
     remotePatterns: [

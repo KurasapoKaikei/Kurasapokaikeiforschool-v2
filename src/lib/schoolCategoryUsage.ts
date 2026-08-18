@@ -30,7 +30,8 @@ function writeJsonArray<T>(key: string, value: T[]): void {
 
 /** 「2026年度」→ 2026 */
 export function parsePortalFiscalYearLabel(
-  label: PortalFiscalYearLabel | string
+  // 未選択（undefined）でも呼べる。その場合は現在の会計年度にフォールバックする
+  label: PortalFiscalYearLabel | string | null | undefined
 ): number {
   const m = String(label).match(/(\d{4})/)
   if (m) return Number(m[1])

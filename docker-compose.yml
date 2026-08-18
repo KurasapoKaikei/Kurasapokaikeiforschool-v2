@@ -1,0 +1,58 @@
+# ============================================================
+# ローカル開発環境（dev）
+#
+# インフラ設計書 §3.9 のとおり、dev はクラウドに置かず
+# ここで完結させる（AWS 費用ゼロ）。
+#
+# 通常の開発:
+#   docker compose up -d db      # PostgreSQL だけ起動
+#   npm run db:migrate           # マイグレーション適用
+#   npm run dev                  # Next.js はホストで動かす（HMR が速い）
+#
+# コンテナ込みで本番相当を確認したいとき:
+#   docker compose --profile app up --build
+# ============================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: kurasapo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kurasapo
+      POSTGRES_PASSWORD: kurasapo
+      POSTGRES_DB: kurasapo_dev
+      # 日本語データを扱うため明示
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kurasapo -d kurasapo_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # 本番と同じイメージをローカルで動かして確認するためのプロファイル。
+  # 日常の開発では使わない（ホストの `npm run dev` の方が速い）。
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kurasapo-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://kurasapo:kurasapo@db:5432/kurasapo_dev?schema=public"
+      APP_REVISION: "local"
+      GOOGLE_GEMINI_API_KEY: "${GOOGLE_GEMINI_API_KEY:-}"
+      AUTH_SECRET: "${AUTH_SECRET:-local-development-secret-do-not-use-in-production}"
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:

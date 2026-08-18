@@ -1,6 +1,6 @@
 # クラサポ会計 for school — インフラストラクチャ設計書
 
-**文書バージョン**: 1.3.1
+**文書バージョン**: 1.4.0
 **作成日**: 2026-08-18
 **位置づけ**: 現行のプロトタイプ（localStorage 正本）から、個人情報と金銭記録を扱う本番マルチテナント SaaS へ移行するための、基盤・データ・セキュリティ・運用の設計正本。
 **前提選択**: ① 本番 SaaS 移行の全体設計 ／ ② クラウド基盤 = **AWS** ／ ③ データ移行 = **localStorage から PostgreSQL へ全面移行**
@@ -163,19 +163,28 @@
 
 | 項目 | 設計 |
 |------|------|
-| コンテナイメージ | `node:20-alpine` ベース、Next.js standalone 出力（`output: 'standalone'` を `next.config.js` に追加） |
+| コンテナイメージ | **`node:20-slim`（Debian bookworm）** ベース、Next.js standalone 出力。alpine（musl）ではなく glibc 系を選ぶのは、Prisma のエンジンバイナリで環境差の事故が起きやすいため。`schema.prisma` の `binaryTargets` に `debian-openssl-3.0.x` を指定済み |
 | タスクサイズ | **0.5 vCPU / 1 GB**（Next.js SSR の実用下限） |
 | 常時タスク数 | **1**（AZ 冗長は当面行わない） |
 | オートスケール | 1 〜 3。CPU 70% で追加。**決算期（3月・7月）のみ下限 2 にスケジュール変更** |
-| ヘルスチェック | `/api/health`（DB 疎通を含む）。ALB 猶予 60 秒 |
+| ヘルスチェック | **`/api/health`（DB 疎通を見ない浅いチェック）**。ALB 猶予 60 秒。DB 込みの深いチェックは `/api/health/deep` に分離 |
 | デプロイ | ローリング（`minimumHealthyPercent: 100` / `maximumPercent: 200`）。**1 タスクでも新タスク起動後に旧タスクを落とすため、デプロイ時の停止は発生しない** |
 | 障害時 | タスク異常終了時は ECS が自動で再起動。**復帰まで 1〜2 分の停止が発生する**（2 タスク化すればゼロになる。§6.7 第 1 順位） |
+
+**ヘルスチェックを 2 系統に分ける理由**
+
+| エンドポイント | 用途 | DB 疎通 | 異常時 |
+|--------------|------|--------|-------|
+| `/api/health` | **ALB ターゲットグループ** | 見ない | — |
+| `/api/health/deep` | 外形監視・CloudWatch アラート | 見る | 503 |
+
+ALB のヘルスチェックで DB 疎通を判定すると、**DB が一時的に落ちた際に全タスクが unhealthy と判定されて ECS がタスクを落とし続け、DB 復旧後も再起動ループから抜けられなくなる**。1 タスク運用では特に致命的なため、ALB には浅いチェックのみを見せる。
 
 **シングル AZ・1 タスク運用について**
 
 ALB は仕様上 **2 つ以上の AZ のサブネット**を要求するため、VPC には 2 AZ 分のサブネットを作成する。ただし**サブネットを作ること自体に費用はかからない**ため、実際に稼働させる Fargate タスクと RDS は 1a に寄せ、実質シングル AZ で運用する。
 
-これにより、将来 AZ 冗長化する際は**ネットワークを作り直す必要がなく、タスク数と RDS の Multi-AZ フラグを変えるだけ**で済む。CDK 側でこれをパラメータ化する（§3.10）。
+これにより、将来 AZ 冗長化する際は**ネットワークを作り直す必要がなく、タスク数と RDS の Multi-AZ フラグを変えるだけ**で済む。`infra/config/*.env` の `ECS_DESIRED_COUNT` と `DB_MULTI_AZ` でパラメータ化してある（§3.10）。
 
 **パブリックサブネット配置について**
 
@@ -359,23 +368,44 @@ ECS タスク定義の `secrets` で Parameter Store の ARN を注入する。*
 
 **backup アカウントだけは分ける。** これは費用ではなく**リスクの問題**。本番アカウントの認証情報が侵害された場合でも、バックアップまで同時に破壊されない状態を作る。AWS Organizations の追加アカウントは無料であり、費用は保管しているスナップショット分（月 $5 程度）のみ。**バックアップと本番が同一アカウントにある構成は、バックアップが無いのと同じリスクを抱える。ここは削らない。**
 
-### 3.10 IaC — AWS CDK v2（TypeScript）
+### 3.10 IaC — AWS CLI スクリプト（`infra/`）
 
-アプリと同一言語で書けること、既存の TypeScript 資産と同居できることから CDK を採用。CDK 自体に費用はかからない。
+構築手段は **AWS CLI のシェルスクリプト**とする（実装済み。手順は `infra/README.md`）。
 
 ```text
 infra/
-├── bin/kurasapo.ts              # 環境ごとのスタック合成
-├── lib/
-│   ├── network-stack.ts         # VPC / Subnet / SG
-│   ├── data-stack.ts            # RDS / S3
-│   ├── app-stack.ts             # ECS / ALB / CloudFront / WAF / Route53
-│   ├── observability-stack.ts   # Alarm / SNS
-│   └── cicd-stack.ts            # ECR / OIDC ロール
-└── cdk.json
+├── README.md                 # 構築手順・トラブルシュート
+├── config/
+│   ├── common.env            # 全環境共通（リージョン / VPC CIDR / ドメイン / アカウントガード）
+│   ├── prod.env              # 本番のサイズ設定
+│   └── staging.env           # ステージングのサイズ設定
+├── lib/common.sh             # 冪等ヘルパー・検索関数・Windows パス変換対策
+├── 00-preflight.sh           # 前提チェック（何も作らない）
+├── 10-network.sh             # VPC / IGW / サブネット x4 / ルートテーブル / S3 EP / SG x3
+├── 20-data.sh                # DB サブネットグループ / RDS / S3 x2 / SSM シークレット
+├── 30-registry.sh            # ECR + ライフサイクルポリシー
+├── 40-compute.sh             # IAM x2 / ロググループ / ECS / ALB / TG / リスナー / サービス
+├── 50-observability.sh       # SNS / CloudWatch アラーム x8 / コスト異常検知
+├── deploy.sh                 # ビルド → push → マイグレーション → サービス更新
+└── 99-teardown.sh            # 逆順削除（S3 と最終スナップショットは既定で残す）
 ```
 
-**サブネット配置やインスタンスクラスは環境変数で切り替えられるように書く。** §6.7 の増設（Multi-AZ 化、NAT 追加、Aurora 移行）を、コードの書き換えではなくパラメータ変更で実施できるようにするため。
+**設計上の約束**
+
+| 項目 | 方針 |
+|------|------|
+| 冪等性 | 全リソースを「検索してから作る」。同じスクリプトを何度実行しても結果は同じ |
+| 状態管理 | 作成したリソース ID を **SSM Parameter Store** に保存。ローカル state ファイルを持たないため、複数人・複数マシンから同じ手順を再現できる |
+| 事故防止 | `EXPECTED_ACCOUNT_ID` による構築先アカウントのガード。不一致なら即中断する |
+| 環境の切替 | 全スクリプトが第 1 引数に `prod` / `staging` を取る。共有リソース（VPC / ALB / ECS クラスタ / ECR）は 2 回目の実行で自動的にスキップされる |
+| Windows 対応 | Git Bash の MSYS パス変換（`/kurasapo/prod/...` が Windows パスに化ける）を `lib/common.sh` で無効化済み |
+| 増設のしやすさ | AZ 冗長化は `config/*.env` の `ECS_DESIRED_COUNT` と `DB_MULTI_AZ` の変更で切り替わる（§6.7） |
+
+**CloudFormation / CDK ではなく CLI を選ぶことのトレードオフ**
+
+CLI 直叩きには「宣言的な差分適用がない」「コンソールでの手動変更によるドリフトを検知できない」「部分的な失敗からの復旧が弱い」という弱点がある。本スクリプト群は *検索してから作る* 形で冪等性を確保しているが、CloudFormation ほど堅牢ではない。
+
+**運用が固まり変更が頻繁になった段階で CloudFormation / CDK への移行を検討する。** その際に `import` できるよう、リソース名とタグ体系（`Project` / `Env` / `ManagedBy=infra-cli`）は統一してある。
 
 ### 3.11 CI/CD — GitHub Actions
 
@@ -577,7 +607,7 @@ src/
 
 | フェーズ | 内容 | 主な成果物 | 目安 |
 |---------|------|-----------|------|
-| **P0: 基盤整備** | `prisma/migrations` の Git 管理化、`output: 'standalone'` 追加、`/api/health` 作成、Docker 化、**ローカル Docker Compose 開発環境**、CDK スケルトン | 動くコンテナとローカル DB | 2〜3 週 |
+| **P0: 基盤整備** ✅ | `prisma/migrations` の Git 管理化と初期マイグレーション生成、`output: 'standalone'` 追加、`/api/health` と `/api/health/deep` 作成、Dockerfile / `.dockerignore` / `docker-compose.yml` / `.env.example`、**既存 TypeScript エラー 9 件の修正（ビルド不能状態の解消）**、`infra/` の AWS CLI スクリプト一式 | 動くコンテナ・ローカル DB・構築スクリプト | **実施済み** |
 | **P1: 認証・認可** | Auth.js 導入、argon2id、Credential/Session モデル、middleware 認可ゲート、RLS 基盤、AuditLog。**S-1〜S-4 の解消** | 安全なログイン基盤 | 4〜6 週 |
 | **P2: スキーマ確定** | §4.2 のモデル追加・修正、マイグレーション整備、シードスクリプト | 完全な `schema.prisma` | 3〜4 週 |
 | **P3: データ層移行** | リポジトリ層 + API Route 実装、`src/lib` の async 化、TanStack Query 導入。§4.5 の順で 7 段階 | サーバー正本化 | 10〜14 週 |
@@ -873,11 +903,46 @@ src/
 
 ## 8. 次のアクション
 
-1. **D-7 の確認** — 現在ブラウザにのみデータを持つ運用校が存在するか。存在する場合、移行完了までデータ削除を行わないよう周知する
-2. **P0 の着手** — `.gitignore` からの `/prisma/migrations` 除去、`next.config.js` への `output: 'standalone'` 追加、`Dockerfile` と `docker-compose.yml`（ローカル PostgreSQL）と `/api/health` の作成。これらは既存機能に影響しない
-3. **P1 の先行着手判断** — セキュリティ・ギャップ S-1〜S-3 は、実データ投入前に必ず解消する必要がある
-4. **AWS アカウントの準備** — prod と backup の 2 アカウント（Organizations は無料）
-5. **CDK スケルトンの作成** — `infra/` ディレクトリ。**サブネット配置・インスタンスクラス・Multi-AZ 有無をパラメータ化**し、§6.7 の増設に備える
+### 8.1 完了済み（P0）
+
+| 項目 | 成果物 |
+|------|--------|
+| マイグレーション履歴の Git 管理化 | `.gitignore` から `/prisma/migrations` を除去、`prisma/migrations/0_init/migration.sql`（612 行）を生成 |
+| standalone 出力 | `next.config.js` に `output: 'standalone'` |
+| ヘルスチェック | `/api/health`（浅い・ALB 用）、`/api/health/deep`（DB 込み・監視用） |
+| コンテナ化 | `Dockerfile`（node:20-slim・非 root・マルチステージ）、`.dockerignore` |
+| ローカル開発環境 | `docker-compose.yml`（PostgreSQL 16 + 任意の app プロファイル）、`.env.example` |
+| **ビルド不能状態の解消** | `tsconfig.json` の `target` を es5 → ES2017、既存の型エラー 9 件を修正。`npm run build` が通るようになった |
+| インフラ構築スクリプト | `infra/` 一式（§3.10） |
+
+### 8.2 AWS へ実際に構築する前に決めること
+
+| # | 事項 | 状況 |
+|---|------|------|
+| 1 | **構築先 AWS アカウント** | 現在の CLI 認証は既存の共用アカウント。設計 §3.9 では本番は専用アカウントを推奨。決定後 `infra/config/common.env` の `EXPECTED_ACCOUNT_ID` に設定する |
+| 2 | **ドメイン** | 未設定でも HTTP で構築できるが、本番前に ACM 証明書を取得して HTTPS 化する |
+| 3 | **アラート通知先メール** | `ALERT_EMAIL` |
+| 4 | 実行環境に `jq` と Docker | `deploy.sh` に必要 |
+
+### 8.3 構築の実行順
+
+```bash
+./infra/00-preflight.sh prod          # 確認のみ（無料・何も作らない）
+./infra/10-network.sh prod
+WAIT=1 ./infra/20-data.sh prod        # RDS 作成に 5〜10 分
+./infra/30-registry.sh prod
+PUSH_ONLY=1 ./infra/deploy.sh prod
+./infra/40-compute.sh prod
+ALERT_EMAIL=... ./infra/50-observability.sh prod
+```
+
+staging も同じ手順で `prod` を `staging` に置き換える。
+
+### 8.4 その後（P1 以降）
+
+1. **D-7 の確認** — ブラウザにのみデータを持つ運用校が存在するか。存在する場合、移行完了までデータ削除を行わないよう周知する
+2. **P1（認証・認可）の着手** — セキュリティ・ギャップ S-1〜S-3 は実データ投入前に必ず解消する
+3. **CI/CD**（§3.11）— GitHub Actions と OIDC ロールの整備
 
 ---
 
@@ -889,4 +954,5 @@ src/
 | 1.1.0 | 2026-08-18 | 「ランニング費用を最小限にとどめない」方針を反映し、可用性・DR・監視を全面的に引き上げ（月額 約 62.8 万円） |
 | 1.2.0 | 2026-08-18 | **方針変更によりコスト最小化へ再設計。Aurora → RDS `db.t4g.small` Single-AZ、NAT Gateway 廃止（Fargate パブリックサブネット配置）、ElastiCache / RDS Proxy / Global Database / X-Ray / PagerDuty / Business Support / Security Hub / Config / Macie / Inspector を見送り、dev をローカル Docker Compose 化、staging を本番と ALB 共有、Secrets Manager → SSM Parameter Store。認証・認可・RLS・AuditLog・backup アカウント分離は費用がかからないため維持。§6.6 に「削った項目と受け入れるリスク」、§6.7 に「増設の順序」を追加。月額 約 62.8 万円 → 約 2.6 万円 |
 | **1.3.0** | **2026-08-18** | **スモールスタート方針を反映。本番・ステージングの 2 環境は維持しつつ、AZ 冗長化を当面行わない構成に変更。RDS `db.t4g.small` → `db.t4g.micro`（Single-AZ）、Fargate 2 タスク → 1 タスク、VPC は 2 AZ のサブネットのみ作成し稼働リソースは 1a に集約、staging を同一 VPC・ALB 共有かつ平日日中のみ稼働（EventBridge 停止）、WAF / GuardDuty は実データ投入時に有効化、CloudWatch Logs 保持 30 日 → 14 日。可用性目標 99.5% → 99.0%、p95 1.5 秒 → 2.0 秒に現実化。§6.7 の増設順序を「WAF/GuardDuty 有効化 → Fargate 2 タスク化 → RDS クラス引き上げ → Business Support → Multi-AZ」に組み替え。月額 約 2.6 万円 → 約 1.8 万円（開発期間中 約 1.5 万円）** |
-| **1.3.1** | **2026-08-18** | **§6.9「AZ 冗長構成を採る場合の費用」を追加。(1) 開発期間中・ステージングのみ = 約 9,200 円/月（AZ なしなら約 6,800 円）、(2) 本番運用開始時・本番 + ステージング = 約 23,700 円/月（staging を AZ なしとする推奨案）／約 26,100 円/月（staging も AZ 冗長）。現行構成との差額は月 +6,100 円で、内訳は Fargate 2 タスク化 +3,450 円・RDS Multi-AZ +2,400 円・ストレージミラー +450 円** |
+| 1.3.1 | 2026-08-18 | **§6.9「AZ 冗長構成を採る場合の費用」を追加。(1) 開発期間中・ステージングのみ = 約 9,200 円/月（AZ なしなら約 6,800 円）、(2) 本番運用開始時・本番 + ステージング = 約 23,700 円/月（staging を AZ なしとする推奨案）／約 26,100 円/月（staging も AZ 冗長）。現行構成との差額は月 +6,100 円で、内訳は Fargate 2 タスク化 +3,450 円・RDS Multi-AZ +2,400 円・ストレージミラー +450 円 |
+| **1.4.0** | **2026-08-18** | **P0 実装を反映。IaC 手段を AWS CDK から **AWS CLI スクリプト**（`infra/`）へ変更し §3.10 を全面改稿。コンテナベースイメージを node:20-alpine → **node:20-slim**（Prisma のエンジン差異回避）。ヘルスチェックを `/api/health`（浅い・ALB 用）と `/api/health/deep`（DB 込み・監視用）の **2 系統に分離**（DB 障害時の再起動ループ回避）。§5 の P0 を実施済みに更新、§8 を「完了済み / 構築前の決定事項 / 実行順」に再構成** |

@@ -3,6 +3,9 @@
 
 generator client {
   provider = "prisma-client-js"
+  // native: ローカル開発（Windows / macOS）用
+  // debian-openssl-3.0.x: 本番コンテナ（node:20-slim / Debian bookworm）用
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

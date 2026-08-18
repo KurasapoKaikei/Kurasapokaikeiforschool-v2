@@ -7,7 +7,14 @@ Next.js 14 App Router ベースのディレクトリ構成です。
 ```
 kurasaokaikei/
 ├── docs/                 # 仕様書（正本は docs/spec_latest.md）
-├── prisma/               # Prisma スキーマ
+│   └── infrastructure-design.md  # インフラ設計正本
+├── infra/                # AWS CLI によるインフラ構築スクリプト
+│   ├── config/           # 環境別設定（common / prod / staging）
+│   ├── lib/common.sh     # 冪等ヘルパー
+│   └── NN-*.sh           # 番号順に実行する構築スクリプト
+├── prisma/
+│   ├── schema.prisma     # Prisma スキーマ
+│   └── migrations/       # マイグレーション履歴（Git 管理下）
 ├── src/
 │   ├── app/              # App Router ページ
 │   ├── components/       # UI コンポーネント
@@ -15,10 +22,24 @@ kurasaokaikei/
 │   ├── hooks/            # カスタムフック
 │   ├── lib/              # ビジネスロジック・ストレージ
 │   └── utils/            # ユーティリティ
+├── Dockerfile            # 本番コンテナ（ECS Fargate 用）
+├── docker-compose.yml    # ローカル開発（PostgreSQL）
+├── .env.example          # 環境変数のひな形
 ├── package.json
-├── next.config.js
+├── next.config.js        # output: 'standalone'（コンテナ実行用）
 └── README.md             # リポジトリ入り口（詳細は docs/ 参照）
 ```
+
+## インフラ・運用
+
+| ファイル | 内容 |
+|---------|------|
+| `docs/infrastructure-design.md` | AWS 構成・認証認可・DB 移行・コスト・増設順序の正本 |
+| `infra/README.md` | 構築手順とトラブルシュート |
+| `Dockerfile` | node:20-slim ベースのマルチステージビルド（非 root 実行） |
+| `docker-compose.yml` | `npm run db:up` でローカル PostgreSQL を起動 |
+
+**ヘルスチェックは 2 系統**。`/api/health` は DB を見ない浅いチェックで ALB 用、`/api/health/deep` は DB 疎通を含み外形監視・アラート用（詳細は設計書 §3.2）。
 
 ## `src/app/` — ポータル別ルーティング
 

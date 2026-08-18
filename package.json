@@ -8,11 +8,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "routes": "node scripts/list-routes.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "docker:build": "docker build -t kurasapo-kaikei:local .",
+    "docker:app": "docker compose --profile app up --build"
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",

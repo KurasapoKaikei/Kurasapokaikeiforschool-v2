@@ -45,7 +45,9 @@ export function ClubManagerReadOnlyShield() {
       e.stopPropagation()
     }
 
-    const root = document.querySelector(".club-portal-main-content")
+    // HTMLElement として取得する。Element のままだと keydown が
+    // ElementEventMap に無く、addEventListener の型が合わない
+    const root = document.querySelector<HTMLElement>(".club-portal-main-content")
     root?.addEventListener("click", onClick, true)
     root?.addEventListener("keydown", onKeyDown, true)
     window.addEventListener(CLUB_PORTAL_SESSION_CHANGED_EVENT, sync)

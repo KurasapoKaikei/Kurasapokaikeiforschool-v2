@@ -69,13 +69,16 @@ function normalizeMessageAudience(
 export type PortalMessageSender = "school" | "audit" | "system"
 
 /** クラブポータルバッジ表示ラベル */
-export const CLUB_SENDER_LABELS: Record<PortalMessageSender, string> = {
+export const CLUB_SENDER_LABELS = {
   school: "学校",
   audit: "監査",
   system: "クラサポ",
-}
+} as const satisfies Record<PortalMessageSender, string>
 
-export function getClubSenderLabel(sender: PortalMessageSender): string {
+/** 表示ラベルのリテラル型。SchoolToClubMessage.sender に代入できるようにする */
+export type ClubSenderLabel = (typeof CLUB_SENDER_LABELS)[PortalMessageSender]
+
+export function getClubSenderLabel(sender: PortalMessageSender): ClubSenderLabel {
   return CLUB_SENDER_LABELS[sender]
 }
 
@@ -181,7 +184,10 @@ function migrateLegacyStorageKey(): void {
   }
 }
 
-type RawStoredMessage = Partial<PortalMessage> & {
+// sender は Partial<PortalMessage> 側から除外する。
+// 交差型のままだと PortalMessageSender と交差して日本語リテラルが消え、
+// normalizeSender() の旧データ判定が「重なりなし」の型エラーになる。
+type RawStoredMessage = Omit<Partial<PortalMessage>, "sender"> & {
   title?: string
   createdAt?: string
   isRead?: boolean

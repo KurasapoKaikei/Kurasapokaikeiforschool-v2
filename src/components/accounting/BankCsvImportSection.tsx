@@ -537,7 +537,8 @@ export function BankCsvImportSection({
     if (!allowed.includes(txType)) return
 
     if (txType === "collection") {
-      setCollectionLinkPrevType(target.txType === "invalid" ? "income" : target.txType)
+      // 直前の early return で target.txType から "invalid" は除外済み
+      setCollectionLinkPrevType(target.txType)
       setRows((prev) =>
         prev.map((r) =>
           r.id === id
@@ -748,6 +749,11 @@ export function BankCsvImportSection({
         })
         continue
       }
+
+      // ここに来るのは income / expense のみ。
+      // "invalid" は rowIsRegisterReady() で弾かれる想定だが、
+      // Transaction["type"] に代入できないため明示的に除外する
+      if (r.txType === "invalid") continue
 
       const subject = accountTitles.find((t) => t.name === r.accountTitle)
       const categoryToSave = subject?.group === "cash" ? "共通" : r.category
