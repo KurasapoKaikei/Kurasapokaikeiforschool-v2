@@ -30,6 +30,7 @@
 | [kansa.md](./kansa.md) | 監査レポート |
 | [system-design-draft.md](./system-design-draft.md) | 設計ドラフト |
 | **[infrastructure-design.md](./infrastructure-design.md)** | **インフラ設計正本**（AWS 構成・認証認可・DB移行・コスト・ロードマップ） |
+| **[server-spec.md](./server-spec.md)** | **サーバー仕様正本**（ランタイム・サイジング・DBパラメータ・データ型・タイムアウト・環境変数） |
 
 ## 開発リファレンス
 

@@ -44,6 +44,43 @@ else
 fi
 
 # ------------------------------------------------------------
+# パラメータグループ（prod / staging で共有）
+#
+# db.t4g.micro は 1 GB メモリ・バースト型。既定値のままだと
+# 接続リークやスロークエリに気づけないため、最低限の可観測性と
+# 安全弁を入れる。メモリ系（shared_buffers 等）は RDS の既定式
+# （インスタンスクラス比例）に任せ、明示的に固定しない。
+# ------------------------------------------------------------
+PG_PARAM_GROUP="${PROJECT}-${DB_PARAMETER_GROUP_FAMILY}"
+if [[ -n "$(aws_text rds describe-db-parameter-groups \
+      --db-parameter-group-name "$PG_PARAM_GROUP" --query 'DBParameterGroups[0].DBParameterGroupName')" ]]; then
+  skip "パラメータグループ既存: $PG_PARAM_GROUP"
+else
+  aws rds create-db-parameter-group --region "$AWS_REGION" \
+    --db-parameter-group-name "$PG_PARAM_GROUP" \
+    --db-parameter-group-family "$DB_PARAMETER_GROUP_FAMILY" \
+    --description "${PROJECT} PostgreSQL settings" \
+    --tags "Key=Project,Value=${PROJECT}" "Key=ManagedBy,Value=infra-cli" >/dev/null
+  ok "パラメータグループ作成: $PG_PARAM_GROUP"
+fi
+
+log "パラメータを適用中"
+aws rds modify-db-parameter-group --region "$AWS_REGION" \
+  --db-parameter-group-name "$PG_PARAM_GROUP" \
+  --parameters \
+    "ParameterName=timezone,ParameterValue=UTC,ApplyMethod=immediate" \
+    "ParameterName=log_min_duration_statement,ParameterValue=${DB_LOG_MIN_DURATION_MS},ApplyMethod=immediate" \
+    "ParameterName=log_statement,ParameterValue=ddl,ApplyMethod=immediate" \
+    "ParameterName=idle_in_transaction_session_timeout,ParameterValue=${DB_IDLE_IN_TRANSACTION_TIMEOUT_MS},ApplyMethod=immediate" \
+    "ParameterName=work_mem,ParameterValue=${DB_WORK_MEM_KB},ApplyMethod=immediate" \
+    "ParameterName=rds.force_ssl,ParameterValue=1,ApplyMethod=pending-reboot" >/dev/null
+ok "パラメータ適用（timezone=UTC / スロークエリ ${DB_LOG_MIN_DURATION_MS}ms / SSL 強制）"
+
+# 注意: statement_timeout はインスタンス全体には設定しない。
+#       マイグレーションの長時間クエリを巻き込むため、
+#       アプリ用ロールにのみ設定する（サーバー仕様書 §4.3）。
+
+# ------------------------------------------------------------
 # RDS PostgreSQL
 # ------------------------------------------------------------
 if [[ -n "$(find_db)" ]]; then
@@ -71,6 +108,7 @@ else
     --storage-type gp3 \
     --storage-encrypted \
     --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" \
+    --db-parameter-group-name "$PG_PARAM_GROUP" \
     --vpc-security-group-ids "$DB_SG" \
     --no-publicly-accessible \
     $MULTI_AZ_FLAG \

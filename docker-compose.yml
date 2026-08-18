@@ -15,15 +15,20 @@
 
 services:
   db:
-    image: postgres:16-alpine
+    # RDS PostgreSQL と照合順序を揃えるため、Debian 版を使う。
+    # alpine(musl) はロケール対応が限定的で en_US.UTF-8 を再現できない。
+    image: postgres:16
     container_name: kurasapo-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: kurasapo
       POSTGRES_PASSWORD: kurasapo
       POSTGRES_DB: kurasapo_dev
-      # 日本語データを扱うため明示
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      # RDS PostgreSQL のテンプレートは en_US.UTF-8 固定で変更できない。
+      # ここを C にすると ORDER BY の結果が本番と食い違うため必ず合わせる。
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      TZ: UTC
+      PGTZ: UTC
     ports:
       - "5432:5432"
     volumes:

@@ -177,10 +177,21 @@ else
   [[ -n "$TG_ARN" ]] || die "ターゲットグループの作成に失敗しました"
   ok "ターゲットグループ作成: $TARGET_GROUP_NAME（ヘルスチェック /api/health）"
 fi
-# デプロイ時の切り替えを速くする（既定 300 秒は 1 タスク運用では長すぎる）
+# デプロイ時の切り替えを速くする（既定 300 秒は 1 タスク運用では長すぎる）。
+# なお standalone の server.js は SIGTERM で即 exit するため、
+# 実質この登録解除待ちが唯一のドレイン時間になる（サーバー仕様書 §7.3）。
 aws elbv2 modify-target-group-attributes --region "$AWS_REGION" \
   --target-group-arn "$TG_ARN" \
   --attributes Key=deregistration_delay.timeout_seconds,Value=30 >/dev/null
+
+# ALB のアイドルタイムアウト。
+# コンテナ側の KEEP_ALIVE_TIMEOUT_MS はこの値より必ず長くすること。
+# 逆転すると、ALB が再利用しようとした接続を Node 側が先に閉じ、
+# 散発的な 502 Bad Gateway が発生する（サーバー仕様書 §7.2）。
+aws elbv2 modify-load-balancer-attributes --region "$AWS_REGION" \
+  --load-balancer-arn "$ALB_ARN" \
+  --attributes "Key=idle_timeout.timeout_seconds,Value=${ALB_IDLE_TIMEOUT_SEC}" >/dev/null
+ok "ALB アイドルタイムアウト: ${ALB_IDLE_TIMEOUT_SEC}s（コンテナ keep-alive: ${KEEP_ALIVE_TIMEOUT_MS}ms）"
 
 # ------------------------------------------------------------
 # リスナー
@@ -273,6 +284,9 @@ cat > /tmp/taskdef.json <<JSON
         { "name": "PORT", "value": "${CONTAINER_PORT}" },
         { "name": "HOSTNAME", "value": "0.0.0.0" },
         { "name": "APP_ENV", "value": "${ENV_NAME}" },
+        { "name": "TZ", "value": "UTC" },
+        { "name": "KEEP_ALIVE_TIMEOUT", "value": "${KEEP_ALIVE_TIMEOUT_MS}" },
+        { "name": "NODE_OPTIONS", "value": "--max-old-space-size=${NODE_MAX_OLD_SPACE_MB}" },
         { "name": "AWS_REGION", "value": "${AWS_REGION}" },
         { "name": "S3_RECEIPTS_BUCKET", "value": "${RECEIPTS_BUCKET}" },
         { "name": "S3_EXPORTS_BUCKET", "value": "${EXPORTS_BUCKET}" }
