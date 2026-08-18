@@ -62,7 +62,7 @@ load_config() {
   使ってしまい、別プロジェクトのアカウントを操作する事故になります。
 
   利用可能なプロファイル:
-$(aws configure list-profiles 2>/dev/null | sed 's/^/    - /')
+$(aws configure list-profiles 2>/dev/null | tr -d '\r' | sed 's/^/    - /')
 
   各プロファイルのアカウントを確認するには:
     AWS_PROFILE=<name> aws sts get-caller-identity --query '[Account,Arn]' --output text"
@@ -101,13 +101,21 @@ $(aws configure list-profiles 2>/dev/null | sed 's/^/    - /')
 }
 
 # --- AWS ヘルパー -------------------------------------------
+# Windows(Git Bash) では AWS CLI が CRLF で出力するため、CR を必ず除去する。
+# これを怠ると "vpc-xxxxx\r" のような値がそのまま後続コマンドへ渡り、
+# リソースが見つからない・不正な名前で作成される、といった事故になる。
+#
 # 値が取れないとき AWS CLI は "None" を返す。空文字に正規化する。
 aws_text() {
   local out
   out="$(aws --region "$AWS_REGION" "$@" --output text 2>/dev/null || true)"
+  out="${out//$'\r'/}"
   [[ "$out" == "None" ]] && out=""
   printf '%s' "$out"
 }
+
+# CR 除去つきの汎用ラッパー（--output text 以外を自前で指定したい場合）
+strip_cr() { tr -d '\r'; }
 
 aws_json() {
   aws --region "$AWS_REGION" "$@" --output json

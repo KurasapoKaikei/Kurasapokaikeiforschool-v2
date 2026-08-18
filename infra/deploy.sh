@@ -74,7 +74,7 @@ NEW_TD_ARN="$(printf '%s' "$TD_JSON" | jq \
     | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
           .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
   ' > /tmp/td.json && aws ecs register-task-definition --region "$AWS_REGION" \
-    --cli-input-json file:///tmp/td.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+    --cli-input-json file:///tmp/td.json --query 'taskDefinition.taskDefinitionArn' --output text | tr -d '\r')"
 rm -f /tmp/td.json
 ok "新リビジョン: $NEW_TD_ARN"
 
