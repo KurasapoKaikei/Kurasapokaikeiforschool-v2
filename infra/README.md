@@ -35,11 +35,34 @@ Windows(Git Bash) 特有のパス変換対策（`MSYS_NO_PATHCONV`）は `lib/co
 | `config/prod.env` | 本番のサイズ設定 |
 | `config/staging.env` | ステージングのサイズ設定 |
 
-**最初に必ず `config/common.env` の `EXPECTED_ACCOUNT_ID` を設定すること。** 意図しない AWS アカウントへ構築する事故を防ぐガードで、未設定だと警告のみで先へ進んでしまう。
+### ★ 構築先アカウントの指定（必須）
+
+`config/common.env` の **`AWS_PROFILE_NAME` と `EXPECTED_ACCOUNT_ID` は両方とも必須**。どちらか欠けていればスクリプトは何もせず停止する。
 
 ```bash
-aws sts get-caller-identity --query Account --output text
-# → 出た値を config/common.env の EXPECTED_ACCOUNT_ID に書く
+AWS_PROFILE_NAME="default"          # ~/.aws/credentials のセクション名
+EXPECTED_ACCOUNT_ID="579617311268"  # 上記プロファイルが指すべきアカウント
+```
+
+**なぜ必須にしているか。** AWS CLI は `--profile` も `AWS_PROFILE` も指定されないと、必ず `~/.aws/credentials` の `[default]` にフォールバックする。開発機に複数プロジェクトのプロファイルがあると、指定漏れがそのまま **別プロジェクトのアカウントを操作する事故**になる。暗黙のフォールバックを封じるため、プロファイル名を必ず書かせる設計にしている。
+
+現在の設定は `default` プロファイル（IAM ユーザー `staysync.admin` / アカウント `579617311268`）。
+
+確認方法:
+
+```bash
+aws configure list-profiles                      # プロファイル一覧
+AWS_PROFILE=default aws sts get-caller-identity  # そのプロファイルの実体
+./infra/00-preflight.sh prod                     # 構築先を枠付きで表示（何も作らない）
+```
+
+実行時に実アカウントと `EXPECTED_ACCOUNT_ID` が食い違えば、**リソースを 1 つも作らずに中断する**。
+
+```
+[XX] ★ アカウント不一致のため中断しました ★
+     プロファイル : default
+     実際のID     : 579617311268  (arn:aws:iam::579617311268:user/staysync.admin)
+     期待するID   : 999999999999
 ```
 
 ---

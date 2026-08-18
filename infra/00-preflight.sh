@@ -33,16 +33,14 @@ fi
 
 # --- AWS 認証 ------------------------------------------------
 require_aws
-ARN="$(aws_text sts get-caller-identity --query 'Arn')"
-ok "AWS アカウント: $ACCOUNT_ID"
-ok "実行者:         $ARN"
-ok "リージョン:     $AWS_REGION"
-
-if [[ -z "${EXPECTED_ACCOUNT_ID:-}" ]]; then
-  warn "config/common.env の EXPECTED_ACCOUNT_ID が未設定です。"
-  warn "意図しないアカウントへ構築する事故を防ぐため、設定を強く推奨します:"
-  warn "    EXPECTED_ACCOUNT_ID=\"$ACCOUNT_ID\""
-fi
+printf "\n"
+printf "  ┌─ 構築先 ────────────────────────────────────────┐\n"
+printf "  │ プロファイル : %-32s │\n" "$AWS_PROFILE_NAME"
+printf "  │ アカウント   : %-32s │\n" "$ACCOUNT_ID"
+printf "  │ 実行者       : %-32s │\n" "${CALLER_ARN##*:}"
+printf "  │ リージョン   : %-32s │\n" "$AWS_REGION"
+printf "  └─────────────────────────────────────────────────┘\n\n"
+warn "上のアカウントが意図したものか、作成前に必ず目視確認してください。"
 
 # --- 設定の表示 ----------------------------------------------
 section "適用される設定"

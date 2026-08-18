@@ -50,6 +50,33 @@ load_config() {
 
   ENV_NAME="$env_name"
 
+  # --- プロファイルの明示を強制 -----------------------------
+  # AWS_PROFILE_NAME が未設定のまま aws を呼ぶと [default] に
+  # フォールバックし、別プロジェクトのアカウントを操作しかねない。
+  # ここで確実に止める。
+  if [[ -z "${AWS_PROFILE_NAME:-}" ]]; then
+    die "AWS_PROFILE_NAME が未設定です。
+
+  config/common.env に、このプロジェクト用のプロファイル名を設定してください。
+  未設定のまま実行すると AWS CLI が ~/.aws/credentials の [default] を
+  使ってしまい、別プロジェクトのアカウントを操作する事故になります。
+
+  利用可能なプロファイル:
+$(aws configure list-profiles 2>/dev/null | sed 's/^/    - /')
+
+  各プロファイルのアカウントを確認するには:
+    AWS_PROFILE=<name> aws sts get-caller-identity --query '[Account,Arn]' --output text"
+  fi
+  export AWS_PROFILE="$AWS_PROFILE_NAME"
+
+  if [[ -z "${EXPECTED_ACCOUNT_ID:-}" ]]; then
+    die "EXPECTED_ACCOUNT_ID が未設定です。
+
+  config/common.env に、構築先アカウント ID（12 桁）を設定してください。
+  プロファイル '$AWS_PROFILE_NAME' の実際のアカウントは次のコマンドで確認できます:
+    AWS_PROFILE=$AWS_PROFILE_NAME aws sts get-caller-identity --query Account --output text"
+  fi
+
   # 名前の組み立て（共有リソースは env を含めない）
   VPC_NAME="${PROJECT}-vpc"
   IGW_NAME="${PROJECT}-igw"
@@ -162,14 +189,25 @@ confirm() {
 # --- 前提チェック -------------------------------------------
 require_aws() {
   command -v aws >/dev/null 2>&1 || die "AWS CLI が見つかりません"
+
   local ident
   ident="$(aws_text sts get-caller-identity --query 'Account')"
-  [[ -n "$ident" ]] || die "AWS 認証情報が無効です。aws configure を確認してください"
+  [[ -n "$ident" ]] || die "プロファイル '$AWS_PROFILE_NAME' の認証に失敗しました。
+     ~/.aws/credentials に [$AWS_PROFILE_NAME] があるか確認してください。"
   ACCOUNT_ID="$ident"
+  CALLER_ARN="$(aws_text sts get-caller-identity --query 'Arn')"
 
-  if [[ -n "${EXPECTED_ACCOUNT_ID:-}" && "$ACCOUNT_ID" != "$EXPECTED_ACCOUNT_ID" ]]; then
-    die "アカウント不一致: 現在=$ACCOUNT_ID / 期待=$EXPECTED_ACCOUNT_ID
-     config/common.env の EXPECTED_ACCOUNT_ID を確認してください。
-     意図しないアカウントへの構築を防ぐためのガードです。"
+  # load_config で未設定は弾いてあるので、ここは必ず突き合わせが走る
+  if [[ "$ACCOUNT_ID" != "$EXPECTED_ACCOUNT_ID" ]]; then
+    die "★ アカウント不一致のため中断しました ★
+
+     プロファイル : $AWS_PROFILE_NAME
+     実際のID     : $ACCOUNT_ID  ($CALLER_ARN)
+     期待するID   : $EXPECTED_ACCOUNT_ID
+
+  config/common.env の AWS_PROFILE_NAME と EXPECTED_ACCOUNT_ID を
+  見直してください。別プロジェクトのアカウントを操作しないためのガードです。"
   fi
+
+  ok "AWS プロファイル: $AWS_PROFILE_NAME → アカウント $ACCOUNT_ID"
 }
