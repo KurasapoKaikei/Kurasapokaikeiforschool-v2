@@ -23,7 +23,7 @@
 | Docker | `deploy.sh`（イメージのビルドと push） | `deploy.sh` のみ必須 |
 | Bash | Windows は Git Bash で動作確認 | 必須 |
 
-> **Windows(Git Bash) の注意**: AWS CLI は `--output text` を **CRLF** で出力する。CR を残したまま後続コマンドに渡すと `vpc-xxxxx` のような値になり、リソースが見つからない・不正な名前で作成されるといった事故になる。`lib/common.sh` の `aws_text()` で CR を除去済み。`aws configure list-profiles` をループする際も `tr -d ''` が必要。
+> **Windows(Git Bash) の注意**: AWS CLI は `--output text` を **CRLF** で出力する。復帰文字(CR)を残したまま後続コマンドに渡すと `vpc-051bad...` の末尾に CR が付いた値になり、リソースが見つからない・不正な名前で作成されるといった事故になる。`lib/common.sh` の `aws_text()` で CR を除去済み。`aws configure list-profiles` をループで回す際も CR 除去（`tr -d` で復帰文字を削る）が必要。
 
 Windows(Git Bash) 特有のパス変換対策（`MSYS_NO_PATHCONV`）は `lib/common.sh` で処理済み。
 
@@ -42,8 +42,8 @@ Windows(Git Bash) 特有のパス変換対策（`MSYS_NO_PATHCONV`）は `lib/co
 `config/common.env` の **`AWS_PROFILE_NAME` と `EXPECTED_ACCOUNT_ID` は両方とも必須**。どちらか欠けていればスクリプトは何もせず停止する。
 
 ```bash
-AWS_PROFILE_NAME="default"          # ~/.aws/credentials のセクション名
-EXPECTED_ACCOUNT_ID="579617311268"  # 上記プロファイルが指すべきアカウント
+AWS_PROFILE_NAME=""      # ~/.aws/credentials のセクション名
+EXPECTED_ACCOUNT_ID=""   # 上記プロファイルが指すべきアカウント ID（12 桁）
 ```
 
 **なぜ必須にしているか。** AWS CLI は `--profile` も `AWS_PROFILE` も指定されないと、必ず `~/.aws/credentials` の `[default]` にフォールバックする。開発機に複数プロジェクトのプロファイルがあると、指定漏れがそのまま **別プロジェクトのアカウントを操作する事故**になる。暗黙のフォールバックを封じるため、プロファイル名を必ず書かせる設計にしている。
@@ -68,7 +68,7 @@ EXPECTED_ACCOUNT_ID="579617311268"  # 上記プロファイルが指すべきア
 
 ```bash
 aws configure list-profiles                      # プロファイル一覧
-AWS_PROFILE=default aws sts get-caller-identity  # そのプロファイルの実体
+AWS_PROFILE=<name> aws sts get-caller-identity   # そのプロファイルの実体
 ./infra/00-preflight.sh prod                     # 構築先を枠付きで表示（何も作らない）
 ```
 
@@ -76,8 +76,8 @@ AWS_PROFILE=default aws sts get-caller-identity  # そのプロファイルの�
 
 ```
 [XX] ★ アカウント不一致のため中断しました ★
-     プロファイル : default
-     実際のID     : 579617311268  (arn:aws:iam::579617311268:user/staysync.admin)
+     プロファイル : <指定したプロファイル名>
+     実際のID     : 111111111111  (arn:aws:iam::111111111111:user/xxx)
      期待するID   : 999999999999
 ```
 
