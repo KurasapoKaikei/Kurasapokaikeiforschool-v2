@@ -29,6 +29,7 @@
 | [spec.md](./spec.md) | 会計・集金・帳簿の機能詳細（v2 系） |
 | [kansa.md](./kansa.md) | 監査レポート |
 | [system-design-draft.md](./system-design-draft.md) | 設計ドラフト |
+| **[infrastructure-design.md](./infrastructure-design.md)** | **インフラ設計正本**（AWS 構成・認証認可・DB移行・コスト・ロードマップ） |
 
 ## 開発リファレンス
 
