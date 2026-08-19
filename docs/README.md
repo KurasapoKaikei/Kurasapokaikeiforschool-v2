@@ -31,7 +31,8 @@
 | [system-design-draft.md](./system-design-draft.md) | 設計ドラフト |
 | **[infrastructure-design.md](./infrastructure-design.md)** | **インフラ設計正本**（AWS 構成・認証認可・DB移行・コスト・ロードマップ） |
 | **[server-spec.md](./server-spec.md)** | **サーバー仕様正本**（ランタイム・サイジング・DBパラメータ・データ型・タイムアウト・環境変数） |
-| **[open-questions.md](./open-questions.md)** | **確認事項シート**（アプリ担当者への質問と回答欄。DB 移行前の要確認事項） |
+| [open-questions.md](./open-questions.md) | 確認事項シート（第 1 回・回答済み） |
+| **[open-questions-round2.md](./open-questions-round2.md)** | **確認事項シート（第 2 回）— 回答待ち 5 項目** |
 
 ## 開発リファレンス
 
