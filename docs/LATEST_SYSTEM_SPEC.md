@@ -170,9 +170,9 @@
 **上半分 — 証憑未登録数**
 
 - コンポーネント: `ClubDashboardVoucherStats`（`src/components/club/ClubDashboardVoucherStats.tsx`）
-- 表示形式: **`証憑未登録数： {未登録} / {支出仕訳総数} 件`**（データ未投入時は `0 / 0`）
+- 表示形式: **`{未登録} / {証憑必要仕訳数}`**（データ未投入時は `0 / 0`）
 - 集計: `computeClubReceiptStats(transactions)`（`src/lib/clubReceiptStats.ts`）
-- 「出納帳へ ➔」リンク: `/club/accounting/ledger/cash-bank`
+- 「証憑未登録一覧➔」リンク: `/club/accounting/ledger/missing-receipts`
 
 **下半分 — 決算ステータス**
 
@@ -205,22 +205,24 @@
 
 ## 4. 裏側ロジック — 証憑チェック
 
+| 関数 | 内容 |
+|------|------|
+| `requiresReceipt(t)` | 証憑必須か。経費 `expense`（振替片側除外）。繰延は未払金・前払費用で出納帳上の出金のみ。収入・振替・集金は不要 |
+| `isMissingRequiredReceipt(t)` | 上記かつ `receiptUrl` が空 |
+| `getReceiptAlertTone(t)` | 未登録時の色。通常支出＝`red`、繰延＝`yellow` |
+| `computeClubReceiptStats(txs)` | `{ missingReceiptCount, totalExpenseEntries }` |
+
+**分母**: 証憑が必要な仕訳数  
+**分子**: そのうち `receiptUrl` 未設定の件数  
+**表示**: `{分子} / {分母}`（例: `3/10`）
+
 ### 4.1 集計ロジック（ダッシュボードと帳簿で共通）
 
-**実装ファイル**: `src/lib/clubReceiptStats.ts`
-
-| 関数 | 役割 |
-|------|------|
-| `isExpenseRequiringReceipt(t)` | 証憑チェック対象か。`type === "expense"` かつ **振替片側でない**（`isTransferLeg`） |
-| `isExpenseMissingReceipt(t)` | 上記かつ `receiptUrl` が空 |
-| `computeClubReceiptStats(transactions)` | `{ totalExpenseEntries, missingReceiptCount }` を返す |
-
-**分母**: 支出仕訳の総数（振替の出金・入金片側レコードは除外）  
-**分子**: そのうち `receiptUrl` 未設定の件数
+**実装ファイル**: `src/lib/clubReceiptStats.ts`（§4 表参照）
 
 振替判定: `src/utils/localStorage.ts` の `isTransferLeg()`（`transferGroupId` または memo プレフィックス `振替（出金）` / `振替（入金）`）。
 
-### 4.2 帳簿 — 赤色ハイライト
+### 4.2 帳簿 — 赤／黄アラート
 
 対象画面:
 
@@ -228,19 +230,18 @@
 |------|------|----------------|
 | 現金預金出納帳 | `/club/accounting/ledger/cash-bank` | `src/app/club/accounting/ledger/cash-bank/page.tsx` |
 | 科目別台帳 | `/club/accounting/ledger/subject` | `src/app/club/accounting/ledger/subject/page.tsx` |
+| 証憑未登録一覧 | `/club/accounting/ledger/missing-receipts` | `src/components/club/ClubMissingReceiptsView.tsx` |
 
 **ハイライト条件**
 
-- データ行（合計行・期首行を除く）について、`isExpenseMissingReceipt(row.transaction)` が `true` のとき:
-  - **行全体**: `RECEIPT_MISSING_ROW_CLASS` → `bg-red-50 text-red-600`
-  - **証憑セル**: `RECEIPT_MISSING_CELL_CLASS`（同上）
-  - 証憑列に「未登録」テキスト（赤）
+- データ行（合計行・期首行を除く）について、`getReceiptAlertTone(tx)` が非 null のとき証憑セルを着色
+  - `red` → 背景 `#FEE2E2`、「未登録」（赤文字）— 通常の経費支出
+  - `yellow` → 背景 `#FEF3C7`、「未登録」（黄文字）— 繰延の未払金・前払費用による出金
 
-**除外（ハイライトしない）**
+**除外（証憑列は「ー」、アラートなし）**
 
-- 振替行（`isTransferLeg`）
-- 集金（`type === "collection"`）— 証憑不要として「ー」表示
-- 入金のみの行（支出仕訳でない）
+- 収入・振替・集金
+- 繰延のうち未収入金・預り金など、未払金・前払費用の出金以外
 
 ### 4.3 データ連動
 
@@ -271,6 +272,7 @@
 | `/club/settlement` | 決算提出 |
 | `/club/accounting/ledger/cash-bank` | 現金預金出納帳 |
 | `/club/accounting/ledger/subject` | 科目別台帳 |
+| `/club/accounting/ledger/missing-receipts` | 証憑未登録一覧 |
 | `/club/messages` | メッセージBOX 一覧 |
 
 ### 監査人（`/audit`）
@@ -306,6 +308,7 @@
 | クラブダッシュボード | `src/app/club/dashboard/page.tsx` |
 | 決算ステータス UI | `src/components/club/ClubDashboardSettlementSummary.tsx` |
 | 証憑未登録 UI | `src/components/club/ClubDashboardVoucherStats.tsx` |
+| 証憑未登録一覧 | `src/components/club/ClubMissingReceiptsView.tsx` |
 | 学校ログイン | `src/components/auth/SchoolLoginView.tsx` |
 | クラブログイン | `src/components/auth/ClubLoginForm.tsx` |
 | パスワード入力 | `src/components/ui/password-input.tsx` |

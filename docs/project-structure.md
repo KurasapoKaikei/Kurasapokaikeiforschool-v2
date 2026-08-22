@@ -2,6 +2,8 @@
 
 Next.js 14 App Router ベースのディレクトリ構成です。
 
+> **同期メモ（2026-08-21）**: 本ドキュメントは `Kurasapokaikeiforschool-v2` の仕様に合わせています。`infra/`・`Dockerfile`・`docker-compose.yml`・`.env.example` および Prisma migrations の実ファイルは v2 側で整備済みです。本リポジトリへコード一式を取り込む場合は別途指示してください。
+
 ## ルート直下
 
 ```

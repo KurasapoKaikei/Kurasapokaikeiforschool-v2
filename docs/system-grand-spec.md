@@ -484,10 +484,10 @@ lg以上における画面配置イメージ：
 #### 上段 — 証憑未登録数
 
 - `ClubDashboardVoucherStats`
-- 表示: **`{未登録} / {全支出仕訳数}`**（未投入時 `0/0`）
-- 集計: `computeClubReceiptStats()` — `src/lib/clubReceiptStats.ts`
+- 表示: **`{未登録} / {証憑必要仕訳数}`**（未投入時 `0/0`）
+- 集計: `computeClubReceiptStats()` — `src/lib/clubReceiptStats.ts`（経費支出＋繰延の未払金・前払費用出金）
 - 現金預金出納帳データと連動（同一 `transactions` ソース）
-- 「出納帳へ ➔」→ `/club/accounting/ledger/cash-bank`
+- 「証憑未登録一覧➔」→ `/club/accounting/ledger/missing-receipts`（`ClubMissingReceiptsView`）
 - 左縦線: 赤 `#EF4444`
 
 #### 下段 — 決算ステータス
@@ -663,24 +663,30 @@ lg以上における画面配置イメージ：
 **集計**（`clubReceiptStats.ts`）:
 
 ```typescript
-// 対象: type === "expense" && !isTransferLeg(t)
+// 対象（母数）:
+//   - type === "expense" && !isTransferLeg(t)（経費となる支出）
+//   - 繰延で未払金・前払費用かつ現金出納帳上の出金（getCashLedgerFlowAmounts.expense > 0）
+// 除外: 収入 / 振替 / 集金
 // 未登録: receiptUrl が空
 computeClubReceiptStats(transactions) → { missingReceiptCount, totalExpenseEntries }
 ```
 
 **証憑未登録数の定義（厳密）**:
 
-- **分母**: 全支出仕訳数（振替片側 `isTransferLeg` は除外）
+- **分母**: 証憑が必要な仕訳数（経費支出＋繰延の未払金・前払費用による出金）
 - **分子**: 分母のうち `receiptUrl` 未設定の件数
-- **表示形式**: `{未登録} / {全支出仕訳数}`（例: `0/0`）
+- **表示形式**: `{未登録} / {母数}`（例: `0/0`）。クラブトップ `ClubDashboardVoucherStats`
 
-**帳簿赤ハイライト**:
+**不要（証憑列は「ー」）**: 収入・振替・集金
 
-| 画面 | パス | 条件 |
-|------|------|------|
-| 現金預金出納帳 | `/club/accounting/ledger/cash-bank` | `isExpenseMissingReceipt` → `bg-red-50 text-red-600` |
-| 科目別台帳 | `/club/accounting/ledger/subject` | 同上 + 証憑列「未登録」 |
-| 繰延（計上・精算） | `/club/accounting/ledger/deferred` | 未収入金・未払金・預り金・前払費用の計上／精算一覧 |
+**帳簿アラート**:
+
+| 画面 | 条件 | 色 |
+|------|------|-----|
+| 現金預金出納帳 | `isMissingRequiredReceipt` | 通常支出＝**赤**、繰延（未払金／前払費用）＝**黄** |
+| 科目別台帳 | 同上 | 同上 |
+
+前払費用の支払いは原則「通常の経費支出」として登録され証憑対象になる。未払金の精算出金は繰延仕訳として出納帳に載り、黄アラート対象。
 
 ---
 
@@ -1040,6 +1046,7 @@ kurasaokaikei/
 | `/club/accounting/ledger/cash-bank` | 現金預金出納帳 |
 | `/club/accounting/ledger/subject` | 科目別台帳 |
 | `/club/accounting/ledger/deferred` | 繰延（計上・精算）台帳 |
+| `/club/accounting/ledger/missing-receipts` | 証憑未登録一覧 |
 | `/club/accounting/summary` | 収支集計表 |
 | `/club/accounting/report` | 収支報告書（すべて／カテゴリー別） |
 | `/club/collection` | 集金管理 |
@@ -1091,6 +1098,7 @@ kurasaokaikei/
 | クラブダッシュボード | `src/app/club/dashboard/page.tsx` |
 | 決算ステータス UI | `src/components/club/ClubDashboardSettlementSummary.tsx` |
 | 証憑未登録 UI | `src/components/club/ClubDashboardVoucherStats.tsx` |
+| 証憑未登録一覧 | `src/components/club/ClubMissingReceiptsView.tsx` |
 | 証憑集計 | `src/lib/clubReceiptStats.ts` |
 | 監査人ダッシュボード | `src/components/audit/AuditorDashboardView.tsx` |
 | 監査人カード | `src/components/audit/AuditorClubDashboardCard.tsx` |
